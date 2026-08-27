@@ -1,0 +1,9 @@
+include requirements.txt
+include environment.yml
+include chrombpnet_bugs.md
+include test.py
+include README.tensorflow.md
+include workflows/*
+recursive-include workflows *
+include tests/*
+include chrombpnet/data/*
