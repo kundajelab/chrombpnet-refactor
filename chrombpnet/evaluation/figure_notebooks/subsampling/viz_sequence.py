@@ -7,6 +7,12 @@ import numpy as np
 
 
 def ic_scale(pwm,background):
+    pwm = np.asarray(pwm, dtype=float)
+    background = np.asarray(background, dtype=float)
+    if pwm.ndim != 2 or pwm.shape[1] != 4:
+        raise ValueError(f"Expected PWM with shape (length, 4), got {pwm.shape}")
+    if background.shape != (4,):
+        raise ValueError(f"Expected four background frequencies, got {background.shape}")
     odds_ratio = ((pwm+0.001)/(1.004))/(background[None,:])
     ic = ((np.log((pwm+0.001)/(1.004))/np.log(2))*pwm -\
             (np.log(background)*background/np.log(2))[None,:])

@@ -7,6 +7,7 @@ import pytest
 from chrombpnet.evaluation.make_bigwigs.predict_to_bigwig import _stats_path, softmax
 from chrombpnet.training.data_generators.batchgen_generator import subsample_nonpeak_data
 from chrombpnet.training.utils.one_hot import dna_to_one_hot
+from chrombpnet.evaluation.custom_sequences.viz_sequence import ic_scale
 
 
 def test_cli_help_lists_active_command_tree():
@@ -49,3 +50,10 @@ def test_empty_one_hot_has_typed_empty_result():
     result = dna_to_one_hot([])
     assert result.shape == (0, 0, 4)
     assert result.dtype == np.int8
+
+
+def test_information_content_scaling_accepts_list_background():
+    pwm = np.full((6, 4), 0.25)
+    result = ic_scale(pwm, background=[0.25] * 4)
+    assert result.shape == pwm.shape
+    assert np.isfinite(result).all()
