@@ -45,7 +45,6 @@ def adjust_bias_model_logcounts(bias_model, seqs, cts):
     """
 
     # safeguards to prevent misuse
-    #assert(bias_model.layers[-1].name == "logcount_predictions")
     print("Predicting within adjust counts")
     from chrombpnet.model import PredictionAdapter
     adapter = PredictionAdapter(bias_model, device="cpu")
@@ -78,9 +77,10 @@ def main(args):
                            header=None,
                            names=["chr", "start", "end", "1", "2", "3", "4", "5", "6", "summit"])
 
-    assert(in_peaks.shape[0] != 0) # peaks file is empty
-    assert(in_nonpeaks.shape[0] !=0) # non peaks file is empty
-    assert(args.inputlen >= args.outputlen) # inputlen should be greater than the outputlen 
+    if in_peaks.empty or in_nonpeaks.empty:
+        raise ValueError("Peak and nonpeak files must both be non-empty")
+    if args.inputlen < args.outputlen:
+        raise ValueError("inputlen must be at least outputlen")
                                             # inputlen and outlen are chosen based on the filters and dilations layers used
 
     # get train/valid peaks and test peaks seperately
@@ -100,12 +100,13 @@ def main(args):
     # step 2 filtering: filter peaks that are outliers in train and valid set - no filtering on test set
     peak_cnts, _ = param_utils.get_seqs_cts(genome, bw, peaks, args.inputlen, args.outputlen)
     nonpeak_cnts, nonpeak_seqs = param_utils.get_seqs_cts(genome, bw, nonpeaks, args.inputlen, args.outputlen)    
-    assert(len(peak_cnts) == peaks.shape[0])
-    assert(len(nonpeak_cnts) == nonpeaks.shape[0])
+    if len(peak_cnts) != peaks.shape[0] or len(nonpeak_cnts) != nonpeaks.shape[0]:
+        raise RuntimeError("Extracted count arrays do not match their BED regions")
 
 
     if args.negative_sampling_ratio > 0:
-        final_cnts = np.concatenate((peak_cnts,np.random.choice(nonpeak_cnts, replace=False, size=(int(args.negative_sampling_ratio*len(peak_cnts))))))
+        sample_size = min(int(args.negative_sampling_ratio * len(peak_cnts)), len(nonpeak_cnts))
+        final_cnts = np.concatenate((peak_cnts, np.random.choice(nonpeak_cnts, replace=False, size=sample_size)))
     else:
         final_cnts = peak_cnts
 
@@ -133,8 +134,8 @@ def main(args):
 
     # find counts loss weight for model training - using train and validation set
     counts_loss_weight = np.median(final_cnts[(final_cnts <= upper_thresh) & (final_cnts>=lower_thresh)])/10
-    assert(counts_loss_weight != 0)
-    #assert(counts_loss_weight > 1.0) # counts loss weight can go less than 1.0 if you have very low-read depth - make sure you have enough density in counts
+    if counts_loss_weight == 0:
+        raise ValueError("Computed counts loss weight is zero")
                                      # check peak-calling
 
     if counts_loss_weight < 1.0:

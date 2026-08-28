@@ -32,7 +32,8 @@ def parse_args():
 
 
 def generate_bigwig(input_bam_file, input_fragment_file, input_tagalign_file, output_prefix, genome_fasta_file, bsort, tmpdir, no_st, chrom_sizes_file, plus_shift_delta, minus_shift_delta):
-    assert (input_bam_file is None) + (input_fragment_file is None) + (input_tagalign_file is None) == 2, "Only one input file!"
+    if sum(value is not None for value in (input_bam_file, input_fragment_file, input_tagalign_file)) != 1:
+        raise ValueError("Exactly one input file must be provided")
 
     if input_bam_file:
         p1 = auto_shift_detect.bam_to_tagalign_stream(input_bam_file)
@@ -41,39 +42,50 @@ def generate_bigwig(input_bam_file, input_fragment_file, input_tagalign_file, ou
     elif input_tagalign_file:
         p1 = auto_shift_detect.tagalign_stream(input_tagalign_file)
 
-    if tmpdir is None:
-        if bsort:
-            cmd = """awk -v OFS="\\t" '{{if ($6=="+"){{print $1,$2{0:+},$3,$4,$5,$6}} else if ($6=="-") {{print $1,$2,$3{1:+},$4,$5,$6}}}}' | sort -k1,1 | bedtools genomecov -bg -5 -i stdin -g {2} | bedtools sort -i stdin """.format(plus_shift_delta, minus_shift_delta, chrom_sizes_file)
-        else:
-            cmd = """awk -v OFS="\\t" '{{if ($6=="+"){{print $1,$2{0:+},$3,$4,$5,$6}} else if ($6=="-") {{print $1,$2,$3{1:+},$4,$5,$6}}}}' | sort -k1,1 | bedtools genomecov -bg -5 -i stdin -g {2} | LC_COLLATE="C" sort -k1,1 -k2,2n """.format(plus_shift_delta, minus_shift_delta, chrom_sizes_file)
-    else:
-        assert(os.path.isdir(tmpdir)) # tmp dir path does not exsist
-        if bsort:
-            cmd = """awk -v OFS="\\t" '{{if ($6=="+"){{print $1,$2{0:+},$3,$4,$5,$6}} else if ($6=="-") {{print $1,$2,$3{1:+},$4,$5,$6}}}}' | sort -T {3} -k1,1 | bedtools genomecov -bg -5 -i stdin -g {2} | bedtools sort -i stdin """.format(plus_shift_delta, minus_shift_delta, chrom_sizes_file, tmpdir)
-        else:
-            cmd = """awk -v OFS="\\t" '{{if ($6=="+"){{print $1,$2{0:+},$3,$4,$5,$6}} else if ($6=="-") {{print $1,$2,$3{1:+},$4,$5,$6}}}}' | sort -T {3} -k1,1 | bedtools genomecov -bg -5 -i stdin -g {2} | LC_COLLATE="C" sort -T {3} -k1,1 -k2,2n """.format(plus_shift_delta, minus_shift_delta, chrom_sizes_file, tmpdir)
-
-    print(cmd)
-
+    if tmpdir is not None and not os.path.isdir(tmpdir):
+        raise ValueError(f"Temporary directory does not exist: {tmpdir}")
+    sort_args = ["sort"] + (["-T", tmpdir] if tmpdir else []) + ["-k1,1"]
+    final_sort = (["bedtools", "sort", "-i", "stdin"] if bsort else
+                  ["sort"] + (["-T", tmpdir] if tmpdir else []) + ["-k1,1", "-k2,2n"])
+    awk_program = (
+        'BEGIN {OFS="\\t"} '
+        '{if ($6=="+") print $1,$2+plus,$3,$4,$5,$6; '
+        'else if ($6=="-") print $1,$2,$3+minus,$4,$5,$6}'
+    )
+    awk_cmd = ["awk", "-v", f"plus={plus_shift_delta}", "-v",
+               f"minus={minus_shift_delta}", awk_program]
 
     tmp_bedgraph = tempfile.NamedTemporaryFile()
-    if no_st:
-        print("Making BedGraph (Do not filter chromosomes not in reference fasta)")
-
-        with open(tmp_bedgraph.name, 'w') as f:
-            p2 = subprocess.Popen([cmd], stdin=p1.stdout, stdout=f, shell=True)
+    with open(tmp_bedgraph.name, "w") as output:
+        p_awk = subprocess.Popen(awk_cmd, stdin=p1.stdout if no_st else subprocess.PIPE,
+                                 stdout=subprocess.PIPE)
+        if no_st:
             p1.stdout.close()
-            p2.communicate()
-    else:
-        print("Making BedGraph (Filter chromosomes not in reference fasta)")
-
-        with open(tmp_bedgraph.name, 'w') as f:
-            p2 = subprocess.Popen([cmd], stdin=subprocess.PIPE, stdout=f, shell=True)
-            auto_shift_detect.stream_filtered_tagaligns(p1, genome_fasta_file, p2)
-            p2.communicate()
+        p_sort = subprocess.Popen(sort_args, stdin=p_awk.stdout, stdout=subprocess.PIPE)
+        p_awk.stdout.close()
+        p_cov = subprocess.Popen(["bedtools", "genomecov", "-bg", "-5", "-i", "stdin",
+                                  "-g", chrom_sizes_file], stdin=p_sort.stdout,
+                                 stdout=subprocess.PIPE)
+        p_sort.stdout.close()
+        env = os.environ.copy()
+        env["LC_COLLATE"] = "C"
+        p_final = subprocess.Popen(final_sort, stdin=p_cov.stdout, stdout=output, env=env)
+        p_cov.stdout.close()
+        if not no_st:
+            auto_shift_detect.stream_filtered_tagaligns(p1, genome_fasta_file, p_awk)
+            p_awk.stdin.close()
+        return_codes = [p_final.wait(), p_cov.wait(), p_sort.wait(), p_awk.wait()]
+        if any(code != 0 for code in return_codes):
+            raise subprocess.CalledProcessError(1, "BedGraph generation pipeline")
+        if no_st and p1.wait() != 0:
+            raise subprocess.CalledProcessError(p1.returncode, "input conversion")
+        upstream = getattr(p1, "_chrombpnet_upstream", None)
+        if no_st and upstream is not None and upstream.wait() != 0:
+            raise subprocess.CalledProcessError(upstream.returncode, "input decompression")
 
     print("Making Bigwig")
-    subprocess.run(["bedGraphToBigWig", tmp_bedgraph.name, chrom_sizes_file, output_prefix + "_unstranded.bw"])
+    subprocess.run(["bedGraphToBigWig", tmp_bedgraph.name, chrom_sizes_file,
+                    output_prefix + "_unstranded.bw"], check=True)
 
     tmp_bedgraph.close()
 

@@ -46,8 +46,12 @@ def fetch_footprinting_args():
     return args
 
 def softmax(x, temp=1):
-    norm_x = x - np.mean(x,axis=1, keepdims=True)
-    return np.exp(temp*norm_x)/np.sum(np.exp(temp*norm_x), axis=1, keepdims=True)
+    scaled = temp * np.asarray(x)
+    if scaled.ndim != 2:
+        raise ValueError(f"softmax expects a 2-D array, got {scaled.shape}")
+    scaled = scaled - np.max(scaled, axis=1, keepdims=True)
+    exponentiated = np.exp(scaled)
+    return exponentiated / np.sum(exponentiated, axis=1, keepdims=True)
 
 def get_footprint_for_motif(seqs, motif, model, inputlen, batch_size):
     '''
@@ -61,15 +65,15 @@ def get_footprint_for_motif(seqs, motif, model, inputlen, batch_size):
 
     # midpoint of motif is the midpoint of sequence
     pred_output=model.predict(w_mot_seqs, batch_size=batch_size, verbose=True)
-    footprint_for_motif_fwd = softmax(pred_output[0])*(np.exp(pred_output[1])-1)
+    footprint_for_motif_fwd = softmax(pred_output[0]) * np.expm1(pred_output[1])
 
     # reverse complement the sequence
     w_mot_seqs_revc = w_mot_seqs[:, ::-1, ::-1]
     pred_output_rev=model.predict(w_mot_seqs_revc, batch_size=batch_size, verbose=True)
-    footprint_for_motif_rev = softmax(pred_output_rev[0])*(np.exp(pred_output_rev[1])-1)
+    footprint_for_motif_rev = softmax(pred_output_rev[0]) * np.expm1(pred_output_rev[1])
 
     # add fwd sequence predictions and reverse sesquence predictions (not we flip the rev predictions)
-    counts_for_motif = np.exp(pred_output_rev[1]) - 1 + np.exp(pred_output[1]) - 1
+    counts_for_motif = np.expm1(pred_output_rev[1]) + np.expm1(pred_output[1])
     footprint_for_motif_tot = footprint_for_motif_fwd+footprint_for_motif_rev[:,::-1]
     footprint_for_motif =  footprint_for_motif_tot / footprint_for_motif_tot.sum(axis=1)[:, np.newaxis]
 

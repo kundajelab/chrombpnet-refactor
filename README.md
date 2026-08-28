@@ -7,8 +7,8 @@ scoring, marginal-footprinting, and reporting workflows while using native
 PyTorch models and `.pt` checkpoints.
 
 The original README is retained as `README.tensorflow.md`. Confirmed issues in
-the reference implementation and their compatibility status are recorded in
-`chrombpnet_bugs.md`.
+the reference implementation and their corrected PyTorch behavior are recorded
+in `chrombpnet_bugs.md`.
 
 ## Installation
 
@@ -21,6 +21,12 @@ pip install -e .
 The environment installs a CUDA-enabled PyTorch build which automatically falls
 back to CPU. Commands accept `--device cpu`, `--device cuda`, or a specific
 device such as `--device cuda:1`.
+
+Motif discovery and reports use TF-MoDISco 2.6 from the editable checkout at
+`/path/to/workdir/software/tfmodisco`. The refactor calls the
+current `modisco` Python API directly and writes the `pos_patterns` /
+`neg_patterns` HDF5 schema. Recreate the environment after moving that checkout,
+or reinstall it with `python -m pip install -e /new/path/to/tfmodisco`.
 
 ## Python API
 
@@ -64,6 +70,7 @@ chrombpnet prep nonpeaks
 chrombpnet prep splits
 chrombpnet pred_bw
 chrombpnet contribs_bw
+chrombpnet modisco_motifs
 chrombpnet footprints
 ```
 

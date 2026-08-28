@@ -291,18 +291,18 @@ chrombpnet_deepshap \
 ## modisco run
 
 
-echo $( timestamp ): "modisco motifs -i $output_dir/evaluation/interpret"/bias.profile_scores.h5" -n 50000 -o $output_dir/evaluation/interpret"/modisco_results_allChroms_profile.hdf5" -w 500" | tee -a $logfile
-modisco motifs -i $output_dir/evaluation/interpret"/bias.profile_scores.h5" -n 50000 -o $output_dir/evaluation/interpret"/modisco_results_allChroms_profile.hdf5" -w 500  | tee -a $logfile
-echo $( timestamp ): "modisco motifs -i $output_dir/evaluation/interpret"/bias.counts_scores.h5" -n 50000 -o $output_dir/evaluation/interpret"/modisco_results_allChroms_counts.hdf5" -w 500" | tee -a $logfile
-modisco motifs -i $output_dir/evaluation/interpret"/bias.counts_scores.h5" -n 50000 -o $output_dir/evaluation/interpret"/modisco_results_allChroms_counts.hdf5" -w 500  | tee -a $logfile
+echo $( timestamp ): "python -m chrombpnet.evaluation.modisco.api motifs -i $output_dir/evaluation/interpret"/bias.profile_scores.h5" -n 50000 -o $output_dir/evaluation/interpret"/modisco_results_allChroms_profile.hdf5" -w 500" | tee -a $logfile
+python -m chrombpnet.evaluation.modisco.api motifs -i $output_dir/evaluation/interpret"/bias.profile_scores.h5" -n 50000 -o $output_dir/evaluation/interpret"/modisco_results_allChroms_profile.hdf5" -w 500  | tee -a $logfile
+echo $( timestamp ): "python -m chrombpnet.evaluation.modisco.api motifs -i $output_dir/evaluation/interpret"/bias.counts_scores.h5" -n 50000 -o $output_dir/evaluation/interpret"/modisco_results_allChroms_counts.hdf5" -w 500" | tee -a $logfile
+python -m chrombpnet.evaluation.modisco.api motifs -i $output_dir/evaluation/interpret"/bias.counts_scores.h5" -n 50000 -o $output_dir/evaluation/interpret"/modisco_results_allChroms_counts.hdf5" -w 500  | tee -a $logfile
 
 
 meme_dir=$(chrombpnet_srcdir)"/../data"
 
-echo $( timestamp ): "modisco report -i $output_dir/evaluation/interpret"/modisco_results_allChroms_profile.hdf5" -o  $output_dir/evaluation/interpret/modisco_reports_profile/ -s "./" -m $meme_dir/motifs.meme.txt" | tee -a $logfile
-modisco report -i $output_dir/evaluation/interpret"/modisco_results_allChroms_profile.hdf5" -o  $output_dir/evaluation/interpret/modisco_reports_profile/ -s "./" -m $meme_dir/motifs.meme.txt  | tee -a $logfile
-echo $( timestamp ): "modisco report -i $output_dir/evaluation/interpret"/modisco_results_allChroms_counts.hdf5" -o  $output_dir/evaluation/interpret/modisco_reports_counts/ -s "./" -m $meme_dir/motifs.meme.txt" | tee -a $logfile
-modisco report -i $output_dir/evaluation/interpret"/modisco_results_allChroms_counts.hdf5" -o  $output_dir/evaluation/interpret/modisco_reports_counts/ -s "./" -m $meme_dir/motifs.meme.txt  | tee -a $logfile
+echo $( timestamp ): "python -m chrombpnet.evaluation.modisco.api report -i $output_dir/evaluation/interpret"/modisco_results_allChroms_profile.hdf5" -o  $output_dir/evaluation/interpret/modisco_reports_profile/ -s "./" -m $meme_dir/motifs.meme.txt" | tee -a $logfile
+python -m chrombpnet.evaluation.modisco.api report -i $output_dir/evaluation/interpret"/modisco_results_allChroms_profile.hdf5" -o  $output_dir/evaluation/interpret/modisco_reports_profile/ -s "./" -m $meme_dir/motifs.meme.txt  | tee -a $logfile
+echo $( timestamp ): "python -m chrombpnet.evaluation.modisco.api report -i $output_dir/evaluation/interpret"/modisco_results_allChroms_counts.hdf5" -o  $output_dir/evaluation/interpret/modisco_reports_counts/ -s "./" -m $meme_dir/motifs.meme.txt" | tee -a $logfile
+python -m chrombpnet.evaluation.modisco.api report -i $output_dir/evaluation/interpret"/modisco_results_allChroms_counts.hdf5" -o  $output_dir/evaluation/interpret/modisco_reports_counts/ -s "./" -m $meme_dir/motifs.meme.txt  | tee -a $logfile
 
 
 echo $( timestamp ): "chrombpnet_convert_html_to_pdf -i $output_dir/evaluation/interpret/modisco_reports_profile/motifs.html -o $output_dir/evaluation/profile_motifs.pdf" | tee -a $logfile

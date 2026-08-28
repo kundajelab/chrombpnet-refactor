@@ -70,17 +70,13 @@ def get_model(args, parameters):
     if builder is None:
         raise AttributeError("Architecture must define build_model(args, parameters)")
 
-    # Reference compatibility: the bias model seed controls initialization, while
-    # ChromBPNet's historical --seed was set only after its trainable layers existed.
-    if "bias_model_path" not in parameters:
-        torch.manual_seed(args.seed)
-        np.random.seed(args.seed)
-        random.seed(args.seed)
+    # Seed before construction so --seed controls every trainable parameter.
+    torch.manual_seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
+    np.random.seed(args.seed)
+    random.seed(args.seed)
     model = builder(args, parameters)
-    if "bias_model_path" in parameters:
-        torch.manual_seed(args.seed)
-        np.random.seed(args.seed)
-        random.seed(args.seed)
     return model, architecture
 
 

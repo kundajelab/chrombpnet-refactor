@@ -11,6 +11,9 @@ def get_seq(peaks_df, genome, width):
     """
     vals = []
 
+    if peaks_df.empty:
+        raise ValueError("No regions are available for sequence extraction")
+
     for i, r in peaks_df.iterrows():
         sequence = str(genome[r['chr']][(r['start']+r['summit'] - width//2):(r['start'] + r['summit'] + width//2)])
         vals.append(sequence)

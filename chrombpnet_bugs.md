@@ -3,10 +3,10 @@
 Audit baseline: `/path/to/workdir/software/chrombpnet` at
 commit `09938fdb4397ec0006510e5251e48920a505d4de` (`v1.0.1-3-g09938fd`).
 
-The refactor intentionally preserves reachable reference behavior, including
-the defects below, unless the issue is inherently tied to TensorFlow/Keras or to
-obsolete packaging. Tests label preserved failures explicitly so they cannot be
-mistaken for new regressions.
+The issues below were discovered in the TensorFlow reference and initially
+preserved for parity. They are now fixed in the PyTorch refactor. Cross-framework
+tests continue to enforce numerical model parity while PyTorch-only regression
+tests enforce the corrected behavior.
 
 ## Confirmed defects
 
@@ -18,7 +18,8 @@ mistaken for new regressions.
 - Symptom: `qc` creates a new empty `auxiliary/` directory with
   `exist_ok=False`, then immediately reads `filtered.peaks.bed` and related
   files from that directory. Pre-populating them makes directory creation fail.
-- Refactor status: preserved for strict command compatibility.
+- Refactor status: **fixed**. QC consumes the user-provided peak/nonpeak files,
+  and creates or reuses only output directories.
 
 ### 2. `pred_bw --debug-chr` is broken
 
@@ -27,7 +28,8 @@ mistaken for new regressions.
   `bigwig_helper.py:72-77`
 - Symptom: `debug_chr` is a list but is compared to a chromosome string. The
   writer also reads `regions[i]` before assigning `i` on the first iteration.
-- Refactor status: preserved.
+- Refactor status: **fixed**. Filtering happens before sequence extraction and
+  list-valued chromosome filters are handled consistently by the writer.
 
 ### 3. Single-region BigWig prediction loses its batch dimension
 
@@ -35,7 +37,8 @@ mistaken for new regressions.
 - Reference: `predict_to_bigwig.py:151,191,230`
 - Symptom: unrestricted `np.squeeze` converts a `(1, output_length)` profile to
   one dimension, but downstream softmax and writing code require two.
-- Refactor status: preserved.
+- Refactor status: **fixed**. Profile arrays are reshaped with an explicit batch
+  dimension and single-region prediction is regression-tested.
 
 ### 4. Predicted total counts are reconstructed inconsistently
 
@@ -46,7 +49,8 @@ mistaken for new regressions.
 - Symptom: the target is `log(1 + total_counts)`. Footprinting correctly uses
   `exp(logcount) - 1`, while prediction BigWigs use `exp(logcount)` and add one
   count per region.
-- Refactor status: preserved.
+- Refactor status: **fixed**. Every total-count reconstruction now uses
+  `expm1(logcount)`.
 
 ### 5. Multi-model prediction statistics overwrite one another
 
@@ -54,7 +58,8 @@ mistaken for new regressions.
 - Reference: `predict_to_bigwig.py:154-160,194-200,232-238`
 - Symptom: bias, combined, and no-bias predictions all receive the same
   `output_prefix_stats`; later models replace earlier statistics.
-- Refactor status: preserved.
+- Refactor status: **fixed**. Each model writes to a model-specific statistics
+  filename.
 
 ### 6. `--seed` does not seed trainable ChromBPNet initialization
 
@@ -63,8 +68,8 @@ mistaken for new regressions.
 - Symptom: the no-bias network is instantiated before TensorFlow, NumPy, and
   Python seeds are set. The requested seed therefore does not control its
   initial weights.
-- Refactor status: preserved by applying the training seed after combined-model
-  construction. Bias-model initialization remains seeded as in the reference.
+- Refactor status: **fixed**. Python, NumPy, CPU Torch, and CUDA Torch seeds are
+  applied before model construction.
 
 ### 7. Softmax implementation can overflow
 
@@ -74,8 +79,8 @@ mistaken for new regressions.
   `marginal_footprinting.py:50-52`
 - Symptom: logits are centered by their mean instead of maximum before
   exponentiation. Large finite logits can produce infinities and NaNs.
-- Refactor status: preserved in retained output utilities; model training uses
-  PyTorch's stable `log_softmax` inside the loss.
+- Refactor status: **fixed**. Output utilities subtract the row maximum before
+  exponentiation and validate their input rank.
 
 ### 8. GC-negative selection can hang or fail when candidates are exhausted
 
@@ -83,7 +88,10 @@ mistaken for new regressions.
 - Reference: `get_gc_matched_negatives.py:89-106,147-153`
 - Symptom: `adjust_gc` has an unbounded random walk when every GC bucket is
   exhausted, and directly indexes a missing chromosome group.
-- Refactor status: preserved.
+- Refactor status: **fixed and redesigned**. Candidate GC values are integer
+  NumPy bins, candidates are randomized once and sorted into contiguous pools,
+  and `searchsorted` selects the nearest available bin. Sampling is without
+  replacement and insufficient fold pools raise an immediate `ValueError`.
 
 ### 9. Negative subsampling can request more rows than exist
 
@@ -93,7 +101,8 @@ mistaken for new regressions.
 - Symptom: sampling uses `replace=False` without bounding the requested number
   by the available nonpeaks, raising `ValueError` for sparse inputs or large
   ratios.
-- Refactor status: preserved.
+- Refactor status: **fixed**. Requested samples are bounded by available rows in
+  training, validation, and hyperparameter selection.
 
 ### 10. External-command failures are ignored and paths are shell interpolated
 
@@ -104,7 +113,8 @@ mistaken for new regressions.
   consistently checked. Several commands use `shell=True` or `os.system` with
   unquoted user paths, causing confusing downstream failures and unsafe path
   interpretation.
-- Refactor status: preserved in copied preprocessing/workflow code.
+- Refactor status: **fixed**. Active subprocesses use argument arrays, checked
+  return codes, explicit pipelines, and Python-managed output files.
 
 ### 11. The packaged legacy workflows and tests do not match the package
 
@@ -115,8 +125,9 @@ mistaken for new regressions.
   to removed `src/` paths, use stale option names, and expect model filenames
   such as `chrombpnet_wo_bias.h5` while current code writes
   `chrombpnet_nobias.h5`.
-- Refactor status: documented compatibility artifacts are retained; the active
-  `chrombpnet` command and new Python tests are the supported paths.
+- Refactor status: **fixed**. Legacy shell workflows are explicitly archived;
+  the installed `chrombpnet` tree and maintained pytest/parity suites are the
+  executable workflow and test surface.
 
 ### 12. Source installation does not declare all runtime requirements
 
@@ -127,8 +138,8 @@ mistaken for new regressions.
   `termcolor`; `license_files` names nonexistent `LICENSE.txt` rather than
   `LICENSE`. The supplied tests additionally assume external bioinformatics
   binaries without checking them.
-- Refactor status: not preserved because the new conda specification and
-  `pyproject.toml` must be installable.
+- Refactor status: **fixed**. Runtime, reporting, genomics-tool, and test
+  dependencies are declared and installation is validated with `pip check`.
 
 ### 13. Empty or edge-filtered sequence sets crash one-hot conversion
 
@@ -138,7 +149,8 @@ mistaken for new regressions.
 - Symptom: `dna_to_one_hot([])` indexes `seqs[0]`; an empty chromosome split,
   fully edge-filtered BED, or strand with no sampled reads therefore crashes
   with `IndexError` instead of a domain-specific error.
-- Refactor status: preserved.
+- Refactor status: **fixed**. Empty input produces a typed `(0, 0, 4)` array and
+  shift estimation raises a domain-specific error when either strand is empty.
 
 ### 14. Prediction metrics contain an uncontrolled random component
 
@@ -146,7 +158,7 @@ mistaken for new regressions.
 - Reference: `training/metrics.py:75-91`
 - Symptom: the shuffled-label JSD baseline uses the global NumPy RNG without a
   local seed, so repeated prediction/QC runs can produce different plots.
-- Refactor status: preserved.
+- Refactor status: **fixed**. Metrics use a local, configurable NumPy generator.
 
 ### 15. Assertion-based input validation disappears under optimized Python
 
@@ -154,5 +166,6 @@ mistaken for new regressions.
 - Reference: assertions throughout `CHROMBPNET.py`, `training/train.py`,
   hyperparameter selection, model construction, and BigWig helpers
 - Symptom: running Python with `-O` disables correctness and bounds checks.
-- Refactor status: retained framework-neutral assertions remain compatible;
-  new PyTorch checkpoint/model boundaries use explicit exceptions.
+- Refactor status: **fixed**. Runtime validation uses explicit exceptions or
+  `argparse` errors throughout active package code and remains enabled under
+  `python -O`.

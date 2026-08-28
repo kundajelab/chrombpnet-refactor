@@ -7,7 +7,8 @@ import torch
 def combine_mult_and_diffref(mult, orig_inp, bg_data):
     """Project multipliers onto every hypothetical nucleotide."""
     projected = np.zeros_like(bg_data[0], dtype=float)
-    assert len(orig_inp[0].shape) == 2
+    if len(orig_inp[0].shape) != 2:
+        raise ValueError("Expected each attribution input to be two-dimensional")
     for channel in range(orig_inp[0].shape[-1]):
         hypothetical = np.zeros_like(orig_inp[0], dtype=float)
         hypothetical[:, channel] = 1.0

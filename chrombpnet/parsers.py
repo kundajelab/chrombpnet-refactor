@@ -36,7 +36,7 @@ def read_parser():
         # downstream tool parsers
         preds_parser = subparsers.add_parser("pred_bw", help="Get model prediction bigwigs (Metrics calculated if observed bigwig provided)")
         contribs_parser = subparsers.add_parser("contribs_bw", help="Get contribution score bigwigs")
-        #motifs_parser = subparsers.add_parser("modisco_motifs", help="(Will soon be deprecated: use modisco motifs from tfmodisco lite) Summarize motifs from contribution scores with TFModisco")
+        motifs_parser = subparsers.add_parser("modisco_motifs", help="Discover motifs from contribution scores with TF-MoDISco 2.6")
         #custom_preds_parser = subparsers.add_parser("pred_custom", help="Make model predictions on custom sequences and output to .h5 file")
         #custom_contribs_parser = subparsers.add_parser("contribs_custom", help="Get contribution on custom sequences and output to .h5 file")
         footprints_parser = subparsers.add_parser("footprints", help="Get marginal footprinting for given model and given motifs")
@@ -285,17 +285,17 @@ def read_parser():
         
         # Run TF-Modisco
         
-        #motifs_parser._action_groups.pop()
-        #required_tfm =  motifs_parser.add_argument_group('required arguments')
-        #optional_tfm =  motifs_parser.add_argument_group('optional arguments')
+        motifs_parser._action_groups.pop()
+        required_tfm = motifs_parser.add_argument_group('required arguments')
+        optional_tfm = motifs_parser.add_argument_group('optional arguments')
         
-        #required_tfm.add_argument("-i", "--h5py", type=str, required=True, help="A legacy h5py file containing the one-hot encoded sequences and shap scores.")
-        #required_tfm.add_argument("-n", "--max-seqlets", type=int, required=True, help="The maximum number of seqlets per metacluster.")
-        #required_tfm.add_argument("-op", "--output-prefix", type=str, required=True, help="The path to the output file.")
+        required_tfm.add_argument("-i", "--h5py", type=str, required=True, help="ChromBPNet contribution-score HDF5 file.")
+        required_tfm.add_argument("-op", "--output-prefix", type=str, required=True, help="Prefix for the results HDF5 and report directory.")
 
-        #optional_tfm.add_argument("-l", "--n-leiden", type=int, default=2, help="The number of Leiden clusterings to perform with different random seeds.")
-        #optional_tfm.add_argument("-w", "--window", type=int, default=500, help="The window surrounding the peak center that will be considered for motif discovery.")
-        #optional_tfm.add_argument("-v", "--verbose", action="store_true", default=False, help="Controls the amount of output from the code.")
+        optional_tfm.add_argument("-n", "--max-seqlets", type=int, default=50000, help="Maximum seqlets per positive/negative pattern group.")
+        optional_tfm.add_argument("-l", "--n-leiden", type=int, default=2, help="Number of Leiden clustering runs.")
+        optional_tfm.add_argument("-w", "--window", type=int, default=500, help="Centered contribution-score window used for discovery (must be even).")
+        optional_tfm.add_argument("-v", "--verbose", action="store_true", default=False)
 
         
         # Pull the arguments

@@ -40,7 +40,7 @@ def counts_metrics(labels,preds,outf,title):
     
     return spearman_cor, pearson_cor, mse
 
-def profile_metrics(true_counts,pred_probs,pseudocount=0.001):
+def profile_metrics(true_counts,pred_probs,pseudocount=0.001, seed=1234):
     '''
     Get profile metrics
     '''
@@ -55,6 +55,7 @@ def profile_metrics(true_counts,pred_probs,pseudocount=0.001):
     mnll_rnd_norm = []
 
     num_regions = true_counts.shape[0]
+    rng = np.random.default_rng(seed)
     for idx in range(num_regions):
         # mnll
         #curr_mnll = mnll(true_counts[idx,:],  probs=pred_probs[idx,:])
@@ -73,7 +74,7 @@ def profile_metrics(true_counts,pred_probs,pseudocount=0.001):
         jsd_norm.append(curr_jsd_norm)
 
         # get random shuffling on labels for a worst case performance on metrics - labels versus shuffled labels
-        shuffled_labels=np.random.permutation(true_counts[idx,:])
+        shuffled_labels=rng.permutation(true_counts[idx,:])
         shuffled_labels_prob=shuffled_labels/(pseudocount+np.nansum(shuffled_labels))
 
         # mnll random

@@ -20,9 +20,12 @@ def main(args):
     chroms = chrom_sizes[0].values
     print(args.test_chroms)
 
-    assert (set(args.test_chroms) <= set(chroms)), "Test chromosomes are not in chrom sizes file!"
-    assert (set(args.valid_chroms) <= set(chroms)), "Valid chromosomes are not in chrom sizes file!"
-    assert not (bool(set(args.valid_chroms) & set(args.test_chroms))), "Test and Valid chromosomes should not share any chromosomes! "
+    if not set(args.test_chroms) <= set(chroms):
+        raise ValueError("Test chromosomes are not in chrom sizes file")
+    if not set(args.valid_chroms) <= set(chroms):
+        raise ValueError("Validation chromosomes are not in chrom sizes file")
+    if set(args.valid_chroms) & set(args.test_chroms):
+        raise ValueError("Test and validation chromosomes must be disjoint")
 
 
     splits=dict()

@@ -29,7 +29,8 @@ def fetch_train_args():
     update_model_args(parser)
     args = parser.parse_args()
 
-    assert((args.peaks.lower() != "none") or (args.nonpeaks.lower() != "none")) #Both peaks and nonpeaks are empty" 
+    if args.peaks.lower() == "none" and args.nonpeaks.lower() == "none":
+        parser.error("At least one of peaks or nonpeaks is required")
 
     return args
 
@@ -44,9 +45,10 @@ def fetch_predict_args():
     parser.add_argument("--device", default=None, help="PyTorch device (default: CUDA when available)")
     args = parser.parse_args()
 
-    assert((args.peaks.lower() != "none") or (args.nonpeaks.lower() != "none")) #Both peaks and nonpeaks are empty" 
-    assert(args.inputlen % 2 ==0)
-    assert(args.outputlen % 2 ==0)
+    if args.peaks.lower() == "none" and args.nonpeaks.lower() == "none":
+        parser.error("At least one of peaks or nonpeaks is required")
+    if args.inputlen % 2 or args.outputlen % 2:
+        parser.error("Input and output lengths must be even")
 
     return args
 

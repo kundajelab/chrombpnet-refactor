@@ -1,6 +1,8 @@
 import numpy as np
 import pytest
 import torch
+from pathlib import Path
+from types import SimpleNamespace
 
 from chrombpnet.model import (
     BPNet,
@@ -13,6 +15,7 @@ from chrombpnet.model import (
     save_model,
 )
 from chrombpnet.training.utils.losses import chrombpnet_loss, multinomial_nll
+from chrombpnet.training.train import get_model
 
 
 SMALL = ModelConfig(input_length=128, output_length=20, filters=8, n_dilation_layers=2)
@@ -103,3 +106,22 @@ def test_device_resolution_cpu_and_unavailable_cuda():
     if not torch.cuda.is_available():
         with pytest.raises(RuntimeError, match="not available"):
             resolve_device("cuda")
+
+
+def test_chrombpnet_seed_controls_trainable_initialization(tmp_path):
+    bias_path = tmp_path / "bias.pt"
+    save_model(BiasModel(SMALL), bias_path)
+    architecture = Path(__file__).parents[1] / "chrombpnet/training/models/chrombpnet_with_bias_model.py"
+    args = SimpleNamespace(seed=91, architecture_from_file=str(architecture))
+    parameters = {
+        "input_length": SMALL.input_length,
+        "output_length": SMALL.output_length,
+        "filters": SMALL.filters,
+        "n_dilation_layers": SMALL.n_dilation_layers,
+        "counts_loss_weight": SMALL.counts_loss_weight,
+        "bias_model_path": str(bias_path),
+    }
+    first, _ = get_model(args, parameters)
+    second, _ = get_model(args, parameters)
+    for left, right in zip(first.tf_model.parameters(), second.tf_model.parameters()):
+        assert torch.equal(left, right)

@@ -21,7 +21,10 @@ def fetch_data_and_model_params_based_on_mode(mode, args, parameters, nonpeak_re
         outputlen=int(parameters["outputlen"])
         # fix negatives set for validation
         if (nonpeak_regions is not None) and (peak_regions is not None):
-            nonpeak_regions=nonpeak_regions.sample(n=int(float(parameters["negative_sampling_ratio"])*peak_regions.shape[0]), replace=False, random_state=args.seed)
+            requested = int(float(parameters["negative_sampling_ratio"]) * peak_regions.shape[0])
+            nonpeak_regions=nonpeak_regions.sample(
+                n=min(requested, len(nonpeak_regions)), replace=False, random_state=args.seed
+            )
         negative_sampling_ratio=1.0 # already subsampled
         # do not jitter at valid time - we are testing only at summits
         max_jitter=0
@@ -53,6 +56,8 @@ def get_bed_regions_for_fold_split(bed_regions, mode, splits_dict):
     chroms_to_keep=splits_dict[mode]
     bed_regions_to_keep=bed_regions[bed_regions["chr"].isin(chroms_to_keep)]
     print("got split:"+str(mode)+" for bed regions:"+str(bed_regions_to_keep.shape))
+    if bed_regions_to_keep.empty:
+        raise ValueError(f"No BED regions are available for the {mode} chromosome split")
     return bed_regions_to_keep, chroms_to_keep
 
 def initialize_generators(args, mode, parameters, return_coords):

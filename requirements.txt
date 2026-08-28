@@ -13,4 +13,4 @@ tables>=3.9
 tqdm>=4.66
 termcolor>=2.4
 weasyprint>=52.5
-modisco-lite>=2.4.0
+modisco @ file:///path/to/workdir/software/tfmodisco

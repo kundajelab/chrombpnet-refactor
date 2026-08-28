@@ -144,8 +144,6 @@ def reference_worker(args):
         cropped_seq=cropped[0],
         cropped_labels=cropped[1],
         cropped_coords=cropped[2],
-        squeeze_ndim=np.array(np.squeeze(combined_profile[:1]).ndim),
-        exp_expm1_gap=np.array(np.exp(combined_counts[0, 0]) - np.expm1(combined_counts[0, 0])),
     )
 
 
@@ -212,8 +210,6 @@ def torch_worker(args):
         combined_profile=arrays[4], combined_counts=arrays[5],
         profile_loss=np.array(profile_loss), count_loss=np.array(count_loss), total_loss=np.array(total),
         one_hot=seq, cropped_seq=cropped[0], cropped_labels=cropped[1], cropped_coords=cropped[2],
-        squeeze_ndim=np.array(np.squeeze(arrays[4][:1]).ndim),
-        exp_expm1_gap=np.array(np.exp(arrays[5][0, 0]) - np.expm1(arrays[5][0, 0])),
     )
 
 
@@ -282,7 +278,6 @@ def main(args):
             "bias_profile", "bias_counts", "tf_profile", "tf_counts",
             "combined_profile", "combined_counts", "profile_loss", "count_loss",
             "total_loss", "one_hot", "cropped_seq", "cropped_labels", "cropped_coords",
-            "squeeze_ndim", "exp_expm1_gap",
         ]
         failures = []
         print("component                         max_abs_error  result")

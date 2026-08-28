@@ -1,5 +1,13 @@
 # Changelog
 
+## PyTorch refactor - TF-MoDISco 2.6 migration
+- Replaced the removed `modiscolite`/legacy workflow APIs with the current
+  `modisco.tfmodisco.TFMoDISco` and pattern-oriented HDF5 schema.
+- Routed motif discovery and compact HTML reports through a shared Python API
+  adapter, and ported legacy motif inspection and attribution-hit utilities.
+- Removed imports of the deleted `modisco.visualization`,
+  `tfmodisco_workflow`, and `densityadapted_hitscoring` modules.
+
 ##  Version - 1.5
 - Fixed issue #150, regions_used not found while generating bigwigs from impotance h5s
 

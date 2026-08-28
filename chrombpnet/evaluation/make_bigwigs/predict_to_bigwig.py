@@ -56,7 +56,7 @@ def compare_with_observed(bigwig, regions_df, regions, outputlen, pred_logits, p
 	true_counts = obs_data
 	true_counts_sum = np.log(np.sum(true_counts, axis=-1)+1)
 	profile_probs_predictions = softmax(pred_logits) ##
-	counts_sum_predictions = np.squeeze(pred_logcts) ##
+	counts_sum_predictions = np.asarray(pred_logcts).reshape(-1)
 	coordinates =  [[r[0], r[-1]] for r in regions]
 	
 	write_predictions_h5py(output_prefix, profile_probs_predictions, counts_sum_predictions, coordinates)
@@ -101,14 +101,26 @@ def parse_args():
     parser.add_argument("-bw", "--bigwig", type=str, default=None, help="If provided .h5 with predictions are output along with calculated metrics considering bigwig as groundtruth.")
     parser.add_argument("--device", default=None, help="PyTorch device (default: CUDA when available)")
     args = parser.parse_args()
-    assert (args.bias_model is None) + (args.chrombpnet_model is None) + (args.chrombpnet_model_nb is None) < 3, "No input model provided!"
+    if not any((args.bias_model, args.chrombpnet_model, args.chrombpnet_model_nb)):
+        parser.error("at least one input model must be provided")
     print(args)
     return args
 
 
 def softmax(x, temp=1):
-    norm_x = x - np.mean(x,axis=1, keepdims=True)
-    return np.exp(temp*norm_x)/np.sum(np.exp(temp*norm_x), axis=1, keepdims=True)
+    values = np.asarray(x)
+    if values.ndim != 2:
+        raise ValueError(f"softmax expects a 2-D batch by position array, got {values.shape}")
+    scaled = temp * values
+    scaled -= np.max(scaled, axis=1, keepdims=True)
+    exponentiated = np.exp(scaled)
+    return exponentiated / np.sum(exponentiated, axis=1, keepdims=True)
+
+
+def _stats_path(output_prefix_stats, model_name):
+    if output_prefix_stats is None:
+        return None
+    return f"{output_prefix_stats}_{model_name}.txt"
 
 def load_model_wrapper(model_hdf5, device=None):
     model=load_prediction_model(model_hdf5, device=resolve_device(device))
@@ -126,31 +138,31 @@ def main(args):
 
         # load data
         regions_df = pd.read_csv(args.regions, sep='\t', names=NARROWPEAK_SCHEMA)
+        if args.debug_chr is not None:
+            regions_df = regions_df[regions_df['chr'].isin(args.debug_chr)].copy()
+        if regions_df.empty:
+            raise ValueError("No prediction regions remain after chromosome filtering")
         print(regions_df.head())
         with pyfaidx.Fasta(args.genome) as g:
             seqs, regions_used = bigwig_helper.get_seq(regions_df, g, inputlen)
 
         gs = bigwig_helper.read_chrom_sizes(args.chrom_sizes)
-        regions = bigwig_helper.get_regions(args.regions, outputlen, regions_used) # output regions
-
-        if args.debug_chr is not None:
-            regions_df = regions_df[regions_df['chr'].isin(args.debug_chr)]
-            regions = [x for x in regions if x[0]==args.debug_chr]
-        regions_df[regions_used].to_csv(args.output_prefix + "_chrombpnet_nobias_preds.bed", sep="\t", header=False, index=False)
+        regions = bigwig_helper.get_regions(regions_df, outputlen, regions_used)
+        regions_df.loc[regions_used].to_csv(args.output_prefix + "_chrombpnet_nobias_preds.bed", sep="\t", header=False, index=False)
 
 
         pred_logits_wo_bias, pred_logcts_wo_bias = model_chrombpnet_nb.predict([seqs],
                                           batch_size = args.batch_size,
                                           verbose=True)
 
-        pred_logits_wo_bias = np.squeeze(pred_logits_wo_bias)
+        pred_logits_wo_bias = np.asarray(pred_logits_wo_bias).reshape(len(seqs), -1)
 
 
-        bigwig_helper.write_bigwig(softmax(pred_logits_wo_bias) * (np.expand_dims(np.exp(pred_logcts_wo_bias)[:,0],axis=1)), 
+        bigwig_helper.write_bigwig(softmax(pred_logits_wo_bias) * np.expm1(pred_logcts_wo_bias),
                                regions, 
                                gs, 
                                args.output_prefix + "_chrombpnet_nobias.bw", 
-                               outstats_file=args.output_prefix_stats, 
+                               outstats_file=_stats_path(args.output_prefix_stats, "chrombpnet_nobias"),
                                debug_chr=args.debug_chr, 
                                use_tqdm=args.tqdm)
 
@@ -166,31 +178,31 @@ def main(args):
 
         # load data
         regions_df = pd.read_csv(args.regions, sep='\t', names=NARROWPEAK_SCHEMA)
+        if args.debug_chr is not None:
+            regions_df = regions_df[regions_df['chr'].isin(args.debug_chr)].copy()
+        if regions_df.empty:
+            raise ValueError("No prediction regions remain after chromosome filtering")
         print(regions_df.head())
         with pyfaidx.Fasta(args.genome) as g:
             seqs, regions_used = bigwig_helper.get_seq(regions_df, g, inputlen)
 
         gs = bigwig_helper.read_chrom_sizes(args.chrom_sizes)
-        regions = bigwig_helper.get_regions(args.regions, outputlen, regions_used) # output regions
-        regions_df[regions_used].to_csv(args.output_prefix + "_chrombpnet_preds.bed", sep="\t", header=False, index=False)
-
-        if args.debug_chr is not None:
-            regions_df = regions_df[regions_df['chr'].isin(args.debug_chr)]
-            regions = [x for x in regions if x[0]==args.debug_chr]
+        regions = bigwig_helper.get_regions(regions_df, outputlen, regions_used)
+        regions_df.loc[regions_used].to_csv(args.output_prefix + "_chrombpnet_preds.bed", sep="\t", header=False, index=False)
 
         pred_logits, pred_logcts = model_chrombpnet.predict([seqs],
                                           batch_size = args.batch_size,
                                           verbose=True)
 
 
-        pred_logits = np.squeeze(pred_logits)
+        pred_logits = np.asarray(pred_logits).reshape(len(seqs), -1)
 
 
-        bigwig_helper.write_bigwig(softmax(pred_logits) * (np.expand_dims(np.exp(pred_logcts)[:,0],axis=1)),
+        bigwig_helper.write_bigwig(softmax(pred_logits) * np.expm1(pred_logcts),
                                regions,
                                gs,
                                args.output_prefix + "_chrombpnet.bw",
-                               outstats_file=args.output_prefix_stats, 
+                               outstats_file=_stats_path(args.output_prefix_stats, "chrombpnet"),
                                debug_chr=args.debug_chr,
                                use_tqdm=args.tqdm)
 
@@ -206,29 +218,30 @@ def main(args):
 
         # load data
         regions_df = pd.read_csv(args.regions, sep='\t', names=NARROWPEAK_SCHEMA)
+        if args.debug_chr is not None:
+            regions_df = regions_df[regions_df['chr'].isin(args.debug_chr)].copy()
+        if regions_df.empty:
+            raise ValueError("No prediction regions remain after chromosome filtering")
         print(regions_df.head())
         with pyfaidx.Fasta(args.genome) as g:
             seqs, regions_used = bigwig_helper.get_seq(regions_df, g, inputlen)
 
-        regions_df[regions_used].to_csv(args.output_prefix + "_bias_preds.bed", sep="\t", header=False, index=False)
+        regions_df.loc[regions_used].to_csv(args.output_prefix + "_bias_preds.bed", sep="\t", header=False, index=False)
         gs = bigwig_helper.read_chrom_sizes(args.chrom_sizes)
-        regions = bigwig_helper.get_regions(args.regions, outputlen, regions_used) # output regions
-        if args.debug_chr is not None:
-            regions_df = regions_df[regions_df['chr'].isin(args.debug_chr)]
-            regions = [x for x in regions if x[0]==args.debug_chr]
+        regions = bigwig_helper.get_regions(regions_df, outputlen, regions_used)
 
 
         pred_bias_logits, pred_bias_logcts = model_bias.predict(seqs,
                                           batch_size = args.batch_size,
                                           verbose=True)
 
-        pred_bias_logits = np.squeeze(pred_bias_logits)
+        pred_bias_logits = np.asarray(pred_bias_logits).reshape(len(seqs), -1)
 
-        bigwig_helper.write_bigwig(softmax(pred_bias_logits) * (np.expand_dims(np.exp(pred_bias_logcts)[:,0],axis=1)), 
+        bigwig_helper.write_bigwig(softmax(pred_bias_logits) * np.expm1(pred_bias_logcts),
                                regions, 
                                gs, 
                                args.output_prefix + "_bias.bw", 
-                               outstats_file=args.output_prefix_stats, 
+                               outstats_file=_stats_path(args.output_prefix_stats, "bias"),
                                debug_chr=args.debug_chr, 
                                use_tqdm=args.tqdm)
 

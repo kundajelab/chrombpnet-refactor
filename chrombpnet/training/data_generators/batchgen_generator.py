@@ -9,7 +9,11 @@ import json
 
 def subsample_nonpeak_data(nonpeak_seqs, nonpeak_cts, nonpeak_coords, peak_data_size, negative_sampling_ratio):
     #Randomly samples a portion of the non-peak data to use in training
-    num_nonpeak_samples = int(negative_sampling_ratio * peak_data_size)
+    if negative_sampling_ratio < 0:
+        raise ValueError("negative_sampling_ratio must be non-negative")
+    num_nonpeak_samples = min(
+        int(negative_sampling_ratio * peak_data_size), len(nonpeak_seqs)
+    )
     nonpeak_indices_to_keep = np.random.choice(len(nonpeak_seqs), size=num_nonpeak_samples, replace=False)
     nonpeak_seqs = nonpeak_seqs[nonpeak_indices_to_keep]
     nonpeak_cts = nonpeak_cts[nonpeak_indices_to_keep]
@@ -62,7 +66,8 @@ class ChromBPNetBatchGenerator:
             cropped_peaks, cropped_cnts, cropped_coords = augment.random_crop(self.peak_seqs, self.peak_cts, self.inputlen, self.outputlen, self.peak_coords)
             #print(cropped_peaks.shape)
             #print(self.nonpeak_seqs.shape)
-            if self.negative_sampling_ratio < 1.0:
+            requested_nonpeaks = int(self.negative_sampling_ratio * len(self.peak_seqs))
+            if requested_nonpeaks < len(self.nonpeak_seqs):
                 self.sampled_nonpeak_seqs, self.sampled_nonpeak_cts, self.sampled_nonpeak_coords = subsample_nonpeak_data(self.nonpeak_seqs, self.nonpeak_cts, self.nonpeak_coords, len(self.peak_seqs), self.negative_sampling_ratio)
                 self.seqs = np.vstack([cropped_peaks, self.sampled_nonpeak_seqs])
                 self.cts = np.vstack([cropped_cnts, self.sampled_nonpeak_cts])

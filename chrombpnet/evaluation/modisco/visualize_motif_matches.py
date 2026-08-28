@@ -1,10 +1,10 @@
 import os
 import math
 import h5py
-import modisco
 import pandas as pd
 import numpy as np
-from modisco.visualization import viz_sequence
+from chrombpnet.evaluation.custom_sequences import viz_sequence
+from chrombpnet.evaluation.modisco.api import iter_patterns
 import matplotlib
 matplotlib.use('pdf')
 from matplotlib import pyplot as plt
@@ -35,7 +35,10 @@ def _plot_weights(array,
                  **kwargs):
     fig = plt.figure(figsize=figsize)
     ax = fig.add_subplot(111) 
-    viz_sequence.plot_weights_given_ax(ax=ax, array=array,**kwargs)
+    defaults = dict(height_padding_factor=0.2, length_padding=1.0,
+                    subticks_frequency=1.0, highlight={})
+    defaults.update(kwargs)
+    viz_sequence.plot_weights_given_ax(ax=ax, array=array, **defaults)
     plt.savefig(path)
     plt.close()
     
@@ -52,34 +55,24 @@ def make_logo(match, logo_dir_vier, meme_motif_db):
         
 
 def create_modisco_logos(modisco_file,modisco_logo_dir, trim_threshold, score_type):
-    hdf5_results = h5py.File(modisco_file,'r')
-    for metacluster_name in hdf5_results["metacluster_idx_to_submetacluster_results"]:
-        metacluster = hdf5_results["metacluster_idx_to_submetacluster_results"][metacluster_name]
-        if metacluster['activity_pattern'][0] == 1:
-            all_pattern_names = [x.decode("utf-8") for x in list(metacluster["seqlets_to_patterns_result"]["patterns"]["all_pattern_names"][:])]
-            for pattern_name in all_pattern_names:
-                cwm_fwd = np.array(metacluster['seqlets_to_patterns_result']['patterns'][pattern_name]['task0_contrib_scores']['fwd'])
-                cwm_rev = np.array(metacluster['seqlets_to_patterns_result']['patterns'][pattern_name]['task0_contrib_scores']['rev'])
-
-                score_fwd = np.sum(np.abs(cwm_fwd), axis=1)
-                score_rev = np.sum(np.abs(cwm_rev), axis=1)
-
-                trim_thresh_fwd = np.max(score_fwd) * trim_threshold
-                trim_thresh_rev = np.max(score_rev) * trim_threshold
-
-                pass_inds_fwd = np.where(score_fwd >= trim_thresh_fwd)[0]
-                pass_inds_rev = np.where(score_rev >= trim_thresh_rev)[0]
-
-                start_fwd, end_fwd = max(np.min(pass_inds_fwd) - 4, 0), min(np.max(pass_inds_fwd) + 4 + 1, len(score_fwd) + 1)
-                start_rev, end_rev = max(np.min(pass_inds_rev) - 4, 0), min(np.max(pass_inds_rev) + 4 + 1, len(score_rev) + 1)
-
-                trimmed_cwm_fwd = cwm_fwd[start_fwd:end_fwd]
-                trimmed_cwm_rev = cwm_rev[start_rev:end_rev]
-
-                _plot_weights(trimmed_cwm_fwd,
-                        path=modisco_logo_dir + '/' + score_type + '.' + pattern_name + '.cwm.fwd.png')
-                _plot_weights(trimmed_cwm_rev,
-                        path=modisco_logo_dir + "/" + score_type + '.' + pattern_name + '.cwm.rev.png')
+    for pattern in iter_patterns(modisco_file):
+        pattern_name = pattern.tag
+        cwm_fwd = pattern.contrib_scores
+        cwm_rev = cwm_fwd[::-1, ::-1]
+        score_fwd = np.sum(np.abs(cwm_fwd), axis=1)
+        score_rev = np.sum(np.abs(cwm_rev), axis=1)
+        pass_inds_fwd = np.where(score_fwd >= np.max(score_fwd) * trim_threshold)[0]
+        pass_inds_rev = np.where(score_rev >= np.max(score_rev) * trim_threshold)[0]
+        start_fwd = max(np.min(pass_inds_fwd) - 4, 0)
+        end_fwd = min(np.max(pass_inds_fwd) + 5, len(score_fwd))
+        start_rev = max(np.min(pass_inds_rev) - 4, 0)
+        end_rev = min(np.max(pass_inds_rev) + 5, len(score_rev))
+        _plot_weights(cwm_fwd[start_fwd:end_fwd],
+                      path=os.path.join(modisco_logo_dir,
+                                        f"{score_type}.{pattern_name}.cwm.fwd.png"))
+        _plot_weights(cwm_rev[start_rev:end_rev],
+                      path=os.path.join(modisco_logo_dir,
+                                        f"{score_type}.{pattern_name}.cwm.rev.png"))
 
 
 def main():
@@ -95,8 +88,8 @@ def main():
     create_modisco_logos(args.modisco_h5py, modisco_logo_dir, args.trim_threshold, score_type)
 
     tomtom_df = pd.read_csv(args.tomtom_tsv, sep='\t')
-    tomtom_df['modisco_cwm_fwd'] = [args.html_link + '/trimmed_logos/' + score_type + '.pattern_' + str(i) + '.cwm.fwd.png' for i in range(len(tomtom_df))]
-    tomtom_df['modisco_cwm_rev'] = [args.html_link + '/trimmed_logos/' + score_type + '.pattern_' + str(i) + '.cwm.rev.png' for i in range(len(tomtom_df))]
+    tomtom_df['modisco_cwm_fwd'] = [args.html_link + '/trimmed_logos/' + score_type + '.' + tag + '.cwm.fwd.png' for tag in tomtom_df['Pattern']]
+    tomtom_df['modisco_cwm_rev'] = [args.html_link + '/trimmed_logos/' + score_type + '.' + tag + '.cwm.rev.png' for tag in tomtom_df['Pattern']]
     
     logo_dict = {x: [] for x in range(1,11)}
 
@@ -150,6 +143,4 @@ def main():
     print(tomtom_df.head())
 if __name__=="__main__":
     main()
-
-
 

@@ -52,9 +52,10 @@ def main(args):
                            header=None,
                            names=["chr", "start", "end", "1", "2", "3", "4", "5", "6", "summit"])
 
-    assert(in_peaks.shape[0] != 0) # peaks file is empty
-    assert(in_nonpeaks.shape[0] !=0) # non peaks file is empty
-    assert(args.inputlen >= args.outputlen) # inputlen should be greater than the outputlen 
+    if in_peaks.empty or in_nonpeaks.empty:
+        raise ValueError("Peak and nonpeak files must both be non-empty")
+    if args.inputlen < args.outputlen:
+        raise ValueError("inputlen must be at least outputlen")
                                             # inputlen and outlen are chosen based on the filters and dilations layers used
 
     # get train/valid peaks and test peaks seperately
@@ -74,18 +75,20 @@ def main(args):
     # step 2 filtering: filter nonpeaks that have counts less than a threshold_factor (minimum of peak counts)
     peak_cnts, _ = param_utils.get_seqs_cts(genome, bw, peaks, args.inputlen, args.outputlen)
     nonpeak_cnts, _ = param_utils.get_seqs_cts(genome, bw, nonpeaks, args.inputlen, args.outputlen)    
-    assert(len(peak_cnts) == peaks.shape[0])
-    assert(len(nonpeak_cnts) == nonpeaks.shape[0])
+    if len(peak_cnts) != peaks.shape[0] or len(nonpeak_cnts) != nonpeaks.shape[0]:
+        raise RuntimeError("Extracted count arrays do not match their BED regions")
 
     final_cnts = nonpeak_cnts
     counts_threshold = np.quantile(peak_cnts,0.01)*args.bias_threshold_factor
-    assert(counts_threshold > 0) # counts threshold is 0 - all non peaks will be filtered!
+    if counts_threshold <= 0:
+        raise ValueError("Counts threshold is zero; all nonpeaks would be filtered")
    
     final_cnts = final_cnts[final_cnts < counts_threshold]
 
     print("Upper bound counts cut-off for bias model training: ", counts_threshold)
     print("Number of nonpeaks after the upper-bount cut-off: ", len(final_cnts))
-    assert(len(final_cnts) > 0) # Upper bound cut-off is too stringent so there are no points left for training
+    if len(final_cnts) == 0:
+        raise ValueError("Bias count cutoff removed every nonpeak")
 
     # step 3 filtering: filter nonpeaks that are outliers in train and valid set - no filtering on test set
     upper_thresh = np.quantile(final_cnts, args.outlier_threshold)
@@ -107,7 +110,8 @@ def main(args):
     # find counts loss weight for model training - using train and validation set
     counts_loss_weight = np.median(final_cnts[(final_cnts < upper_thresh) & (final_cnts>lower_thresh)])/10
     print("counts_loss_weight:", counts_loss_weight)
-    assert(counts_loss_weight != 0)
+    if counts_loss_weight == 0:
+        raise ValueError("Computed counts loss weight is zero")
 
     if counts_loss_weight < 1.0:
         counts_loss_weight = 1.0

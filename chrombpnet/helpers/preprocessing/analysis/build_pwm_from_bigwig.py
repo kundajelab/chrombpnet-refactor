@@ -1,7 +1,7 @@
 import pyfaidx
 import numpy as np
 import pyBigWig
-from modisco.visualization import viz_sequence
+from chrombpnet.evaluation.custom_sequences import viz_sequence
 import matplotlib.pyplot as plt
 import argparse
 import chrombpnet.training.utils.one_hot as one_hot
@@ -39,7 +39,8 @@ def get_pwm_bg(seqs, cnts, pwm_width=24):
 
 def main(args): 
 
-    assert(args.pwm_width % 2 ==0)
+    if args.pwm_width % 2:
+        raise ValueError("PWM width must be even")
 
     # access files
     hg38 = pyfaidx.Fasta(args.genome)
@@ -63,10 +64,12 @@ def main(args):
     figsize=(20,2)
     fig = plt.figure(figsize=figsize)
     ax = fig.add_subplot(111) 
-    viz_sequence.plot_weights_given_ax(ax=ax, array=viz_sequence.ic_scale(motif, background=bg))
+    viz_sequence.plot_weights_given_ax(
+        ax=ax, array=viz_sequence.ic_scale(motif, background=bg),
+        height_padding_factor=0.2, length_padding=1.0,
+        subticks_frequency=1.0, highlight={})
     plt.savefig(args.output_prefix+'.png')
     
 if __name__=="__main__":
     args = parse_args()
     main(args)
-

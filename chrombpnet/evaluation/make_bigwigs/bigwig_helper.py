@@ -23,7 +23,8 @@ def get_seq(peaks_df, genome, width):
             peaks_used.append(True)
         else:
             peaks_used.append(False)
-
+    if not vals:
+        raise ValueError("No regions have a complete in-bounds sequence window")
     return one_hot.dna_to_one_hot(vals), np.array(peaks_used)
 
 
@@ -31,12 +32,18 @@ def get_regions(regions_file, seqlen, regions_used=None):
     # regions file is assumed to be centered at summit (2nd + 10th column)
     # it is adjusted to be of length seqlen centered at summit
 
-    assert(seqlen%2==0)
+    if seqlen % 2:
+        raise ValueError("Region sequence length must be even")
 
     #with open(regions_file) as r:
     #    regions = [x.strip().split('\t') for x in r]
 
-    regions = pd.read_csv(regions_file,sep='\t',header=None)
+    if isinstance(regions_file, pd.DataFrame):
+        regions = regions_file.copy()
+        if set(("chr", "start", "summit")) <= set(regions.columns):
+            regions = regions[["chr", "start", "end", "1", "2", "3", "4", "5", "6", "summit"]]
+    else:
+        regions = pd.read_csv(regions_file,sep='\t',header=None)
     #print(regions)
     if regions_used is None:
         regions = [[x[0], int(x[1])+int(x[9])-seqlen//2, int(x[1])+int(x[9])+seqlen//2, int(x[1])+int(x[9])] for x in np.array(regions.values)]
@@ -71,11 +78,10 @@ def write_bigwig(data, regions, gs, bw_out, debug_chr=None, use_tqdm=False, outs
 
     for itr in iterator:
         # subset to chromosome (debugging)
-        if debug_chr and regions[i][0]!=debug_chr:
-            continue
-
         i = order_of_regs[itr]
         i_chr, i_start, i_end, i_mid = regions[i]
+        if debug_chr and i_chr not in set(np.atleast_1d(debug_chr)):
+            continue
     
         if i_chr != cur_chr: 
             cur_chr = i_chr
@@ -85,7 +91,8 @@ def write_bigwig(data, regions, gs, bw_out, debug_chr=None, use_tqdm=False, outs
         if cur_end < i_start:
             cur_end = i_start
     
-        assert(regions[i][2]>=cur_end)
+        if regions[i][2] < cur_end:
+            raise ValueError("Regions must have non-decreasing, valid end coordinates")
     
         # figure out where to stop for this region, get next region
         # which may partially overlap with this one
@@ -112,6 +119,8 @@ def write_bigwig(data, regions, gs, bw_out, debug_chr=None, use_tqdm=False, outs
 
     bw.close()
 
+    if not all_entries:
+        raise ValueError("No BigWig entries were written")
     all_entries = np.hstack(all_entries)
     if outstats_file != None:
         with open(outstats_file, 'w') as f:

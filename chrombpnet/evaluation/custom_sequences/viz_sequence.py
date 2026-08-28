@@ -78,10 +78,12 @@ def plot_weights_given_ax(ax, array,
                  ylim=None):
     if len(array.shape)==3:
         array = np.squeeze(array)
-    assert len(array.shape)==2, array.shape
+    if len(array.shape) != 2:
+        raise ValueError(f"Expected a 2-D array, got {array.shape}")
     if (array.shape[0]==4 and array.shape[1] != 4):
         array = array.transpose(1,0)
-    assert array.shape[1]==4
+    if array.shape[1] != 4:
+        raise ValueError("Expected four DNA channels")
     max_pos_height = 0.0
     min_neg_height = 0.0
     heights_at_positions = []
@@ -110,7 +112,8 @@ def plot_weights_given_ax(ax, array,
     #the highlight dict should be the color
     for color in highlight:
         for start_pos, end_pos in highlight[color]:
-            assert start_pos >= 0.0 and end_pos <= array.shape[0]
+            if start_pos < 0.0 or end_pos > array.shape[0]:
+                raise ValueError("Highlight range lies outside the sequence")
             min_depth = np.min(depths_at_positions[start_pos:end_pos])
             max_height = np.max(heights_at_positions[start_pos:end_pos])
             ax.add_patch(
@@ -125,8 +128,8 @@ def plot_weights_given_ax(ax, array,
     if ylim is not None:
         # Use user-specified y-axis limits
         min_neg_height, max_pos_height = ylim
-        assert min_neg_height <= 0
-        assert max_pos_height >= 0
+        if min_neg_height > 0 or max_pos_height < 0:
+            raise ValueError("Positive/negative plotting bounds are invalid")
 
     height_padding = max(abs(min_neg_height)*(height_padding_factor),
                          abs(max_pos_height)*(height_padding_factor))

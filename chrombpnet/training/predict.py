@@ -58,8 +58,12 @@ def load_model_wrapper(args):
     return model
 
 def softmax(x, temp=1):
-    norm_x = x - np.mean(x,axis=1, keepdims=True)
-    return np.exp(temp*norm_x)/np.sum(np.exp(temp*norm_x), axis=1, keepdims=True)
+    scaled = temp * np.asarray(x)
+    if scaled.ndim != 2:
+        raise ValueError(f"softmax expects a 2-D array, got {scaled.shape}")
+    scaled -= np.max(scaled, axis=1, keepdims=True)
+    exponentiated = np.exp(scaled)
+    return exponentiated / np.sum(exponentiated, axis=1, keepdims=True)
 
 def predict_on_batch_wrapper(model,test_generator):
     num_batches=len(test_generator)

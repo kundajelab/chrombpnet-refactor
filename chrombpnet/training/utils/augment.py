@@ -22,9 +22,12 @@ def random_crop(seqs, labels, seq_crop_width, label_crop_width, coords):
     essentially implying they should have the same flanking width.
     """
 
-    assert(seqs.shape[1]>=seq_crop_width)
-    assert(labels.shape[1]>=label_crop_width)
-    assert(seqs.shape[1] - seq_crop_width == labels.shape[1] - label_crop_width)
+    if seqs.shape[1] < seq_crop_width:
+        raise ValueError("Sequence crop width exceeds sequence width")
+    if labels.shape[1] < label_crop_width:
+        raise ValueError("Label crop width exceeds label width")
+    if seqs.shape[1] - seq_crop_width != labels.shape[1] - label_crop_width:
+        raise ValueError("Sequence and label crop flanks must match")
 
     max_start = seqs.shape[1] - seq_crop_width # This should be the same for both input and output
 
@@ -64,7 +67,8 @@ def crop_revcomp_augment(seqs, labels, coords, seq_crop_width, label_crop_width,
     Applies random crop to seqs and labels and reverse complements rc_frac. 
     """
 
-    assert(seqs.shape[0]==labels.shape[0])
+    if seqs.shape[0] != labels.shape[0]:
+        raise ValueError("Sequence and label batch sizes must match")
 
     # this does not modify seqs and labels
     #mod_seqs, mod_labels, mod_coords = random_crop(seqs, labels, seq_crop_width, label_crop_width, coords)

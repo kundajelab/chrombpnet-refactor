@@ -1,12 +1,15 @@
 import h5py
 import numpy as np
 import pyBigWig
+from types import SimpleNamespace
 
 from chrombpnet.evaluation.interpret.interpret import generate_shap_dict
 from chrombpnet.evaluation.make_bigwigs.bigwig_helper import write_bigwig
 from chrombpnet.training.predict import write_predictions_h5py
 from chrombpnet.training.utils import augment
 from chrombpnet.training.utils.one_hot import dna_to_one_hot, one_hot_to_dna
+from chrombpnet.model import BiasModel, ModelConfig, PredictionAdapter, save_model
+from chrombpnet.evaluation.make_bigwigs.predict_to_bigwig import main as predict_bigwig
 
 
 def test_one_hot_unknown_and_roundtrip():
@@ -69,3 +72,30 @@ def test_bigwig_output(tmp_path):
     with pyBigWig.open(str(path)) as handle:
         np.testing.assert_allclose(handle.values("chr1", 10, 14), data[0])
         np.testing.assert_allclose(handle.values("chr1", 20, 24), data[1])
+
+
+def test_single_region_debug_prediction_uses_expm1_and_unique_stats(tmp_path):
+    model = BiasModel(ModelConfig(128, 20, filters=4, n_dilation_layers=1))
+    model_path = tmp_path / "bias.pt"
+    save_model(model, model_path)
+    fasta = tmp_path / "genome.fa"
+    fasta.write_text(">chr1\n" + "ACGT" * 100 + "\n")
+    sizes = tmp_path / "sizes.tsv"
+    sizes.write_text("chr1\t400\n")
+    regions = tmp_path / "regions.bed"
+    regions.write_text("chr1\t100\t200\t.\t.\t.\t.\t.\t.\t50\n")
+    prefix = str(tmp_path / "prediction")
+    stats = str(tmp_path / "stats")
+    args = SimpleNamespace(
+        bias_model=str(model_path), chrombpnet_model=None, chrombpnet_model_nb=None,
+        regions=str(regions), genome=str(fasta), chrom_sizes=str(sizes),
+        output_prefix=prefix, output_prefix_stats=stats, batch_size=1, tqdm=0,
+        debug_chr=["chr1"], bigwig=None, device="cpu",
+    )
+    predict_bigwig(args)
+    assert (tmp_path / "stats_bias.txt").is_file()
+    with pyBigWig.open(prefix + "_bias.bw") as handle:
+        observed_sum = np.sum(handle.values("chr1", 140, 160))
+    sequence = dna_to_one_hot(["GTAC" * 32])
+    _, logcounts = PredictionAdapter(model).predict(sequence)
+    np.testing.assert_allclose(observed_sum, np.expm1(logcounts[0, 0]), rtol=1e-5)

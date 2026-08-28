@@ -24,11 +24,13 @@ def main(args):
 	d = deepdish.io.load(args.hdf5, '/projected_shap/seq')
 
 	SEQLEN = d.shape[2]
-	assert(SEQLEN%2==0)
+	if SEQLEN % 2:
+		raise ValueError("Importance sequence length must be even")
 
 	gs = bigwig_helper.read_chrom_sizes(args.chrom_sizes)
 	regions = bigwig_helper.get_regions(args.regions, SEQLEN)
-	assert(d.shape[0] == len(regions))
+	if d.shape[0] != len(regions):
+		raise ValueError("Importance rows and BED regions must have equal length")
 
 	bigwig_helper.write_bigwig(d.sum(1), 
                            regions, 

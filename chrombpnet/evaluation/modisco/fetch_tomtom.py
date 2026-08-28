@@ -4,6 +4,7 @@ import argparse
 import h5py
 import tempfile
 import os
+from chrombpnet.evaluation.modisco.api import _modisco_modules, iter_patterns
 
 def fetch_tomtom_args():
     parser = argparse.ArgumentParser()
@@ -49,7 +50,8 @@ def fetch_tomtom_matches(ppm, cwm, background=[0.25, 0.25, 0.25, 0.25], tomtom_e
             dictionary with keys 'Target ID', 'p-value', 'E-value', 'q-value'
     """
 
-    _, fname = tempfile.mkstemp()
+    descriptor, fname = tempfile.mkstemp()
+    os.close(descriptor)
 
     score = np.sum(np.abs(cwm), axis=1)
     trim_thresh = np.max(score) * trim_threshold  # Cut off anything less than 30% of max score
@@ -64,9 +66,13 @@ def fetch_tomtom_matches(ppm, cwm, background=[0.25, 0.25, 0.25, 0.25], tomtom_e
     write_meme_file(trimmed, background, fname)
 
     # run tomtom
-    cmd = '%s -no-ssc -oc . -verbosity 1 -text -min-overlap 5 -mi 1 -dist pearson -evalue -thresh 10.0 %s %s' % (tomtom_exec_path, fname, motifs_db)
-    #print(cmd)
-    out = subprocess.check_output(cmd, shell=True)
+    cmd = [tomtom_exec_path, "-no-ssc", "-oc", ".", "-verbosity", "1", "-text",
+           "-min-overlap", "5", "-mi", "1", "-dist", "pearson", "-evalue",
+           "-thresh", "10.0", fname, motifs_db]
+    try:
+        out = subprocess.check_output(cmd)
+    finally:
+        os.unlink(fname)
 
     # prepare output
     dat = [x.split('\\t') for x in str(out).split('\\n')]
@@ -92,65 +98,26 @@ def fetch_tomtom_matches(ppm, cwm, background=[0.25, 0.25, 0.25, 0.25], tomtom_e
         mtf['q-value'] = float(t[qval_idx])
         r.append(mtf)
 
-    os.system('rm ' + fname)
     return r
 
 
 def main(): 
     args = fetch_tomtom_args()
-
-    modisco_results = h5py.File(args.modisco_h5py, 'r')
-
-    # get pfms
-    ppms = []
-    cwms = []
-    seqlet_tally = []
-    names = []
-
-    for metacluster_name in modisco_results['metacluster_idx_to_submetacluster_results']:
-        metacluster = modisco_results['metacluster_idx_to_submetacluster_results'][metacluster_name]
-        all_pattern_names = [x.decode("utf-8") for x in list(metacluster["seqlets_to_patterns_result"]["patterns"]["all_pattern_names"][:])]
-
-        for pattern_name in all_pattern_names:
-
-            ppm = np.array(metacluster['seqlets_to_patterns_result']['patterns'][pattern_name]['sequence']['fwd'])
-            num_seqlets = len(metacluster['seqlets_to_patterns_result']['patterns'][pattern_name]['seqlets_and_alnmts']['seqlets'])
-            cwm = np.array(metacluster['seqlets_to_patterns_result']['patterns'][pattern_name]["task0_contrib_scores"]['fwd'])
-
-            ppms.append(ppm)
-            seqlet_tally.append(num_seqlets)
-            cwms.append(cwm)
-            names.append(metacluster_name + '.' + pattern_name)
-
-    modisco_results.close()
-
-    res = []
-
-    for i,x in enumerate(ppms):
-        res.append(fetch_tomtom_matches(x, cwms[i], tomtom_exec_path=args.tomtom_exec, motifs_db=args.meme_motif_db,
-                   n=args.top_n_matches, trim_threshold=args.trim_threshold, trim_min_length=args.trim_min_length))
-
-    # write output. Skipping those patterns which disappear after trimming or have no matches
-    with open(args.output_prefix, 'w') as f:
-        # write header
-        f.write("Pattern")
-        f.write("\tNum_Seqlets")
-
-        for i in range(args.top_n_matches):
-            f.write("\tMatch_{}\tq-value".format(i+1))
-        f.write("\n")
-
-        assert len(res) == len(names)
-
-        for i,r in enumerate(res):
-            f.write(names[i])
-            f.write("\t{}".format(seqlet_tally[i]))
-            for match in r:
-                f.write("\t{}\t{}".format(match['Target_ID'], match['q-value']))
-
-            # when fewer than n matches are found
-            if len(r) != args.top_n_matches:
-                f.write("\t\t"*(args.top_n_matches-len(r)))
-            f.write("\n")
+    patterns = list(iter_patterns(args.modisco_h5py))
+    _, _, _, report = _modisco_modules()
+    matches = report.generate_tomtom_dataframe(
+        args.modisco_h5py, os.path.dirname(args.output_prefix) or ".",
+        args.meme_motif_db, False, ["pos_patterns", "neg_patterns"],
+        top_n_matches=args.top_n_matches, tomtom_exec=args.tomtom_exec,
+        trim_threshold=args.trim_threshold)
+    output = {
+        "Pattern": [pattern.tag for pattern in patterns],
+        "Num_Seqlets": [pattern.n_seqlets for pattern in patterns],
+    }
+    for index in range(args.top_n_matches):
+        output[f"Match_{index + 1}"] = matches[f"match{index}"]
+        output[f"q-value_{index + 1}"] = matches[f"qval{index}"]
+    import pandas as pd
+    pd.DataFrame(output).to_csv(args.output_prefix, sep="\t", index=False)
 if __name__=="__main__":
     main()

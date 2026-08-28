@@ -8,7 +8,7 @@ import itertools
 import warnings
 from termcolor import colored
 import os
-from modisco.visualization import viz_sequence
+from chrombpnet.evaluation.custom_sequences import viz_sequence
 import chrombpnet.training.utils.one_hot as one_hot
 from chrombpnet.data import DefaultDataFile, get_default_data_path
 
@@ -57,6 +57,13 @@ def stream_filtered_tagaligns(src_tagaligns_stream, genome_file, out_stream):
             else:
                 has_unknown_chroms = True
         src_tagaligns_stream.stdout.close()
+    source_code = src_tagaligns_stream.wait()
+    upstream = getattr(src_tagaligns_stream, "_chrombpnet_upstream", None)
+    upstream_code = upstream.wait() if upstream is not None else 0
+    if source_code != 0:
+        raise subprocess.CalledProcessError(source_code, "input conversion")
+    if upstream_code != 0:
+        raise subprocess.CalledProcessError(upstream.returncode, "input decompression")
     return has_unknown_chroms
 
 def is_gz_file(filepath):
@@ -72,11 +79,17 @@ def fragment_to_tagalign_stream(fragment_file_path):
     """
     Expected format for fragment file: tsv with columns chr, start, end and optionally more columns
     """
-    frag_is_gz = is_gz_file(fragment_file_path)
-    read_method = "zcat " if frag_is_gz else "cat "
-    cmd = read_method + fragment_file_path + """ | awk -v OFS="\\t" '{print $1,$2,$3,1000,0,"+"; print $1,$2,$3,1000,0,"-"}'"""
-    p = subprocess.Popen([cmd], stdout=subprocess.PIPE, shell=True)
-    return p
+    source = subprocess.Popen(
+        ["gzip", "-cd", fragment_file_path] if is_gz_file(fragment_file_path)
+        else ["cat", "--", fragment_file_path], stdout=subprocess.PIPE
+    )
+    awk = subprocess.Popen(
+        ["awk", '-v', 'OFS=\t', '{print $1,$2,$3,1000,0,"+"; print $1,$2,$3,1000,0,"-"}'],
+        stdin=source.stdout, stdout=subprocess.PIPE,
+    )
+    source.stdout.close()
+    awk._chrombpnet_upstream = source
+    return awk
 
 def tagalign_stream(tagalign_file_path):
     """
@@ -99,6 +112,8 @@ def sample_reads(bam_path, fragment_file_path, tagalign_file_path, num_samples, 
     p2 = subprocess.Popen(["shuf", "-n", str(2*num_samples)], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
     has_unknown_chroms = stream_filtered_tagaligns(p1, genome_fasta_path, p2)
     output = p2.communicate()[0]
+    if p2.returncode != 0:
+        raise subprocess.CalledProcessError(p2.returncode, ["shuf", "-n", str(2*num_samples)])
     
     if has_unknown_chroms:
         msg = '!!! WARNING: Input reads contain chromosomes not in the reference' \
@@ -130,6 +145,10 @@ def get_pwms(plus_reads, minus_reads, genome_file):
             if len(cur)==40:
                 minus_seqs.append(cur)
     
+    if not plus_seqs or not minus_seqs:
+        raise ValueError(
+            "Shift estimation requires at least one in-bounds read on each strand"
+        )
     plus_pwm = one_hot.dna_to_one_hot(plus_seqs).mean(0)
     plus_pwm = (plus_pwm/np.sum(plus_pwm, axis=-1, keepdims=True))
     minus_pwm = one_hot.dna_to_one_hot(minus_seqs).mean(0)
@@ -221,7 +240,8 @@ def compute_shift_DNASE(ref_plus_pwms, ref_minus_pwms, plus_pwm, minus_pwm):
 
 def compute_shift(input_bam_file, input_fragment_file, input_tagalign_file, num_samples, genome_fasta_path, data_type, ref_motifs_file):
     # only one of the 3 inputs should be non None
-    assert (input_bam_file is None) + (input_fragment_file is None) + (input_tagalign_file is None) == 2, "Only one input file!"
+    if sum(value is not None for value in (input_bam_file, input_fragment_file, input_tagalign_file)) != 1:
+        raise ValueError("Exactly one input file must be provided")
 
     sampled_plus_reads, sampled_minus_reads = sample_reads(input_bam_file, input_fragment_file, input_tagalign_file, num_samples, genome_fasta_path)
 

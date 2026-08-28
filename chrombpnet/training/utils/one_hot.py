@@ -15,8 +15,11 @@ def dna_to_one_hot(seqs):
     All bases will be converted to upper-case prior to performing the encoding.
     Any bases that are not "ACGT" will be given an encoding of all 0s.
     """
+    if len(seqs) == 0:
+        return np.empty((0, 0, 4), dtype=np.int8)
     seq_len = len(seqs[0])
-    assert np.all(np.array([len(s) for s in seqs]) == seq_len)
+    if not np.all(np.array([len(s) for s in seqs]) == seq_len):
+        raise ValueError("All DNA sequences must have the same length")
 
     # Join all sequences together into one long string, all uppercase
     seq_concat = "".join(seqs).upper() + "ACGT"

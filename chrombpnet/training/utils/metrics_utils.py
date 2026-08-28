@@ -96,7 +96,8 @@ def mnll(true_counts, logits=None, probs=None):
     if logits is not None:
         
         # check for length mismatch
-        assert (len(logits) == len(true_counts))
+        if len(logits) != len(true_counts):
+            raise ValueError("Logits and true counts must have equal length")
     
         # convert logits to softmax probabilities
         probs = logits - logsumexp(logits)
@@ -105,18 +106,18 @@ def mnll(true_counts, logits=None, probs=None):
     elif probs is not None:      
         
         # check for length mistmatch
-        assert(len(probs) == len(true_counts))
+        if len(probs) != len(true_counts):
+            raise ValueError("Probabilities and true counts must have equal length")
     
         # check if probs sums to 1
         # why is this nans sometimes
-        assert( abs(1.0 - np.sum(probs)) < 1e-1)
+        if abs(1.0 - np.sum(probs)) >= 1e-1:
+            raise ValueError("Probabilities must sum to one")
          
     else:
         
         # both 'probs' and 'logits' are None
-         print(
-            "At least one of probs or logits must be provided. "
-            "Both are None.")
+        raise ValueError("At least one of probs or logits must be provided")
   
     # compute the nmultinomial distribution
     mnom = multinomial(np.sum(true_counts), probs)

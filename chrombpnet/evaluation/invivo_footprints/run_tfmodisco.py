@@ -2,12 +2,10 @@ import h5py
 import os
 import numpy as np
 import tqdm
-from collections import OrderedDict
-import modisco
 import click
 import pickle as pkl
-import modisco.visualization
 import deepdish
+from chrombpnet.evaluation.modisco.api import iter_patterns, run_arrays, write_seqlets_fasta
 def import_shap_scores_part2(
     shap_scores_hdf5, peak_table, center_cut_size=None, chrom_set=None,
     remove_non_acgt=True
@@ -15,8 +13,6 @@ def import_shap_scores_part2(
     scores = deepdish.io.load(shap_scores_hdf5)
     #open_file = open(shap_scores_hdf5, 'rb')
     #score_dict = pkl.load(open_file)
-    flank=center_cut_size
-
     hyp_impscores = []
     impscores = []
     onehot_seqs = []
@@ -24,8 +20,8 @@ def import_shap_scores_part2(
     score_type="profile_shap"
 
     center = scores['shap']['seq'].shape[-1]//2
-    start = center - flank
-    end = center + flank
+    start = center - center_cut_size // 2
+    end = start + center_cut_size
 
     for i in scores['shap']['seq']:
         hyp_impscores.append(i[:,start:end].transpose())
@@ -36,7 +32,8 @@ def import_shap_scores_part2(
     for i in scores['raw']['seq']:
         onehot_seqs.append(i[:,start:end].transpose())
 
-    assert(scores['shap']['seq'].shape[0]==peak_table.shape[0])
+    if scores['shap']['seq'].shape[0] != peak_table.shape[0]:
+        raise ValueError("Score rows and peak rows must match")
 
     #print(peak_table.head())
     for i in range(peak_table.shape[0]):
@@ -144,28 +141,20 @@ def import_tfmodisco_results(
     be useful for importing the results later (in conjuction with
     `import_shap_scores`).
     """
-    assert hyp_scores.shape == one_hot_seqs.shape
+    if hyp_scores.shape != one_hot_seqs.shape:
+        raise ValueError("Hypothetical scores and one-hot sequences must have equal shapes")
     input_length = hyp_scores.shape[1]
 
     if input_length != center_cut_size:
         # Everything not cut to `center_cut_size`
-        assert input_length > center_cut_size
+        if input_length <= center_cut_size:
+            raise ValueError("center_cut_size must be smaller than input length")
         cut_start = (input_length // 2) - (center_cut_size // 2)
         cut_end = cut_start + center_cut_size
         hyp_scores = hyp_scores[:, cut_start:cut_end]
         one_hot_seqs = one_hot_seqs[:, cut_start:cut_end]
    
-    act_scores = hyp_scores * one_hot_seqs
-    
-    track_set = modisco.tfmodisco_workflow.workflow.prep_track_set(
-        task_names=["task0"],
-        contrib_scores={"task0": act_scores},
-        hypothetical_contribs={"task0": hyp_scores},
-        one_hot=one_hot_seqs
-    )
-    
-    with h5py.File(tfm_results_path,"r") as f:
-        return modisco.tfmodisco_workflow.workflow.TfModiscoResults.from_hdf5(f, track_set=track_set)
+    return list(iter_patterns(tfm_results_path))
 
 
 @click.command()
@@ -207,55 +196,17 @@ def main(
     hyp_scores, act_scores, input_seqs, _ = import_shap_scores(
         shap_scores_hdf5, hyp_score_key, center_cut_size, chrom_set
     )
-    task_to_hyp_scores, task_to_act_scores = OrderedDict(), OrderedDict()
-    task_to_hyp_scores["task0"] = hyp_scores
-    task_to_act_scores["task0"] = act_scores
-
-    # Construct workflow pipeline
-    tfm_workflow = modisco.tfmodisco_workflow.workflow.TfModiscoWorkflow(
-        sliding_window_size=21,
-    	flank_size=10,
-        target_seqlet_fdr=0.05,
-    	seqlets_to_patterns_factory=modisco.tfmodisco_workflow.seqlets_to_patterns.TfModiscoSeqletsToPatternsFactory(
-            embedder_factory=modisco.seqlet_embedding.advanced_gapped_kmer.AdvancedGappedKmerEmbedderFactory(),
-    	    trim_to_window_size=30,
-    	    initial_flank_to_add=10,
-    	    final_min_cluster_size=30
-    	)
-    )
-
-    # Move to output directory to do work
-    cwd = os.getcwd()
-    os.makedirs(os.path.dirname(outfile), exist_ok=True)
-    os.chdir(os.path.dirname(outfile))
-
-    tfm_results = tfm_workflow(
-        task_names=list(task_to_act_scores.keys()),
-        contrib_scores=task_to_act_scores,
-        hypothetical_contribs=task_to_hyp_scores,
-        one_hot=input_seqs,
-        plot_save_dir=plot_save_dir
-    )
-
-    os.chdir(cwd)
+    os.makedirs(os.path.dirname(outfile) or ".", exist_ok=True)
     print("Saving results to %s" % outfile)
-    with h5py.File(outfile, "w") as f:
-        tfm_results.save_hdf5(f)
+    run_arrays(
+        input_seqs, hyp_scores, outfile, window=center_cut_size,
+        sliding_window_size=21, flank_size=10, target_seqlet_fdr=0.05,
+        trim_to_window_size=30, initial_flank_to_add=10,
+        final_min_cluster_size=30)
 
     if seqlet_outfile:
         print("Saving seqlets to %s" % seqlet_outfile)
-        seqlets = \
-            tfm_results.metacluster_idx_to_submetacluster_results[0].seqlets
-        bases = np.array(["A", "C", "G", "T"])
-        with open(seqlet_outfile, "w") as f:
-            for seqlet in seqlets:
-                sequence = "".join(
-                    bases[np.argmax(seqlet["sequence"].fwd, axis=-1)]
-                )
-                example_index = seqlet.coor.example_idx
-                start, end = seqlet.coor.start, seqlet.coor.end
-                f.write(">example%d:%d-%d\n" % (example_index, start, end))
-                f.write(sequence + "\n")
+        write_seqlets_fasta(outfile, seqlet_outfile)
 
 
 if __name__ == "__main__":

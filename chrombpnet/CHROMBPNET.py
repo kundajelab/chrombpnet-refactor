@@ -6,6 +6,7 @@ import chrombpnet.pipelines as pipelines
 import copy
 import pandas as pd
 import logging
+import subprocess
 logging.getLogger('matplotlib.font_manager').disabled = True
 
 
@@ -23,8 +24,8 @@ def main():
 		pipelines.chrombpnet_train_pipeline(args)
 	
 	elif args.cmd == "qc":
-		os.makedirs(os.path.join(args.output_dir,"auxiliary"), exist_ok=False)
-		os.makedirs(os.path.join(args.output_dir,"evaluation"), exist_ok=False)
+		os.makedirs(os.path.join(args.output_dir,"auxiliary"), exist_ok=True)
+		os.makedirs(os.path.join(args.output_dir,"evaluation"), exist_ok=True)
 		
 		pipelines.chrombpnet_qc(args)
 		
@@ -38,8 +39,8 @@ def main():
 			pipelines.train_bias_pipeline(args)
 		
 		elif args.cmd_bias == "qc":
-			os.makedirs(os.path.join(args.output_dir,"auxiliary"), exist_ok=False)
-			os.makedirs(os.path.join(args.output_dir,"evaluation"), exist_ok=False)
+			os.makedirs(os.path.join(args.output_dir,"auxiliary"), exist_ok=True)
+			os.makedirs(os.path.join(args.output_dir,"evaluation"), exist_ok=True)
 			
 			pipelines.bias_model_qc(args)
 			
@@ -50,7 +51,8 @@ def main():
 	
 	elif args.cmd == "pred_bw":
 	
-		assert (args.bias_model is None) + (args.chrombpnet_model is None) + (args.chrombpnet_model_nb is None) < 3, "No input model provided!"
+		if not any((args.bias_model, args.chrombpnet_model, args.chrombpnet_model_nb)):
+			raise ValueError("At least one input model must be provided")
 		import chrombpnet.evaluation.make_bigwigs.predict_to_bigwig as predict_to_bigwig
 
 		predict_to_bigwig.main(args)
@@ -86,14 +88,14 @@ def main():
 		snp_scoring.main(args)
 		
 	elif args.cmd == "modisco_motifs":
-		import chrombpnet
-		chrombpnet_src_dir = os.path.dirname(chrombpnet.__file__)
+		from chrombpnet.evaluation.modisco.api import generate_report, run_motifs
 		meme_file=get_default_data_path(DefaultDataFile.motifs_meme)
-	
-		modisco_command = "modisco motifs -i {} -n {} -o {} -w {}".format(args.h5py, args.max_seqlets, args.output_prefix+"_modisco.h5", args.window)
-		os.system(modisco_command)
-		modisco_command = "modisco report -i {} -o {} -m {}".format(args.output_prefix+"_modisco.h5",args.output_prefix+"_reports",meme_file)
-		os.system(modisco_command)
+
+		run_motifs(args.h5py, args.output_prefix+"_modisco.h5",
+			max_seqlets=args.max_seqlets, window=args.window,
+			n_leiden_runs=args.n_leiden, verbose=args.verbose)
+		generate_report(args.output_prefix+"_modisco.h5",
+			args.output_prefix+"_reports", meme_file)
 		
 		import chrombpnet.evaluation.modisco.convert_html_to_pdf as convert_html_to_pdf
 		convert_html_to_pdf.main(args.output_prefix+"_reports/motifs.html",args.output_prefix+"_reports/motifs.pdf")
@@ -102,7 +104,8 @@ def main():
 	
 		if args.cmd_prep == "nonpeaks":
 
-			assert(args.inputlen%2==0) # input length should be a multiple of 2
+			if args.inputlen % 2:
+				raise ValueError("input length must be a multiple of 2")
 	
 			os.makedirs(args.output_prefix+"_auxiliary/", exist_ok=False)
 	
@@ -119,31 +122,32 @@ def main():
 			# prepare candidate negatives
 	
 			exclude_bed = pd.read_csv(args.peaks, sep="\t", header=None)
-			os.system("bedtools slop -i {peaks} -g {chrom_sizes} -b {flank_size} > {output}".format(peaks=args.peaks,
-												chrom_sizes=args.chrom_sizes,
-												flank_size=args.inputlen//2,
-												output=args.output_prefix+"_auxiliary/peaks_slop.bed"))
+			peaks_slop = args.output_prefix+"_auxiliary/peaks_slop.bed"
+			with open(peaks_slop, "w") as output:
+				subprocess.run(["bedtools", "slop", "-i", args.peaks, "-g", args.chrom_sizes,
+					"-b", str(args.inputlen//2)], stdout=output, check=True)
 			exclude_bed = pd.read_csv(args.output_prefix+"_auxiliary/peaks_slop.bed", sep="\t", header=None, usecols=[0,1,2])
 	
 			if args.blacklist_regions:
-				os.system("bedtools slop -i {blacklist} -g {chrom_sizes} -b {flank_size} > {output}".format(blacklist=args.blacklist_regions,
-												chrom_sizes=args.chrom_sizes,
-												flank_size=args.inputlen//2,
-												output=args.output_prefix+"_auxiliary/blacklist_slop.bed"))
+				with open(args.output_prefix+"_auxiliary/blacklist_slop.bed", "w") as output:
+					subprocess.run(["bedtools", "slop", "-i", args.blacklist_regions,
+						"-g", args.chrom_sizes, "-b", str(args.inputlen//2)], stdout=output, check=True)
 										
 				exclude_bed = pd.concat([exclude_bed,pd.read_csv(args.output_prefix+"_auxiliary/blacklist_slop.bed",sep="\t",header=None, usecols=[0,1,2])])
 
 			exclude_bed.to_csv(args.output_prefix+"_auxiliary/exclude_unmerged.bed", sep="\t", header=False, index=False)
-			os.system("bedtools sort -i {inputb} | bedtools merge -i stdin > {output}".format(inputb=args.output_prefix+"_auxiliary/exclude_unmerged.bed",
-																					output=args.output_prefix+"_auxiliary/exclude.bed"))			
+			sorted_exclude = args.output_prefix+"_auxiliary/exclude.sorted.bed"
+			with open(sorted_exclude, "w") as output:
+				subprocess.run(["bedtools", "sort", "-i", args.output_prefix+"_auxiliary/exclude_unmerged.bed"], stdout=output, check=True)
+			with open(args.output_prefix+"_auxiliary/exclude.bed", "w") as output:
+				subprocess.run(["bedtools", "merge", "-i", sorted_exclude], stdout=output, check=True)
 	
 	
 
-			bedtools_command = "bedtools intersect -v -a {genomewide_gc} -b {exclude_bed}  > {candidate_bed}".format(
-															genomewide_gc=args.output_prefix+"_auxiliary/genomewide_gc.bed",
-															exclude_bed=args.output_prefix+"_auxiliary/exclude.bed",
-															candidate_bed=args.output_prefix+"_auxiliary/candidates.bed")
-			os.system(bedtools_command)
+			with open(args.output_prefix+"_auxiliary/candidates.bed", "w") as output:
+				subprocess.run(["bedtools", "intersect", "-v",
+					"-a", args.output_prefix+"_auxiliary/genomewide_gc.bed",
+					"-b", args.output_prefix+"_auxiliary/exclude.bed"], stdout=output, check=True)
 													
 			# get final negatives
 			import chrombpnet.helpers.make_gc_matched_negatives.get_gc_matched_negatives as get_gc_matched_negatives
