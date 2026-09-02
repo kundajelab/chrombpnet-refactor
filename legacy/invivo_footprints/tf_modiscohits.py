@@ -11,7 +11,7 @@ import click
 import numpy as np
 import pandas as pd
 
-from chrombpnet.evaluation.invivo_footprints import run_tfmodisco
+from legacy.invivo_footprints import run_tfmodisco
 from chrombpnet.evaluation.modisco.api import iter_patterns
 
 

@@ -13,6 +13,7 @@ chrombpnet contribs_bw ...
 chrombpnet footprints ...
 ```
 
-The scripts under `legacy/` target removed pre-1.0 console entry points and
-Keras `.h5` models. They are retained as historical reference, are not an
-executable or supported workflow, and are excluded from package installation.
+Historical workflow scripts are under the repository-level
+[`legacy/workflows/`](../legacy/workflows/). They target removed pre-1.0
+console entry points and Keras `.h5` models, are not a supported workflow, and
+are excluded from package installation.

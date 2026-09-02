@@ -101,6 +101,21 @@ def test_prediction_adapter_accepts_legacy_nlc():
     assert counts.shape == (2, 1)
 
 
+def test_prediction_adapter_accepts_negative_stride_reverse_complement_view():
+    model = BPNet(SMALL)
+    nlc = np.zeros((2, 128, 4), dtype=np.float32)
+    nlc[:, :, 0] = 1
+    reverse_complement = nlc[:, ::-1, ::-1]
+    assert any(stride < 0 for stride in reverse_complement.strides)
+
+    adapter = PredictionAdapter(model)
+    actual = adapter.predict(reverse_complement, batch_size=1)
+    expected = adapter.predict(reverse_complement.copy(), batch_size=1)
+
+    for actual_output, expected_output in zip(actual, expected):
+        assert np.array_equal(actual_output, expected_output)
+
+
 def test_device_resolution_cpu_and_unavailable_cuda():
     assert resolve_device("cpu") == torch.device("cpu")
     if not torch.cuda.is_available():

@@ -1,7 +1,7 @@
 import pyBigWig
 import pandas as pd
 import numpy as np
-import deepdish as dd
+import h5py
 import os
 import pyfaidx
 import random
@@ -18,6 +18,38 @@ from chrombpnet.model import load_prediction_model, resolve_device
 
 NARROWPEAK_SCHEMA = ["chr", "start", "end", "1", "2", "3", "4", "5", "6", "summit"]
 PWM_SCHEMA = ["MOTIF_NAME", "MOTIF_PWM_FWD"]
+
+
+def save_footprints_h5(path, footprints_at_motifs):
+	"""Write the legacy Deepdish dictionary schema without using Deepdish.
+
+	Deepdish's writer references ``np.object``, which NumPy removed in 1.24.
+	The PyTables metadata below keeps these files readable by legacy
+	``deepdish.io.load`` consumers while using the maintained h5py writer.
+	"""
+	with h5py.File(path, "w") as h5:
+		h5.attrs["CLASS"] = np.bytes_("GROUP")
+		h5.attrs["DEEPDISH_IO_VERSION"] = 12
+		h5.attrs["PYTABLES_FORMAT_VERSION"] = np.bytes_("2.1")
+		h5.attrs["TITLE"] = h5py.Empty("S1")
+		h5.attrs["VERSION"] = np.bytes_("1.0")
+
+		for motif, (footprint, counts) in footprints_at_motifs.items():
+			group = h5.create_group(str(motif))
+			group.attrs["CLASS"] = np.bytes_("GROUP")
+			group.attrs["TITLE"] = np.bytes_("list:2")
+			group.attrs["VERSION"] = np.bytes_("1.0")
+
+			for name, values in (("i0", footprint), ("i1", counts)):
+				dataset = group.create_dataset(
+					name,
+					data=np.asarray(values),
+					compression="gzip",
+				)
+				dataset.attrs["CLASS"] = np.bytes_("ARRAY")
+				dataset.attrs["FLAVOR"] = np.bytes_("numpy")
+				dataset.attrs["TITLE"] = h5py.Empty("S1")
+				dataset.attrs["VERSION"] = np.bytes_("2.4")
 
 def load_model_wrapper(args):
     model=load_prediction_model(
@@ -153,9 +185,10 @@ def main(args):
 			ofile.close()
 
 	print("Saving marginal footprints")
-	dd.io.save("{}_footprints.h5".format(args.output_prefix),
+	save_footprints_h5(
+		"{}_footprints.h5".format(args.output_prefix),
 		footprints_at_motifs,
-		compression='blosc')
+	)
 
 
 if __name__ == '__main__':

@@ -92,6 +92,15 @@ def interpret(
     num_shuffles=20,
     seed=1234,
 ):
+    seqs = np.asarray(seqs)
+    if seqs.ndim != 3 or seqs.shape[2] != 4:
+        raise ValueError(f"Sequences must have shape (examples, length, 4), got {seqs.shape}")
+    invalid_examples = ~np.all(np.isclose(seqs.sum(axis=2), 1.0), axis=1)
+    if np.any(invalid_examples):
+        raise ValueError(
+            f"{int(invalid_examples.sum())} sequence(s) contain unknown or invalid bases; "
+            "contribution scoring requires ACGT-only sequences"
+        )
     # Tangermeme is intentionally lazy-loaded so prediction/preprocessing users
     # do not pay its import and numba compilation cost.
     from tangermeme.deep_lift_shap import deep_lift_shap
@@ -134,6 +143,12 @@ def main(args):
     genome = pyfaidx.Fasta(args.genome)
     seqs, regions_used = input_utils.get_seq(regions_df, genome, input_length)
     genome.close()
+    skipped_regions = int((~regions_used).sum())
+    if skipped_regions:
+        print(
+            f"Skipping {skipped_regions} region(s) that are truncated or contain "
+            "non-ACGT reference bases"
+        )
     regions_df[regions_used].to_csv(
         f"{args.output_prefix}.interpreted_regions.bed",
         header=False,

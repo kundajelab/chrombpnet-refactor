@@ -39,6 +39,15 @@ def _fix_sum_to_one(probs):
         _probs[np.argmin(_probs)] += 1.0 - np.sum(_probs)
 
     return _probs
+
+
+def normalize_profile(profile):
+    """Return a finite probability vector, or None for an empty profile."""
+    profile = np.asarray(profile, dtype=np.float64)
+    total = np.nansum(profile)
+    if not np.isfinite(total) or total <= 0 or not np.all(np.isfinite(profile)):
+        return None
+    return profile / total
     
 
 def density_scatter(x, y, xlab, ylab, ax = None, sort = True, bins = 20):
@@ -125,6 +134,8 @@ def mnll(true_counts, logits=None, probs=None):
     
 #https://github.com/kundajelab/basepairmodels/blob/cf8e346e9df1bad9e55bd459041976b41207e6e5/basepairmodels/cli/metrics.py#L129
 def get_min_max_normalized_value(val, minimum, maximum):
+    if not np.all(np.isfinite([val, minimum, maximum])) or np.isclose(minimum, maximum):
+        return np.nan
     ret_val = (val - maximum) / (minimum - maximum)
 
     if ret_val < 0:
@@ -194,7 +205,9 @@ def jsd_min_max_bounds(profile):
     uniform_profile = np.ones(len(profile)) * (1.0 / len(profile))
 
     # profile as probabilities
-    profile_prob = profile / np.sum(profile)
+    profile_prob = normalize_profile(profile)
+    if profile_prob is None:
+        return (np.nan, np.nan)
 
     # jsd of profile with uniform profile
     max_jsd = jensenshannon(profile_prob, uniform_profile)

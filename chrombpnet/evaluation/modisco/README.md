@@ -16,14 +16,9 @@ This is intentional: it gives every ChromBPNet entry point identical input
 cropping and output behavior and remains usable while developing an editable
 TF-MoDISco checkout.
 
-For the retained three-step helper workflow:
-
-1. `run_modisco.py` discovers motifs and writes new-format HDF5 plus seqlet
-   FASTA and untrimmed logos.
-2. `fetch_tomtom.py` reads the new pattern groups and writes TomTom matches.
-3. `visualize_motif_matches.py` reads the same groups and builds the legacy
-   shareable motif table.
-
 The standard pipelines instead call TF-MoDISco's current compact report API,
 which continues to produce `motifs.html` and therefore remains compatible with
 ChromBPNet's combined HTML and PDF reports.
+
+The unsupported standalone three-step runner and visualizer were moved to
+`legacy/modisco/` so they cannot be mistaken for active pipeline components.

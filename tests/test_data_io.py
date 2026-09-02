@@ -4,6 +4,7 @@ import pyBigWig
 from types import SimpleNamespace
 
 from chrombpnet.evaluation.interpret.interpret import generate_shap_dict
+from chrombpnet.evaluation.interpret.input_utils import get_seq as get_interpret_sequences
 from chrombpnet.evaluation.make_bigwigs.bigwig_helper import write_bigwig
 from chrombpnet.training.predict import write_predictions_h5py
 from chrombpnet.training.utils import augment
@@ -17,6 +18,20 @@ def test_one_hot_unknown_and_roundtrip():
     assert values.shape == (2, 5, 4)
     assert values[:, -1].sum() == 0
     assert one_hot_to_dna(values) == ["ACGTN", "TGCAN"]
+
+
+def test_interpret_sequence_loading_filters_unknown_bases():
+    regions = np.array([
+        ("chr1", 0, 2),
+        ("chr1", 4, 4),
+    ], dtype=[("chr", "U4"), ("start", "i8"), ("summit", "i8")])
+    import pandas as pd
+    frame = pd.DataFrame.from_records(regions)
+    sequences, used = get_interpret_sequences(
+        frame, {"chr1": "AACCGGTTNNNN"}, width=4)
+    assert used.tolist() == [True, False]
+    assert sequences.shape == (1, 4, 4)
+    assert np.all(sequences.sum(axis=2) == 1)
 
 
 def test_crop_and_reverse_complement_semantics():

@@ -30,8 +30,8 @@ vier_logos=${8?param_missing - vier_logos}
 vier_html=${9?param_missing - vier_html}
 html_link=${10?param_missing - html_link}
 
-python -m chrombpnet.evaluation.modisco.run_modisco -s "$scores_prefix" -p "$score_type" -o "$output_dir" -m "$seqlets" -c "$crop"
-python -m chrombpnet.evaluation.modisco.fetch_tomtom -m "$output_dir/modisco_results_allChroms_${score_type}.hdf5" -o "$output_dir/$score_type.tomtom.tsv" -d "$meme_db" -n 10 -th 0.3
-python -m chrombpnet.evaluation.modisco.visualize_motif_matches -m "$output_dir/modisco_results_allChroms_${score_type}.hdf5" -t "$output_dir/$score_type.tomtom.tsv" -o "$output_dir" \
+python -m legacy.modisco.run_modisco -s "$scores_prefix" -p "$score_type" -o "$output_dir" -m "$seqlets" -c "$crop"
+python -m legacy.modisco.fetch_tomtom -m "$output_dir/modisco_results_allChroms_${score_type}.hdf5" -o "$output_dir/$score_type.tomtom.tsv" -d "$meme_db" -n 10 -th 0.3
+python -m legacy.modisco.visualize_motif_matches -m "$output_dir/modisco_results_allChroms_${score_type}.hdf5" -t "$output_dir/$score_type.tomtom.tsv" -o "$output_dir" \
      -vd $vier_logos -th 0.3 -hl $html_link -vhl $vier_html \
       -s "$score_type" -d "$meme_logos"

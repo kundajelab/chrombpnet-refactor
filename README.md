@@ -55,6 +55,10 @@ configuration, source provenance, and a standard PyTorch `state_dict`.
 TensorFlow/Keras `.h5` models are intentionally not accepted by the production
 API.
 
+Historical scripts and paper-analysis assets that are not reachable from the
+supported CLI are isolated under [`legacy/`](legacy/README.md). They are kept
+for provenance and are not installed as part of the Python package.
+
 ## Command line
 
 The active command hierarchy is retained:

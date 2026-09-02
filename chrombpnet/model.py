@@ -274,6 +274,11 @@ class PredictionAdapter:
     ) -> Tuple[np.ndarray, np.ndarray]:
         if isinstance(values, list):
             values = values[0]
+        # NumPy reverse-complement views (for example, x[:, ::-1, ::-1])
+        # have negative strides. PyTorch cannot construct a tensor from those
+        # views, so materialize a contiguous array at this compatibility edge.
+        if isinstance(values, np.ndarray) and any(stride < 0 for stride in values.strides):
+            values = np.ascontiguousarray(values)
         array = torch.as_tensor(values, dtype=torch.float32)
         if array.ndim != 3:
             raise ValueError("Input must be three-dimensional")
