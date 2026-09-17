@@ -16,6 +16,11 @@ import torch
 
 import chrombpnet.training.data_generators.initializers as initializers
 from chrombpnet.model import ChromBPNet, resolve_device, save_model
+from chrombpnet.training.utils.benchmark_utils import (
+    benchmark_enables,
+    benchmark_level,
+    use_keras_batch_order_shuffle,
+)
 from chrombpnet.training.utils.losses import chrombpnet_loss
 
 
@@ -76,6 +81,14 @@ def get_model(args, parameters):
         torch.cuda.manual_seed_all(args.seed)
     np.random.seed(args.seed)
     random.seed(args.seed)
+    if benchmark_enables(args, "deterministic_kernels"):
+        torch.use_deterministic_algorithms(True)
+        if torch.backends.cudnn.is_available():
+            torch.backends.cudnn.benchmark = False
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.allow_tf32 = False
+        if torch.cuda.is_available():
+            torch.backends.cuda.matmul.allow_tf32 = False
     model = builder(args, parameters)
     return model, architecture
 
@@ -90,14 +103,24 @@ def _tensor_batch(batch, device):
     return sequence_tensor, profile, logcounts
 
 
-def _run_epoch(model, generator, device, counts_weight, optimizer=None):
+def _run_epoch(
+    model,
+    generator,
+    device,
+    counts_weight,
+    optimizer=None,
+    sample_weighted=False,
+    batch_order=None,
+):
     training = optimizer is not None
     model.train(training)
     totals = np.zeros(3, dtype=np.float64)
+    total_weight = 0
     batch_rows = []
+    order = range(len(generator)) if batch_order is None else batch_order
     context = torch.enable_grad() if training else torch.no_grad()
     with context:
-        for batch_index in range(len(generator)):
+        for batch_index in order:
             sequence, profile, logcounts = _tensor_batch(generator[batch_index], device)
             if training:
                 optimizer.zero_grad(set_to_none=True)
@@ -115,16 +138,33 @@ def _run_epoch(model, generator, device, counts_weight, optimizer=None):
             values = np.array(
                 [total.item(), profile_loss.item(), count_loss.item()], dtype=np.float64
             )
-            totals += values
+            weight = int(sequence.shape[0]) if sample_weighted else 1
+            totals += values * weight
+            total_weight += weight
             batch_rows.append((batch_index, *values.tolist()))
-    denominator = max(len(generator), 1)
+    denominator = max(total_weight, 1)
     return totals / denominator, batch_rows
+
+
+def _build_optimizer(model, args):
+    parameters = [parameter for parameter in model.parameters() if parameter.requires_grad]
+    options = {"lr": args.learning_rate}
+    if benchmark_enables(args, "keras_adam"):
+        # Keras Adam defaults to epsilon 1e-7; PyTorch defaults to 1e-8.
+        options.update({"eps": 1e-7, "betas": (0.9, 0.999), "amsgrad": False})
+    if benchmark_enables(args, "scalar_adam_dispatch"):
+        # Foreach/fused kernels change the reduction order of the update.
+        options.update({"foreach": False, "fused": False})
+    return torch.optim.Adam(parameters, **options)
 
 
 def fit_and_evaluate(model, train_gen, valid_gen, args, architecture_module, parameters):
     device = resolve_device(getattr(args, "device", None))
     model.to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
+    benchmark = benchmark_level(args)
+    sample_weighted = benchmark_enables(args, "keras_loss_aggregation")
+    shuffle_batch_order = use_keras_batch_order_shuffle(args)
+    optimizer = _build_optimizer(model, args)
     counts_weight = float(parameters["counts_loss_weight"])
     checkpoint_path = args.output_prefix + ".pt"
     epoch_log_path = args.output_prefix + ".log"
@@ -138,10 +178,17 @@ def fit_and_evaluate(model, train_gen, valid_gen, args, architecture_module, par
     batch_rows_all = []
 
     for epoch in range(args.epochs):
-        train_values, train_batches = _run_epoch(
-            model, train_gen, device, counts_weight, optimizer=optimizer
+        # Keras shuffles Sequence batch indices unless fit(shuffle=False).
+        batch_order = (
+            np.random.permutation(len(train_gen)) if shuffle_batch_order else None
         )
-        valid_values, _ = _run_epoch(model, valid_gen, device, counts_weight)
+        train_values, train_batches = _run_epoch(
+            model, train_gen, device, counts_weight, optimizer=optimizer,
+            sample_weighted=sample_weighted, batch_order=batch_order,
+        )
+        valid_values, _ = _run_epoch(
+            model, valid_gen, device, counts_weight, sample_weighted=sample_weighted
+        )
         epoch_rows.append((epoch, *train_values.tolist(), *valid_values.tolist()))
         batch_rows_all.extend((epoch, *row) for row in train_batches)
 
@@ -153,7 +200,8 @@ def fit_and_evaluate(model, train_gen, valid_gen, args, architecture_module, par
             save_model(
                 model,
                 checkpoint_path,
-                provenance={"seed": args.seed, "best_epoch": epoch},
+                provenance={"seed": args.seed, "best_epoch": epoch,
+                            "benchmark": benchmark},
             )
         else:
             epochs_without_improvement += 1
@@ -166,7 +214,8 @@ def fit_and_evaluate(model, train_gen, valid_gen, args, architecture_module, par
     save_model(
         model,
         checkpoint_path,
-        provenance={"seed": args.seed, "epochs_completed": len(epoch_rows)},
+        provenance={"seed": args.seed, "epochs_completed": len(epoch_rows),
+                    "benchmark": benchmark},
     )
     architecture_module.save_model_without_bias(model, args.output_prefix)
 

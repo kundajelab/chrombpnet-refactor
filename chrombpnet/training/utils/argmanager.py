@@ -1,4 +1,5 @@
 import argparse
+from chrombpnet.training.utils.benchmark_utils import add_benchmark_argument
 
 def update_data_args(parser):
     parser.add_argument("-g", "--genome", type=str, required=True, help="Genome fasta")
@@ -17,6 +18,7 @@ def update_train_args(parser):
     parser.add_argument("-pf", "--params", type=str, required=True, default=None)
     parser.add_argument("--trackables",nargs="*",default=['loss','val_loss'], help="list of things to track per batch, such as logcount_predictions_loss,loss,profile_predictions_loss,val_logcount_predictions_loss,val_loss,val_profile_predictions_loss")
     parser.add_argument("--device", default=None, help="PyTorch device (default: CUDA when available)")
+    add_benchmark_argument(parser)
 
 def update_model_args(parser):
     parser.add_argument("-s", "--seed", type=int, default=1234, help="seed to use for model training")

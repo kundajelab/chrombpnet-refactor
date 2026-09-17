@@ -18,6 +18,32 @@ from chrombpnet.model import load_model, resolve_device
 
 NARROWPEAK_SCHEMA = ["chr", "start", "end", "1", "2", "3", "4", "5", "6", "summit"]
 
+# Contribution scoring needs roughly four times the GPU memory of a training
+# step at the same batch size, for two compounding reasons: DeepLIFT pushes the
+# examples and their references through the model together (twice the rows), and
+# Tangermeme's hooks cache a clone of the input and the output of every
+# non-linear module on top of the activations autograd already saves (about
+# twice again). Dividing the training batch size by this factor makes the
+# interpret step cost about as much GPU memory as the training step it follows:
+# measured on an L40S for the 512-filter/8-dilation model at 2114 bp, training
+# at batch size 64 peaks at 4.54 GB and attribution at batch size 16 at 4.63 GB.
+INTERPRET_BATCH_DIVISOR = 4
+DEFAULT_TRAINING_BATCH_SIZE = 64
+
+
+def resolve_interpret_batch_size(args, default=DEFAULT_TRAINING_BATCH_SIZE):
+    """Batch size for contribution scoring, scaled from the training one.
+
+    An explicit ``--interpret-batch-size`` always wins. Otherwise the training
+    batch size is divided by :data:`INTERPRET_BATCH_DIVISOR`, so raising or
+    lowering ``-bs`` moves both steps together.
+    """
+    explicit = getattr(args, "interpret_batch_size", None)
+    if explicit:
+        return max(1, int(explicit))
+    training = getattr(args, "batch_size", None) or default
+    return max(1, int(training) // INTERPRET_BATCH_DIVISOR)
+
 
 class CountsWrapper(nn.Module):
     def __init__(self, model):
@@ -54,7 +80,16 @@ def fetch_interpret_args():
         default=["counts", "profile"],
         choices=["counts", "profile"],
     )
-    parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument("--batch-size", type=int, default=DEFAULT_TRAINING_BATCH_SIZE)
+    parser.add_argument(
+        "-ibs",
+        "--interpret-batch-size",
+        type=int,
+        default=None,
+        help="Batch size for contribution scoring (default: batch size / {})".format(
+            INTERPRET_BATCH_DIVISOR
+        ),
+    )
     parser.add_argument("--num-shuffles", type=int, default=20)
     parser.add_argument("--seed", type=int, default=1234)
     parser.add_argument("--device", default=None)
@@ -155,13 +190,15 @@ def main(args):
         index=False,
         sep="\t",
     )
+    batch_size = resolve_interpret_batch_size(args)
+    print(f"Contribution scoring with batch size {batch_size}")
     interpret(
         model,
         seqs,
         args.output_prefix,
         args.profile_or_counts,
         device=device,
-        batch_size=getattr(args, "batch_size", 64),
+        batch_size=batch_size,
         num_shuffles=getattr(args, "num_shuffles", 20),
         seed=getattr(args, "seed", 1234),
     )

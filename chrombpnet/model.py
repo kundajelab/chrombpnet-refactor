@@ -132,6 +132,81 @@ class BiasModel(BPNet):
     """Semantic name for the background enzyme-bias model."""
 
 
+def assign_keras_layout_weights(model: BPNet, values: Mapping[str, np.ndarray]) -> None:
+    """Assign Keras-layout BPNet arrays to the corresponding PyTorch layers."""
+    with torch.no_grad():
+        model.first_conv.weight.copy_(
+            torch.from_numpy(values["first_kernel"]).permute(2, 1, 0)
+        )
+        model.first_conv.bias.copy_(torch.from_numpy(values["first_bias"]))
+        for layer, convolution in enumerate(model.dilated_convs, start=1):
+            convolution.weight.copy_(
+                torch.from_numpy(values[f"dilated_{layer}_kernel"]).permute(2, 1, 0)
+            )
+            convolution.bias.copy_(
+                torch.from_numpy(values[f"dilated_{layer}_bias"])
+            )
+        model.profile_conv.weight.copy_(
+            torch.from_numpy(values["profile_kernel"]).permute(2, 1, 0)
+        )
+        model.profile_conv.bias.copy_(torch.from_numpy(values["profile_bias"]))
+        model.count_dense.weight.copy_(torch.from_numpy(values["count_kernel"]).T)
+        model.count_dense.bias.copy_(torch.from_numpy(values["count_bias"]))
+
+
+def initialize_keras_compatible(model: BPNet, seed: int) -> None:
+    """Assign canonical Keras-layout Glorot weights to a PyTorch BPNet."""
+    from chrombpnet.training.utils.benchmark_utils import canonical_bpnet_weights
+
+    values = canonical_bpnet_weights(
+        model.config.filters, model.config.n_dilation_layers, seed
+    )
+    assign_keras_layout_weights(model, values)
+
+
+def initialize_keras_default(model: BPNet, seed: int) -> None:
+    """Re-initialize a BPNet the way Keras initializes Conv1D/Dense layers.
+
+    Keras defaults to Glorot/Xavier-uniform kernels with zero biases, while
+    PyTorch defaults to Kaiming-uniform kernels with uniform biases. Unlike
+    :func:`initialize_keras_compatible` this only matches the initializer
+    family, so the two frameworks draw different concrete values. Draws come
+    from a dedicated generator so they do not depend on how many values the
+    native constructor already consumed from the global RNG.
+    """
+    generator = torch.Generator().manual_seed(int(seed))
+    with torch.no_grad():
+        for module in model.modules():
+            if not isinstance(module, (nn.Conv1d, nn.Linear)):
+                continue
+            weight = module.weight
+            # Conv1d weight is (out, in, kernel); Linear weight is (out, in).
+            receptive_field = int(np.prod(weight.shape[2:])) if weight.ndim > 2 else 1
+            fan_in = weight.shape[1] * receptive_field
+            fan_out = weight.shape[0] * receptive_field
+            limit = float(np.sqrt(6.0 / (fan_in + fan_out)))
+            weight.uniform_(-limit, limit, generator=generator)
+            if module.bias is not None:
+                module.bias.zero_()
+
+
+def initialize_for_benchmark(model: BPNet, args) -> Optional[str]:
+    """Apply the initializer implied by ``args.benchmark``, if any.
+
+    ``max`` shares the exact arrays with TensorFlow; ``lite`` and ``medium``
+    only match Keras's default initializer family.
+    """
+    from chrombpnet.training.utils.benchmark_utils import benchmark_enables
+
+    if benchmark_enables(args, "shared_initial_weights"):
+        initialize_keras_compatible(model, args.seed)
+        return "shared_canonical_arrays"
+    if benchmark_enables(args, "keras_initializers"):
+        initialize_keras_default(model, args.seed)
+        return "keras_default_glorot"
+    return None
+
+
 class ChromBPNet(nn.Module):
     """Bias-factorized ChromBPNet with a frozen bias submodel."""
 

@@ -1,8 +1,18 @@
 # Changelog
 
+## PyTorch refactor - contribution-scoring batch size
+- Added `-ibs/--interpret-batch-size` to every command that runs contribution
+  scoring (`pipeline`, `train`, `qc`, `bias pipeline`, `bias train`,
+  `bias qc`, `contribs_bw`). It defaults to the training batch size divided by
+  four rather than reusing it, because DeepLIFT-SHAP needs roughly four times
+  the GPU memory of a training step at the same batch size: examples and their
+  references go through the model together, and Tangermeme's hooks cache a
+  clone of the input and output of every non-linear module on top of the
+  activations autograd already saves. Previously the interpret step inherited
+  `-bs` directly, so the default 64 peaked at 18.3 GB for the 512-filter model
+  and raised CUDA OOM on any GPU smaller than about 24 GB.
+
 ## PyTorch refactor - TF-MoDISco 2.6 migration
-- Replaced the removed `modiscolite`/legacy workflow APIs with the current
-  `modisco.tfmodisco.TFMoDISco` and pattern-oriented HDF5 schema.
 - Routed motif discovery and compact HTML reports through a shared Python API
   adapter, and ported legacy motif inspection and attribution-hit utilities.
 - Removed imports of the deleted `modisco.visualization`,

@@ -15,6 +15,8 @@ import tempfile
 import h5py
 import numpy as np
 
+from modiscolite import io, report, tfmodisco
+
 
 PATTERN_GROUPS = ("pos_patterns", "neg_patterns")
 
@@ -31,27 +33,6 @@ class Pattern:
     @property
     def tag(self) -> str:
         return f"{self.group}.{self.name}"
-
-
-def _modisco_modules():
-    """Import the renamed (2.6+) package and validate its public API."""
-    # Editable/shared installations are commonly read-only on the cluster;
-    # Numba otherwise tries and fails to place memelite caches beside its code.
-    cache_dir = Path(tempfile.gettempdir()) / f"chrombpnet-numba-{os.getuid()}"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    os.environ.setdefault("NUMBA_CACHE_DIR", str(cache_dir))
-    try:
-        import modisco
-        from modisco import io, report, tfmodisco
-    except (ImportError, AttributeError) as exc:
-        raise RuntimeError(
-            "TF-MoDISco >=2.6 is required. Install the checkout at "
-            "/path/to/workdir/software/tfmodisco into "
-            "the chrombpnet-refactor environment."
-        ) from exc
-    if not hasattr(tfmodisco, "TFMoDISco") or not hasattr(io, "save_hdf5"):
-        raise RuntimeError("The installed 'modisco' package does not expose the TF-MoDISco 2.6 API")
-    return modisco, tfmodisco, io, report
 
 
 def centered_slice(length: int, window: int) -> slice:
@@ -105,7 +86,6 @@ def run_motifs(input_path, output_path, max_seqlets=50000, window=500, **kwargs)
 
 def run_arrays(sequences, attributions, output_path, max_seqlets=50000, window=None, **kwargs):
     """Run TF-MoDISco on channel-last arrays and save current-format results."""
-    _, tfmodisco, io, _ = _modisco_modules()
     sequences = np.asarray(sequences, dtype=np.float32)
     attributions = np.asarray(attributions, dtype=np.float32)
     if sequences.ndim != 3 or sequences.shape[-1] != 4:
@@ -142,7 +122,6 @@ def run_arrays(sequences, attributions, output_path, max_seqlets=50000, window=N
 
 def generate_report(input_path, output_dir, motif_file=None, image_suffix="./"):
     """Generate the latest supported compact HTML report (``motifs.html``)."""
-    _, _, _, report = _modisco_modules()
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     report.report_motifs(

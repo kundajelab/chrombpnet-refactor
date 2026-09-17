@@ -1,5 +1,6 @@
 import chrombpnet.training.data_generators.batchgen_generator as batchgen_generator
 from chrombpnet.training.utils import data_utils
+from chrombpnet.training.utils.benchmark_utils import benchmark_enables
 import pandas as pd
 import json
 
@@ -13,7 +14,7 @@ def fetch_data_and_model_params_based_on_mode(mode, args, parameters, nonpeak_re
         negative_sampling_ratio=float(parameters["negative_sampling_ratio"])
         max_jitter=int(parameters["max_jitter"])
         add_revcomp=True
-        shuffle_at_epoch_start=True
+        shuffle_at_epoch_start=not benchmark_enables(args, "fixed_example_order")
         
 
     elif mode=="valid":
@@ -94,7 +95,10 @@ def initialize_generators(args, mode, parameters, return_coords):
                                     cts_bw_file=args.bigwig,
                                     add_revcomp=add_revcomp,
                                     return_coords=return_coords,
-                                    shuffle_at_epoch_start=shuffle_at_epoch_start
+                                    shuffle_at_epoch_start=shuffle_at_epoch_start,
+                                    mode=mode,
+                                    benchmark=getattr(args, "benchmark", None),
+                                    benchmark_seed=getattr(args, "seed", None)
                                     )
-    
+
     return generator

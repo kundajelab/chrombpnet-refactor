@@ -1,4 +1,5 @@
 import argparse
+from chrombpnet.training.utils.benchmark_utils import add_benchmark_argument
 from argparse import RawTextHelpFormatter
 
 
@@ -113,6 +114,7 @@ def read_parser():
         optional_main_parser = train_parser.add_argument_group('optional arguments')
         
         required_main_parser,optional_main_parser = general_training_args(required_main_parser, optional_main_parser)
+        add_benchmark_argument(optional_main_parser)
         
         required_main_parser.add_argument("-b", "--bias-model-path", type=str, required=True, help="Path for a pretrained bias model .pt checkpoint")
 
@@ -121,6 +123,7 @@ def read_parser():
         optional_main_parser.add_argument("-dil", "--n-dilation-layers", type=int, default=8, help="Number of dilation layers to use in chrombpnet model")
         optional_main_parser.add_argument("-j", "--max-jitter", type=int, default=500, help="Maximum jitter applied on either side of region (default 500 for chrombpnet model)")
         optional_main_parser.add_argument("-bs", "--batch-size", type=int, default=64, help="batch size to use for model training")
+        optional_main_parser.add_argument("-ibs", "--interpret-batch-size", type=int, default=None, help="Batch size for contribution scoring. Attribution needs about four times the GPU memory of a training step at the same batch size, so the default is batch-size/4.")
  
          # chrombpnet pipeline arguments
 		
@@ -129,6 +132,7 @@ def read_parser():
         optional_pipeline_parser = pipeline_parser.add_argument_group('optional arguments')
         
         required_pipeline_parser,optional_pipeline_parser = general_training_args(required_pipeline_parser, optional_pipeline_parser)
+        add_benchmark_argument(optional_pipeline_parser)
         
         required_pipeline_parser.add_argument("-b", "--bias-model-path", type=str, required=True, help="Path for a pretrained bias model .pt checkpoint")
 
@@ -137,6 +141,7 @@ def read_parser():
         optional_pipeline_parser.add_argument("-dil", "--n-dilation-layers", type=int, default=8, help="Number of dilation layers to use in chrombpnet model")
         optional_pipeline_parser.add_argument("-j", "--max-jitter", type=int, default=500, help="Maximum jitter applied on either side of region (default 500 for chrombpnet model)")
         optional_pipeline_parser.add_argument("-bs", "--batch-size", type=int, default=64, help="batch size to use for model training")
+        optional_pipeline_parser.add_argument("-ibs", "--interpret-batch-size", type=int, default=None, help="Batch size for contribution scoring. Attribution needs about four times the GPU memory of a training step at the same batch size, so the default is batch-size/4.")
  
         # chrombpnet model qc arguments
 
@@ -156,6 +161,7 @@ def read_parser():
         required_qc_parser.add_argument("-fl", "--chr-fold-path", type=str, required=True, help="Fold information - dictionary with test,valid and train keys and values with corresponding chromosomes") 
         optional_qc_parser.add_argument("-fp","--file-prefix",type=str,required=False, default=None, help="File prefix for output to use. All the files will be prefixed with this string if provided.")
         optional_qc_parser.add_argument("-bs", "--batch-size", type=int, default=64, help="batch size to use for model training")
+        optional_qc_parser.add_argument("-ibs", "--interpret-batch-size", type=int, default=None, help="Batch size for contribution scoring. Attribution needs about four times the GPU memory of a training step at the same batch size, so the default is batch-size/4.")
         optional_qc_parser.add_argument('-hp', '--html-prefix', required=False, default="./", help="The html prefix to use for the html file output.")
         optional_qc_parser.add_argument('--device', default=None, help="PyTorch device (default: CUDA when available)")
  
@@ -166,6 +172,7 @@ def read_parser():
         required_bias_parser = bias_parser.add_argument_group('required arguments')
         optional_bias_parser = bias_parser.add_argument_group('optional arguments')
         required_bias_parser,optional_bias_parser = general_training_args(required_bias_parser, optional_bias_parser)
+        add_benchmark_argument(optional_bias_parser)
         
         required_bias_parser.add_argument("-b", "--bias-threshold-factor", type=float, required=True, help="A threshold is applied on maximum count of non-peak region for training bias model, which is set as this threshold x min(count over peak regions). Recommended start value 0.5 for ATAC and 0.8 for DNase.")
 
@@ -173,6 +180,7 @@ def read_parser():
         optional_bias_parser.add_argument("-dil", "--n-dilation-layers", type=int, default=4, help="Number of dilation layers to use in chrombpnet model")
         optional_bias_parser.add_argument("-j", "--max-jitter", type=int, default=0, help="Maximum jitter applied on either side of region (default 500 for chrombpnet model)")
         optional_bias_parser.add_argument("-bs", "--batch-size", type=int, default=64, help="batch size to use for model training")
+        optional_bias_parser.add_argument("-ibs", "--interpret-batch-size", type=int, default=None, help="Batch size for contribution scoring. Attribution needs about four times the GPU memory of a training step at the same batch size, so the default is batch-size/4.")
 
        # bias model training arguments
 
@@ -180,6 +188,7 @@ def read_parser():
         required_biast_parser = bias_parser_train.add_argument_group('required arguments')
         optional_biast_parser = bias_parser_train.add_argument_group('optional arguments')
         required_biast_parser,optional_biast_parser = general_training_args(required_biast_parser, optional_biast_parser)
+        add_benchmark_argument(optional_biast_parser)
         
         required_biast_parser.add_argument("-b", "--bias-threshold-factor", type=float, required=True, help="A threshold is applied on maximum count of non-peak region for training bias model, which is set as this threshold x min(count over peak regions). Recommended start value 0.5 for ATAC and 0.8 for DNas")
 
@@ -187,6 +196,7 @@ def read_parser():
         optional_biast_parser.add_argument("-dil", "--n-dilation-layers", type=int, default=4, help="Number of dilation layers to use in chrombpnet model")
         optional_biast_parser.add_argument("-j", "--max-jitter", type=int, default=0, help="Maximum jitter applied on either side of region (default 500 for chrombpnet model)")
         optional_biast_parser.add_argument("-bs", "--batch-size", type=int, default=64, help="batch size to use for model training")
+        optional_biast_parser.add_argument("-ibs", "--interpret-batch-size", type=int, default=None, help="Batch size for contribution scoring. Attribution needs about four times the GPU memory of a training step at the same batch size, so the default is batch-size/4.")
  
        # bias model qc arguments
 
@@ -205,6 +215,7 @@ def read_parser():
         required_bqc_parser.add_argument("-fl", "--chr-fold-path", type=str, required=True, help="Fold information - dictionary with test,valid and train keys and values with corresponding chromosomes") 
         optional_bqc_parser.add_argument("-fp","--file-prefix",type=str,required=False, default=None, help="File prefix for output to use. All the files will be prefixed with this string if provided.")
         optional_bqc_parser.add_argument("-bs", "--batch-size", type=int, default=64, help="batch size to use for model training")
+        optional_bqc_parser.add_argument("-ibs", "--interpret-batch-size", type=int, default=None, help="Batch size for contribution scoring. Attribution needs about four times the GPU memory of a training step at the same batch size, so the default is batch-size/4.")
         optional_bqc_parser.add_argument('-hp', '--html-prefix', required=False, default="./", help="The html prefix to use for the html file output.")
         optional_bqc_parser.add_argument('--device', default=None, help="PyTorch device (default: CUDA when available)")
  
@@ -247,6 +258,7 @@ def read_parser():
         optional_contribs.add_argument("-d", "--debug-chr", nargs="+", type=str, default=None, help="Run for specific chromosomes only (e.g. chr1 chr2) for debugging")
         optional_contribs.add_argument('--device', default=None, help="PyTorch device (default: CUDA when available)")
         optional_contribs.add_argument('--batch-size', type=int, default=64)
+        optional_contribs.add_argument("-ibs", "--interpret-batch-size", type=int, default=None, help="Batch size for contribution scoring. Attribution needs about four times the GPU memory of a training step at the same batch size, so the default is batch-size/4.")
         optional_contribs.add_argument('--num-shuffles', type=int, default=20)
         optional_contribs.add_argument('--seed', type=int, default=1234)
     

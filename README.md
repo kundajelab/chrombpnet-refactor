@@ -15,18 +15,25 @@ in `chrombpnet_bugs.md`.
 ```bash
 conda env create -f environment.yml
 conda activate chrombpnet-refactor
-pip install -e .
 ```
+
+Run the command from the repository root: `environment.yml` installs this
+repository in editable mode and applies the supplemental pip requirements in
+`requirements.txt`.
 
 The environment installs a CUDA-enabled PyTorch build which automatically falls
 back to CPU. Commands accept `--device cpu`, `--device cuda`, or a specific
 device such as `--device cuda:1`.
 
-Motif discovery and reports use TF-MoDISco 2.6 from the editable checkout at
-`/path/to/workdir/software/tfmodisco`. The refactor calls the
-current `modisco` Python API directly and writes the `pos_patterns` /
-`neg_patterns` HDF5 schema. Recreate the environment after moving that checkout,
-or reinstall it with `python -m pip install -e /new/path/to/tfmodisco`.
+Motif discovery and reports use TF-MoDISco 2.6, pinned in `requirements.txt` to
+upstream commit `6990c65ae320cc891c1265f010e8c16ad772e198`. The refactor calls
+the current `modiscolite` Python API directly and writes the `pos_patterns` /
+`neg_patterns` HDF5 schema.
+
+The environment does not install the MEME Suite executable: its current Conda
+build requires a newer glibc than Sherlock provides, and this repository does
+not invoke that executable. If an external workflow requires `meme`, use the
+Sherlock module or a locally built MEME Suite installation.
 
 ## Python API
 

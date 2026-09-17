@@ -21,9 +21,9 @@ dependencies = [
   "scikit-learn>=1.3",
   "scipy>=1.11",
   "tables>=3.9",
-  "tangermeme>=1.4,<1.5",
+  "tangermeme @ git+https://github.com/jmschrei/tangermeme.git",
   "termcolor>=2.4",
-  "torch>=2.12,<2.13",
+  "torch>=2.5,<2.13",
   "tqdm>=4.66",
   "weasyprint>=52.5",
 ]

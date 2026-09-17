@@ -10,12 +10,26 @@ from chrombpnet.model import (
     ChromBPNet,
     ModelConfig,
     PredictionAdapter,
+    initialize_for_benchmark,
+    initialize_keras_compatible,
+    initialize_keras_default,
     load_model,
     resolve_device,
     save_model,
 )
 from chrombpnet.training.utils.losses import chrombpnet_loss, multinomial_nll
-from chrombpnet.training.train import get_model
+from chrombpnet.training.train import _build_optimizer, get_model
+from chrombpnet.training.utils.benchmark_utils import (
+    BENCHMARK_CONTROLS,
+    BENCHMARK_LEVELS,
+    benchmark_enables,
+    benchmark_level,
+    canonical_bpnet_weights,
+    generator_seed,
+    make_generator_rng,
+    normalize_benchmark_level,
+    use_keras_batch_order_shuffle,
+)
 
 
 SMALL = ModelConfig(input_length=128, output_length=20, filters=8, n_dilation_layers=2)
@@ -140,3 +154,131 @@ def test_chrombpnet_seed_controls_trainable_initialization(tmp_path):
     second, _ = get_model(args, parameters)
     for left, right in zip(first.tf_model.parameters(), second.tf_model.parameters()):
         assert torch.equal(left, right)
+
+
+def test_benchmark_initializer_uses_canonical_glorot_arrays():
+    model = BPNet(SMALL)
+    initialize_keras_compatible(model, seed=19)
+    expected = canonical_bpnet_weights(
+        SMALL.filters, SMALL.n_dilation_layers, seed=19
+    )
+    np.testing.assert_array_equal(
+        model.first_conv.weight.detach().numpy(),
+        expected["first_kernel"].transpose(2, 1, 0),
+    )
+    np.testing.assert_array_equal(
+        model.profile_conv.weight.detach().numpy(),
+        expected["profile_kernel"].transpose(2, 1, 0),
+    )
+    np.testing.assert_array_equal(
+        model.count_dense.weight.detach().numpy(), expected["count_kernel"].T
+    )
+
+
+
+def test_benchmark_levels_are_ordered_and_default_to_max():
+    assert BENCHMARK_LEVELS == ("lite", "medium", "max")
+    assert normalize_benchmark_level(True) == "max"
+    assert normalize_benchmark_level(None) is None
+    assert normalize_benchmark_level(False) is None
+    assert benchmark_level(SimpleNamespace(seed=1)) is None
+    with pytest.raises(ValueError, match="Unknown benchmark level"):
+        normalize_benchmark_level("huge")
+    # Every control is monotone: once active it stays active at stricter levels.
+    for control in BENCHMARK_CONTROLS:
+        active = [benchmark_enables(level, control) for level in BENCHMARK_LEVELS]
+        assert active == sorted(active)
+
+
+def test_benchmark_level_selects_the_expected_controls():
+    assert benchmark_enables("lite", "keras_adam")
+    assert benchmark_enables("lite", "seeded_threshold_draw")
+    assert benchmark_enables("lite", "restore_best_checkpoint")
+    assert not benchmark_enables("lite", "fixed_example_order")
+    assert not benchmark_enables("lite", "generator_rng")
+    assert benchmark_enables("medium", "fixed_example_order")
+    assert benchmark_enables("medium", "generator_rng")
+    assert not benchmark_enables("medium", "shared_initial_weights")
+    assert not benchmark_enables("medium", "deterministic_kernels")
+    assert benchmark_enables("max", "shared_initial_weights")
+    assert benchmark_enables("max", "replayable_augmentation")
+    # Keras shuffles batch indices by default; medium and above pin the order.
+    assert use_keras_batch_order_shuffle("lite")
+    assert not use_keras_batch_order_shuffle("medium")
+    assert not use_keras_batch_order_shuffle(None)
+
+
+def test_lite_initializer_is_glorot_but_not_the_shared_arrays():
+    model = BPNet(SMALL)
+    initialize_keras_default(model, seed=19)
+    shared = canonical_bpnet_weights(SMALL.filters, SMALL.n_dilation_layers, seed=19)
+    # Same initializer family and bounds as Keras...
+    for weight, (fan_in, fan_out) in (
+        (model.first_conv.weight, (21 * 4, 21 * SMALL.filters)),
+        (model.count_dense.weight, (SMALL.filters, 1)),
+    ):
+        limit = np.sqrt(6.0 / (fan_in + fan_out))
+        assert float(weight.detach().abs().max()) <= limit
+    assert torch.all(model.first_conv.bias == 0)
+    assert torch.all(model.count_dense.bias == 0)
+    # ...but a different concrete draw than the cross-framework arrays.
+    assert not np.allclose(
+        model.first_conv.weight.detach().numpy(),
+        shared["first_kernel"].transpose(2, 1, 0),
+    )
+    # The draw is reproducible from the seed alone.
+    other = BPNet(SMALL)
+    initialize_keras_default(other, seed=19)
+    assert torch.equal(model.first_conv.weight, other.first_conv.weight)
+
+
+def test_initialize_for_benchmark_dispatches_on_level():
+    assert initialize_for_benchmark(BPNet(SMALL), SimpleNamespace(seed=3)) is None
+    for level, expected in (
+        ("lite", "keras_default_glorot"),
+        ("medium", "keras_default_glorot"),
+        ("max", "shared_canonical_arrays"),
+    ):
+        args = SimpleNamespace(seed=3, benchmark=level)
+        assert initialize_for_benchmark(BPNet(SMALL), args) == expected
+    model = BPNet(SMALL)
+    initialize_for_benchmark(model, SimpleNamespace(seed=3, benchmark="max"))
+    expected = canonical_bpnet_weights(SMALL.filters, SMALL.n_dilation_layers, 3)
+    np.testing.assert_array_equal(
+        model.first_conv.weight.detach().numpy(),
+        expected["first_kernel"].transpose(2, 1, 0),
+    )
+
+
+def test_benchmark_adam_matches_keras_epsilon():
+    model = BPNet(SMALL)
+    args = SimpleNamespace(learning_rate=0.001, benchmark=True)
+    optimizer = _build_optimizer(model, args)
+    assert optimizer.defaults["eps"] == 1e-7
+    assert optimizer.defaults["foreach"] is False
+    assert optimizer.defaults["fused"] is False
+
+
+def test_lite_adam_matches_keras_epsilon_without_pinning_dispatch():
+    model = BPNet(SMALL)
+    lite = _build_optimizer(model, SimpleNamespace(learning_rate=0.001, benchmark="lite"))
+    assert lite.defaults["eps"] == 1e-7
+    assert lite.defaults["betas"] == (0.9, 0.999)
+    assert lite.defaults["amsgrad"] is False
+    assert lite.defaults["foreach"] is None
+    assert lite.defaults["fused"] is None
+    plain = _build_optimizer(model, SimpleNamespace(learning_rate=0.001))
+    assert plain.defaults["eps"] == 1e-8
+
+
+def test_generator_rng_is_dedicated_from_medium_and_replayable_at_max():
+    assert make_generator_rng("lite", 1234, "train") is np.random
+    assert make_generator_rng(None, 1234, "train") is np.random
+    stream = make_generator_rng("medium", 1234, "train")
+    assert isinstance(stream, np.random.RandomState)
+    # train/valid streams are independent, and epoch k is a pure function.
+    assert generator_seed(1234, "train", 0) != generator_seed(1234, "valid", 0)
+    assert generator_seed(1234, "train", 1) != generator_seed(1234, "train", 0)
+    left = make_generator_rng("max", 1234, "train", epoch=2)
+    right = make_generator_rng("max", 1234, "train", epoch=2)
+    np.testing.assert_array_equal(left.permutation(10), right.permutation(10))

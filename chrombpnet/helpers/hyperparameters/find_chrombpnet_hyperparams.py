@@ -3,6 +3,7 @@ import pyfaidx
 import pyBigWig
 import pandas as pd
 import numpy as np
+from chrombpnet.training.utils.benchmark_utils import benchmark_enables
 import os
 from chrombpnet.helpers.hyperparameters import param_utils as param_utils
 import json
@@ -106,7 +107,10 @@ def main(args):
 
     if args.negative_sampling_ratio > 0:
         sample_size = min(int(args.negative_sampling_ratio * len(peak_cnts)), len(nonpeak_cnts))
-        final_cnts = np.concatenate((peak_cnts, np.random.choice(nonpeak_cnts, replace=False, size=sample_size)))
+        # A seeded draw keeps the count threshold, counts_loss_weight and the
+        # filtered BEDs byte-identical between the two frameworks.
+        rng = np.random.RandomState(args.seed) if benchmark_enables(args, "seeded_threshold_draw") else np.random
+        final_cnts = np.concatenate((peak_cnts, rng.choice(nonpeak_cnts, replace=False, size=sample_size)))
     else:
         final_cnts = peak_cnts
 
