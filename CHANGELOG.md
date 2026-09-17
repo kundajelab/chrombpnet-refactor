@@ -1,5 +1,19 @@
 # Changelog
 
+## PyTorch refactor - lite benchmark settings are now the default
+- `--benchmark` now defaults to `lite` when the flag is omitted, so ordinary
+  runs match the TensorFlow implementation this package is a port of:
+  Glorot/Xavier Conv1d/Linear initialization with zero biases, Adam epsilon
+  1e-7, Keras-style sample-weighted epoch losses, Keras-style shuffled batch
+  visit order, a seeded count-threshold nonpeak draw, and restoration of the
+  best-validation checkpoint. Shuffling and augmentation stay random, and no
+  deterministic-kernel or TF32 constraints are applied, so throughput is
+  unchanged.
+- A bare `--benchmark` still means `max`, as before.
+- Added `--benchmark none` to get PyTorch's own native defaults (Kaiming
+  initialization, Adam epsilon 1e-8, per-batch loss averaging, sequential batch
+  order). Use it to reproduce runs made before this change.
+
 ## PyTorch refactor - contribution-scoring batch size
 - Added `-ibs/--interpret-batch-size` to every command that runs contribution
   scoring (`pipeline`, `train`, `qc`, `bias pipeline`, `bias train`,

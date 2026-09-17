@@ -37,8 +37,10 @@ def test_training_cli_exposes_benchmark_mode():
             capture_output=True,
         )
         assert "--benchmark" in completed.stdout
-        # Three explicit levels, with a bare --benchmark still accepted.
-        assert "{lite,medium,max}" in completed.stdout.replace("\n", "")
+        # Three levels plus an opt-out, with a bare --benchmark still accepted.
+        # Matched without the opening brace so this holds for the TensorFlow
+        # help too, which offers no "none".
+        assert "lite,medium,max}" in completed.stdout.replace("\n", "")
 
 
 def test_nonpeak_oversampling_is_bounded_by_available_rows():
@@ -107,3 +109,39 @@ def test_interpret_batch_size_is_exposed_wherever_interpret_runs():
             capture_output=True,
         )
         assert "--interpret-batch-size" in completed.stdout, command
+
+
+def test_benchmark_defaults_to_lite_when_the_flag_is_omitted():
+    import chrombpnet.parsers as parsers
+    from chrombpnet.training.utils.benchmark_utils import (
+        BENCHMARK_DEFAULT_LEVEL,
+        BENCHMARK_IMPLICIT_LEVEL,
+        benchmark_enables,
+        benchmark_level,
+    )
+
+    base = ["pipeline", "-ibam", "b", "-d", "ATAC", "-g", "g", "-c", "c",
+            "-p", "p", "-n", "n", "-fl", "f", "-b", "b", "-o", "o"]
+
+    def parse(extra):
+        argv = ["chrombpnet"] + base + extra
+        original, sys.argv = sys.argv, argv
+        try:
+            return parsers.read_parser()
+        finally:
+            sys.argv = original
+
+    assert BENCHMARK_IMPLICIT_LEVEL == "lite"
+    # Omitting the flag now selects lite, so the refactor matches the
+    # TensorFlow implementation's settings out of the box.
+    assert benchmark_level(parse([])) == "lite"
+    assert benchmark_enables(parse([]), "keras_adam")
+    assert benchmark_enables(parse([]), "keras_initializers")
+    assert not benchmark_enables(parse([]), "fixed_example_order")
+    # A bare flag still means max, as it did before the default changed.
+    assert benchmark_level(parse(["--benchmark"])) == BENCHMARK_DEFAULT_LEVEL == "max"
+    # "none" is the escape hatch back to PyTorch's native defaults.
+    assert benchmark_level(parse(["--benchmark", "none"])) is None
+    assert not benchmark_enables(parse(["--benchmark", "none"]), "keras_adam")
+    for level in ("lite", "medium", "max"):
+        assert benchmark_level(parse(["--benchmark", level])) == level

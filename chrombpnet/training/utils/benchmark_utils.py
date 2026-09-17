@@ -40,7 +40,21 @@ import numpy as np
 
 
 BENCHMARK_LEVELS = ("lite", "medium", "max")
+
+# Level used for a bare ``--benchmark`` with no value.
 BENCHMARK_DEFAULT_LEVEL = "max"
+
+# Level used when ``--benchmark`` is not given at all. ``lite`` only changes
+# settings that bring the refactor in line with the TensorFlow implementation
+# it is a port of - Glorot/Xavier initialization, Adam epsilon 1e-7, Keras loss
+# aggregation and batch order, and a seeded count-threshold draw - so it is the
+# right default for ordinary runs. Pass ``--benchmark none`` for PyTorch's own
+# native defaults.
+BENCHMARK_IMPLICIT_LEVEL = "lite"
+
+# "none" is accepted on the command line but is not a level, so it is kept out
+# of BENCHMARK_LEVELS and the rank table.
+BENCHMARK_CHOICES = ("none",) + BENCHMARK_LEVELS
 
 _LEVEL_RANK = {name: rank for rank, name in enumerate(BENCHMARK_LEVELS, start=1)}
 
@@ -116,24 +130,30 @@ def benchmark_enables(source, control):
 
 
 BENCHMARK_HELP = (
-    "Enable controlled TensorFlow/PyTorch benchmark settings. "
+    "Controlled TensorFlow/PyTorch benchmark settings (default: lite). "
     "lite: match the TensorFlow model/optimizer settings (Glorot/Xavier Conv1D "
     "initialization, Adam epsilon 1e-7, Keras loss aggregation and batch order) "
     "while normal shuffling and augmentation stay random. "
     "medium: lite plus a pinned, framework-shared example schedule. "
     "max: hold as much constant as possible, including identical initial weight "
-    "arrays and deterministic kernels. A bare --benchmark means max."
+    "arrays and deterministic kernels. "
+    "none: PyTorch's own native defaults, with no TensorFlow parity. "
+    "A bare --benchmark means max."
 )
 
 
 def add_benchmark_argument(parser):
-    """Register ``--benchmark [lite|medium|max]`` on an argparse parser."""
+    """Register ``--benchmark [none|lite|medium|max]`` on an argparse parser.
+
+    Omitting the flag selects :data:`BENCHMARK_IMPLICIT_LEVEL`; a bare
+    ``--benchmark`` selects :data:`BENCHMARK_DEFAULT_LEVEL`.
+    """
     return parser.add_argument(
         "--benchmark",
         nargs="?",
         const=BENCHMARK_DEFAULT_LEVEL,
-        default=None,
-        choices=BENCHMARK_LEVELS,
+        default=BENCHMARK_IMPLICIT_LEVEL,
+        choices=BENCHMARK_CHOICES,
         help=BENCHMARK_HELP,
     )
 
