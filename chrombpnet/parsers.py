@@ -276,20 +276,6 @@ def read_parser():
         optional_ftps.add_argument("--ylim",default=None,type=tuple, required=False,help="lower and upper y-limits for plotting the motif footprint, in the form of a tuple i.e. \
         (0,0.8). If this is set to None, ylim will be autodetermined.")
   
-        # Do variant scoring
-        
-        #variants_parser._action_groups.pop()
-        #required_ves =  variants_parser.add_argument_group('required arguments')
-        #optional_ves =  variants_parser.add_argument_group('optional arguments')
-        #required_ves.add_argument("-snps", "--snp-data", type=str, required=True, help="Path to a tsv output with the following information in columns - chr, position to insert allele (0-based), ref allele, alt allele")
-        #required_ves.add_argument("-m", "--model-h5", type=str, required=True, help="Path model .h5 file")
-        #required_ves.add_argument("-g", "--genome", type=str, required=True, help="Genome fasta")
-        #required_ves.add_argument("-op", "--output-prefix", type=str, required=True, help="Output prefix for bigwig files")
-   
-        #optional_ves.add_argument("-bs", "--batch-size", type=int, default=64, help="batch size to use for prediction")
-        #optional_ves.add_argument("-dm","--debug-mode-on", type=int, default=0, help="Use this mode to print the flanks of first five SNP insert locations")
-        
-        
         # Run TF-Modisco
         
         motifs_parser._action_groups.pop()

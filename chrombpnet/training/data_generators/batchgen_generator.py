@@ -78,8 +78,6 @@ class ChromBPNetBatchGenerator:
         if (self.peak_seqs is not None) and (self.nonpeak_seqs is not None):
             # crop peak data before stacking
             cropped_peaks, cropped_cnts, cropped_coords = augment.random_crop(self.peak_seqs, self.peak_cts, self.inputlen, self.outputlen, self.peak_coords, rng=self.rng)
-            #print(cropped_peaks.shape)
-            #print(self.nonpeak_seqs.shape)
             requested_nonpeaks = int(self.negative_sampling_ratio * len(self.peak_seqs))
             if requested_nonpeaks < len(self.nonpeak_seqs):
                 self.sampled_nonpeak_seqs, self.sampled_nonpeak_cts, self.sampled_nonpeak_coords = subsample_nonpeak_data(self.nonpeak_seqs, self.nonpeak_cts, self.nonpeak_coords, len(self.peak_seqs), self.negative_sampling_ratio, rng=self.rng)
