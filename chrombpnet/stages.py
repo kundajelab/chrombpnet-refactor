@@ -42,17 +42,19 @@ PWM_WIDTH = 24
 MIN_BIAS_PEAK_PEARSONR = -0.5
 
 #: Enzyme-bias motifs inserted for marginal footprinting, by assay.
+#:
+#: Kept in step with chrombpnet/data/motif_to_pwm.{ATAC,DNASE}.tsv by
+#: tests/test_stages.py. The table is written out rather than copied from those
+#: files because the packaged copies use CRLF line endings, and the generated
+#: auxiliary TSV has always been LF.
 BIAS_MOTIFS = {
     "ATAC": [["tn5_1", "GCACAGTACAGAGCTG"],
              ["tn5_2", "GTGCACAGTTCTAGAGTGTGCAG"],
              ["tn5_3", "CCTCTACACTGTGCAGAA"],
              ["tn5_4", "GCACAGTTCTAGACTGTGCAG"],
              ["tn5_5", "CTGCACAGTGTAGAGTTGTGC"]],
-    # dnase_2 repeats dnase_1's sequence. That is what the pipeline has always
-    # inserted, so it is preserved here; chrombpnet/data/motif_to_pwm.DNASE.tsv
-    # has TGTACTTACGAA for dnase_2 instead.
     "DNASE": [["dnase_1", "TTTACAAGTCCA"],
-              ["dnase_2", "TTTACAAGTCCA"]],
+              ["dnase_2", "TGTACTTACGAA"]],
 }
 
 

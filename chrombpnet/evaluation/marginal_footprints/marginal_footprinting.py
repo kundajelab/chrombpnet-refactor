@@ -65,6 +65,27 @@ def fetch_footprinting_args():
     args = parser.parse_args()
     return args
 
+#: Width of the footprint window plotted around the motif insertion point.
+FOOTPRINT_PLOT_WIDTH = 200
+
+
+def _centered_footprint(footprint, outputlen):
+    """The central window of a footprint, and the x values to plot it against.
+
+    The width was hardcoded at 200 while the x axis was built independently as
+    a 200-element range, which raises "x and y must have same first dimension"
+    whenever outputlen is below 200: the slice
+    ``[outputlen//2-100 : outputlen//2+100]`` is shorter than the axis then,
+    and empty for outputlen <= 100. The window is now clamped to what the
+    profile actually contains, so a shorter model plots its full profile rather
+    than failing. For outputlen >= 200 nothing changes.
+    """
+    width = min(FOOTPRINT_PLOT_WIDTH, outputlen)
+    half = width // 2
+    window = footprint[outputlen // 2 - half:outputlen // 2 + half]
+    return range(len(window)), window
+
+
 def get_footprint_for_motif(seqs, motif, model, inputlen, batch_size):
     '''
     Returns footprints for a given motif. Motif is inserted in both the actual sequence and reverse complemented version.
@@ -122,10 +143,11 @@ def main(args):
 	footprints_at_motifs[motif]=[motif_footprint,motif_counts]
 
 	plt.figure()
-	plt.plot(range(200),motif_footprint[outputlen//2-100:outputlen//2+100])
+	plt.plot(*_centered_footprint(motif_footprint, outputlen))
 	if args.ylim is not None: 
 		plt.ylim(args.ylim)
-	plt.xlabel("200bp arount motif insertion", fontsize=11)
+	plt.xlabel("{}bp around motif insertion".format(
+			min(FOOTPRINT_PLOT_WIDTH, outputlen)), fontsize=11)
 	plt.ylabel("Probability", fontsize=11)
 	plt.xticks(ticks=[0,100,200], labels=[-100,0,100])
 	plt.tight_layout()
@@ -145,10 +167,11 @@ def main(args):
 		if ("tn5" in motif.lower()) or ("dnase" in motif.lower()):
 				avg_response_at_tn5.append(np.round(np.max(motif_footprint),3))
 		plt.figure()
-		plt.plot(range(200),motif_footprint[outputlen//2-100:outputlen//2+100])
+		plt.plot(*_centered_footprint(motif_footprint, outputlen))
 		if args.ylim is not None: 
 			plt.ylim(args.ylim)
-		plt.xlabel("200bp arount motif insertion", fontsize=11)
+		plt.xlabel("{}bp around motif insertion".format(
+			min(FOOTPRINT_PLOT_WIDTH, outputlen)), fontsize=11)
 		plt.ylabel("Probability", fontsize=11)
 		plt.xticks(ticks=[0,100,200], labels=[-100,0,100])
 		plt.tight_layout()

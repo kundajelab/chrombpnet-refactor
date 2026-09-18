@@ -50,7 +50,8 @@ That holds only because three things are pinned:
   (`RUN_DIR`), and a captured baseline keeps a *copy* of that tree so mismatches
   can still be explained. This is why the harness does not use pytest's
   `tmp_path`. Override with `CHROMBPNET_REGRESSION_RUN_DIR` to run two
-  environments side by side — but use the same value for a capture and the
+  environments side by side -- the worktree and baseline that `against --ref`
+  creates are derived from it, so one override isolates a whole invocation — but use the same value for a capture and the
   compare that reads it.
 - **CPU, single-threaded.** `--device cpu` throughout, with `OMP_NUM_THREADS=1`
   and friends, because threaded CPU reductions do not have a fixed summation

@@ -1,5 +1,23 @@
 # Changelog
 
+## PyTorch refactor - DNase footprinting and the footprint plot window
+- The DNase marginal-footprinting table listed `dnase_2` with `dnase_1`'s
+  sequence (`TTTACAAGTCCA`), so every DNase run footprinted the same motif
+  twice and never footprinted the intended second one. The packaged
+  `chrombpnet/data/motif_to_pwm.DNASE.tsv` has `TGTACTTACGAA` for `dnase_2`;
+  the inserted table now matches it, and a test keeps the two in step.
+  **This changes DNase footprint output.** ATAC is unaffected -- its five Tn5
+  motifs already matched the packaged table exactly.
+- Marginal footprint plots hardcoded a 200 bp window while building the x axis
+  as an independent 200-element range, so any model with `outputlen < 200`
+  failed with "x and y must have same first dimension" instead of plotting.
+  The window is now clamped to the profile length. Models with
+  `outputlen >= 200` plot exactly the same data as before.
+- The footprint plots' x-axis label read "200bp arount motif insertion" and is
+  now "<width>bp around motif insertion". This changes the footprint PNGs --
+  measured as 1832 pixels per plot, all in the label -- but not the plotted
+  curves or `*_footprints.h5`.
+
 ## PyTorch refactor - qc and bias qc are now reproducible
 - `chrombpnet qc` and `chrombpnet bias qc` previously reported different
   metrics on every run for the same model and inputs. Neither command exposes

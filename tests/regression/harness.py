@@ -48,6 +48,11 @@ DEFAULT_WORKSPACE = Path("/tmp/chrombpnet-regression") / f"uid{os.getuid()}"
 RUN_DIR = Path(os.environ.get("CHROMBPNET_REGRESSION_RUN_DIR",
                               str(DEFAULT_WORKSPACE / "run")))
 
+#: Scratch for `against --ref`, derived from RUN_DIR so that overriding the run
+#: directory isolates a whole invocation. Two runs that shared these would
+#: overwrite each other's baseline and report meaningless path diffs.
+SCRATCH = RUN_DIR.parent / f"{RUN_DIR.name}-scratch"
+
 #: Pinned so CPU reduction order, hashing and plot rendering cannot drift.
 PINNED_ENV = {
     "PYTHONHASHSEED": "0",
@@ -259,9 +264,9 @@ def against_ref(ref: str, benchmark: str | None, names: list[str] | None) -> int
     `chrombpnet` resolves from the stage, and `tests` falls through to the repo.
     """
     repo = Path(__file__).resolve().parents[2]
-    worktree = DEFAULT_WORKSPACE / f"ref-{ref.replace('/', '_')}"
-    stage = DEFAULT_WORKSPACE / f"stage-{ref.replace('/', '_')}"
-    baseline = DEFAULT_WORKSPACE / "baseline"
+    worktree = SCRATCH / f"ref-{ref.replace('/', '_')}"
+    stage = SCRATCH / f"stage-{ref.replace('/', '_')}"
+    baseline = SCRATCH / "baseline"
 
     if worktree.exists():
         subprocess.run(["git", "-C", str(repo), "worktree", "remove", "--force",
@@ -275,7 +280,7 @@ def against_ref(ref: str, benchmark: str | None, names: list[str] | None) -> int
     (stage / "chrombpnet").symlink_to(worktree / "chrombpnet",
                                       target_is_directory=True)
 
-    neutral_cwd = DEFAULT_WORKSPACE / "cwd"
+    neutral_cwd = SCRATCH / "cwd"
     neutral_cwd.mkdir(parents=True, exist_ok=True)
     try:
         print(f"--- capturing baseline from {ref} ---")
