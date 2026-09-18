@@ -27,3 +27,15 @@ def is_disabled(path):
     disabled the set for the generator but not for the metrics that read it.
     """
     return path is None or str(path).lower() == DISABLED.lower()
+
+
+def window_bounds(row, width):
+    """Half-open bounds of a ``width``-wide window centred on a region's summit.
+
+    ``summit`` is an offset from ``start``, so the centre is ``start + summit``.
+    This arithmetic was written out separately in three get_seq variants and in
+    param_utils.get_seqs_cts; those differ in how they *filter* the resulting
+    sequences, not in where they cut.
+    """
+    centre = row['start'] + row['summit']
+    return centre - width // 2, centre + width // 2

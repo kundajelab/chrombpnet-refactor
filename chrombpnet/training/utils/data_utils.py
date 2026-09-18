@@ -1,3 +1,4 @@
+from chrombpnet.regions import window_bounds
 import numpy as np
 import pyBigWig
 import pyfaidx
@@ -14,7 +15,8 @@ def get_seq(peaks_df, genome, width):
         raise ValueError("No regions are available for sequence extraction")
 
     for i, r in peaks_df.iterrows():
-        sequence = str(genome[r['chr']][(r['start']+r['summit'] - width//2):(r['start'] + r['summit'] + width//2)])
+        start, end = window_bounds(r, width)
+        sequence = str(genome[r['chr']][start:end])
         vals.append(sequence)
 
     return one_hot.dna_to_one_hot(vals)

@@ -2,7 +2,7 @@ import pyBigWig
 import numpy as np
 from chrombpnet.training.utils.data_utils import one_hot
 import pandas as pd
-from chrombpnet.regions import NARROWPEAK_SCHEMA
+from chrombpnet.regions import NARROWPEAK_SCHEMA, window_bounds
 
 def read_chrom_sizes(fname):
     with open(fname) as f:
@@ -18,7 +18,8 @@ def get_seq(peaks_df, genome, width):
     vals = []
     peaks_used = []
     for i, r in peaks_df.iterrows():
-        sequence = str(genome[r['chr']][(r['start']+r['summit'] - width//2):(r['start'] + r['summit'] + width//2)])
+        start, end = window_bounds(r, width)
+        sequence = str(genome[r['chr']][start:end])
         if len(sequence) == width:
             vals.append(sequence)
             peaks_used.append(True)

@@ -75,7 +75,7 @@ def chrombpnet_train_pipeline(args):
 
     import chrombpnet.helpers.generate_reports.make_html as make_html
     if args.cmd == "train":
-        stages.write_report(args, layout, make_html, args.cmd)
+        stages.render_report(args, layout, make_html, args.cmd)
         print("Finished training! Exiting!")
         return
 
@@ -104,7 +104,7 @@ def chrombpnet_train_pipeline(args):
     stages.run_modisco(layout, "chrombpnet_nobias", "profile",
                        "chrombpnet_nobias_profile.pdf")
 
-    stages.write_report(args, layout, make_html, args.cmd)
+    stages.render_report(args, layout, make_html, args.cmd)
 
 
 def chrombpnet_qc(args):
@@ -145,7 +145,7 @@ def chrombpnet_qc(args):
                        "chrombpnet_nobias_profile.pdf")
 
     import chrombpnet.helpers.generate_reports.make_html as make_html
-    stages.write_report(args, layout, make_html, args.cmd)
+    stages.render_report(args, layout, make_html, args.cmd)
 
 
 def train_bias_pipeline(args):
@@ -185,7 +185,7 @@ def train_bias_pipeline(args):
 
     import chrombpnet.helpers.generate_reports.make_html_bias as make_html_bias
     if args.cmd_bias == "train":
-        stages.write_report(args, layout, make_html_bias, args.cmd_bias)
+        stages.render_report(args, layout, make_html_bias, args.cmd_bias)
         print("Finished training! Exiting!")
         return
 
@@ -206,7 +206,7 @@ def train_bias_pipeline(args):
     stages.run_modisco(layout, "bias", "profile", "bias_profile.pdf")
     stages.run_modisco(layout, "bias", "counts", "bias_counts.pdf")
 
-    stages.write_report(args, layout, make_html_bias, args.cmd_bias)
+    stages.render_report(args, layout, make_html_bias, args.cmd_bias)
 
 
 def bias_model_qc(args):
@@ -233,4 +233,4 @@ def bias_model_qc(args):
     stages.run_modisco(layout, "bias", "counts", "bias_counts.pdf")
 
     import chrombpnet.helpers.generate_reports.make_html_bias as make_html_bias
-    stages.write_report(args, layout, make_html_bias, args.cmd_bias)
+    stages.render_report(args, layout, make_html_bias, args.cmd_bias)

@@ -13,7 +13,6 @@ def ic_scale(pwm,background):
         raise ValueError(f"Expected PWM with shape (length, 4), got {pwm.shape}")
     if background.shape != (4,):
         raise ValueError(f"Expected four background frequencies, got {background.shape}")
-    odds_ratio = ((pwm+0.001)/(1.004))/(background[None,:])
     ic = ((np.log((pwm+0.001)/(1.004))/np.log(2))*pwm -\
             (np.log(background)*background/np.log(2))[None,:])
     return pwm*(np.sum(ic,axis=1)[:,None])

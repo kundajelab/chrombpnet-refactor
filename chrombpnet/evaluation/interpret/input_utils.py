@@ -1,3 +1,4 @@
+from chrombpnet.regions import window_bounds
 import numpy as np
 from chrombpnet.training.utils.data_utils import one_hot
 
@@ -12,10 +13,8 @@ def get_seq(peaks_df, genome, width):
     vals = []
     peaks_used = []
     for i, r in peaks_df.iterrows():
-        sequence = str(genome[r['chr']][
-            (r['start'] + r['summit'] - width // 2):
-            (r['start'] + r['summit'] + width // 2)
-        ]).upper()
+        start, end = window_bounds(r, width)
+        sequence = str(genome[r['chr']][start:end]).upper()
         # Tangermeme's dinucleotide shuffler requires exactly one A/C/G/T at
         # every position. Unknown/IUPAC bases become all-zero one-hot columns,
         # so exclude those regions together with truncated edge regions.

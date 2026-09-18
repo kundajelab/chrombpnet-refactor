@@ -203,7 +203,7 @@ def run_modisco(layout, scores_name, kind, pdf_name):
                              layout.evaluation(pdf_name))
 
 
-def write_report(args, layout, module, command):
+def render_report(args, layout, module, command):
     """Render the HTML and PDF summary report for a finished run."""
     args_copy = copy.deepcopy(args)
     args_copy.input_dir = args_copy.output_dir

@@ -1,3 +1,4 @@
+from chrombpnet.regions import window_bounds
 import numpy as np
 import chrombpnet.training.utils.one_hot as one_hot
 
@@ -43,7 +44,8 @@ def get_seqs_cts(genome, bw, peaks_df, input_width=2114, output_width=1000):
     vals = []
     seqs = []
     for i, r in peaks_df.iterrows():
-        sequence = str(genome[r['chr']][(r['start']+r['summit'] - input_width//2):(r['start'] + r['summit'] + input_width//2)])
+        seq_start, seq_end = window_bounds(r, input_width)
+        sequence = str(genome[r['chr']][seq_start:seq_end])
         seqs.append(sequence)
         bigwig_vals=np.nan_to_num(bw.values(r['chr'], 
                             (r['start'] + r['summit']) - output_width//2,
