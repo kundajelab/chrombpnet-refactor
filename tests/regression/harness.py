@@ -1,0 +1,297 @@
+"""Run the CLI scenarios and compare their artifacts against a baseline.
+
+Usage::
+
+    # Record what the current working tree produces.
+    python -m tests.regression.harness capture --out /path/to/baseline
+
+    # Later, after refactoring, check nothing moved.
+    python -m tests.regression.harness compare --baseline /path/to/baseline
+
+    # Or do both in one step against a git ref (uses a temporary worktree):
+    python -m tests.regression.harness against --ref main
+
+Baselines are captured locally rather than committed. The artifacts depend on
+the installed PyTorch build, so a committed digest would be a per-environment
+constant that goes stale on every dependency bump -- and the question this
+harness answers is "did *my change* move the output", which only ever compares
+two runs in one environment.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+from . import artifacts, fixture, scenarios
+from .scenarios import Scenario
+
+#: Held fixed because several artifacts embed absolute paths: the WeasyPrint
+#: PDFs reference their images by absolute path, and <prefix>.args.json is a
+#: dump of the argparse namespace. Varying the workspace (as pytest's tmp_path
+#: would) makes those files differ for reasons that have nothing to do with the
+#: code under test.
+DEFAULT_WORKSPACE = Path("/tmp/chrombpnet-regression") / f"uid{os.getuid()}"
+
+#: Every run -- baseline or current -- executes here, so the absolute paths
+#: baked into artifacts are identical and drop out of the comparison. A captured
+#: baseline keeps a *copy* of this tree so mismatches can still be explained.
+#:
+#: Override with CHROMBPNET_REGRESSION_RUN_DIR to run two environments side by
+#: side; it must hold the *same* value for a capture and the compare that reads
+#: that capture, or every path-bearing artifact will differ spuriously.
+RUN_DIR = Path(os.environ.get("CHROMBPNET_REGRESSION_RUN_DIR",
+                              str(DEFAULT_WORKSPACE / "run")))
+
+#: Pinned so CPU reduction order, hashing and plot rendering cannot drift.
+PINNED_ENV = {
+    "PYTHONHASHSEED": "0",
+    "OMP_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "MPLBACKEND": "Agg",
+    "CUDA_VISIBLE_DEVICES": "",
+}
+
+
+def modiscolite_available() -> bool:
+    import importlib.util
+
+    return importlib.util.find_spec("modiscolite") is not None
+
+
+def _placeholders(workspace: Path, paths: dict, scenario: Scenario) -> dict[str, str]:
+    from chrombpnet.data import DefaultDataFile, get_default_data_path
+
+    values = {key: str(value) for key, value in paths.items()}
+    values["root"] = str(workspace)
+    values["out"] = str(workspace / scenario.output)
+    values["motifs_to_pwm"] = str(
+        get_default_data_path(DefaultDataFile.motif_to_pwm_atac))
+    return values
+
+
+def run_scenarios(workspace: Path, names: list[str] | None = None,
+                  benchmark: str | None = None,
+                  verbose: bool = True) -> dict[str, dict[str, str]]:
+    """Execute the scenarios and return ``{scenario: {artifact: digest}}``."""
+    workspace = Path(workspace)
+    if workspace.exists():
+        shutil.rmtree(workspace)
+    workspace.mkdir(parents=True)
+    paths = fixture.build(workspace / "fixture")
+
+    env = dict(os.environ)
+    env.update(PINNED_ENV)
+    _verify_package_root(env, workspace)
+
+    selected = [s for s in scenarios.SCENARIOS
+                if names is None or s.name in names]
+    manifests: dict[str, dict[str, str]] = {}
+    for scenario in selected:
+        if scenario.needs_modiscolite and not modiscolite_available():
+            if verbose:
+                print(f"[skip] {scenario.name}: modiscolite is not installed")
+            continue
+        output = workspace / scenario.output
+        if output.exists():
+            shutil.rmtree(output)
+        output.mkdir(parents=True)
+
+        values = _placeholders(workspace, paths, scenario)
+        argv = [part.format(**values) for part in scenario.argv]
+        if benchmark is not None and _accepts_benchmark(argv):
+            argv += ["--benchmark", benchmark]
+
+        started = time.monotonic()
+        completed = subprocess.run(
+            [sys.executable, "-m", "chrombpnet.CHROMBPNET", *argv],
+            env=env, capture_output=True, text=True, cwd=workspace)
+        elapsed = time.monotonic() - started
+        if completed.returncode != 0:
+            raise RuntimeError(
+                f"scenario {scenario.name} failed ({completed.returncode})\n"
+                f"argv: {' '.join(argv)}\n"
+                f"--- stdout tail ---\n{completed.stdout[-3000:]}\n"
+                f"--- stderr tail ---\n{completed.stderr[-3000:]}")
+        manifests[scenario.name] = artifacts.manifest(output, scenario.ignore)
+        if verbose:
+            print(f"[ok]   {scenario.name}: "
+                  f"{len(manifests[scenario.name])} artifacts in {elapsed:.1f}s")
+    return manifests
+
+
+def _verify_package_root(env: dict[str, str], cwd: Path) -> None:
+    """Fail loudly if the CLI subprocesses will not import the intended tree.
+
+    ``against --ref`` captures its baseline by putting a git worktree on
+    PYTHONPATH, but an editable install can register an import finder that
+    outranks PYTHONPATH. If that happened silently the "baseline" would be the
+    working tree and the comparison would always pass, so check it instead of
+    assuming.
+    """
+    expected = env.get("CHROMBPNET_EXPECT_PACKAGE_ROOT")
+    if not expected:
+        return
+    completed = subprocess.run(
+        [sys.executable, "-c", "import chrombpnet; print(chrombpnet.__file__)"],
+        env=env, cwd=cwd, capture_output=True, text=True, check=True)
+    resolved = Path(completed.stdout.strip()).resolve()
+    root = Path(expected).resolve()
+    if root not in resolved.parents:
+        raise RuntimeError(
+            f"expected the CLI to import chrombpnet from {root}, but it "
+            f"resolved to {resolved}. An editable-install import finder is "
+            "probably shadowing PYTHONPATH; run the baseline capture from a "
+            "checkout of that revision instead of using 'against --ref'.")
+
+
+def _accepts_benchmark(argv: list[str]) -> bool:
+    """--benchmark only exists on the four training parsers."""
+    head = [part for part in argv[:2] if not part.startswith("-")]
+    return head[:2] in (["pipeline"], ["train"], ["bias", "pipeline"],
+                        ["bias", "train"])
+
+
+def capture(out: Path, benchmark: str | None, names: list[str] | None) -> Path:
+    """Run the scenarios in RUN_DIR and archive the result under ``out``."""
+    out = Path(out)
+    manifests = run_scenarios(RUN_DIR, names=names, benchmark=benchmark)
+    manifest_path = out / "manifest.json"
+    artifacts.write_manifest(manifest_path, manifests)
+
+    # Archive a copy so a later mismatch can be explained artifact-by-artifact.
+    archive = out / "workspace"
+    if archive.exists():
+        shutil.rmtree(archive)
+    shutil.copytree(RUN_DIR, archive, symlinks=True)
+
+    total = sum(len(entries) for entries in manifests.values())
+    print(f"\ncaptured {total} artifacts across {len(manifests)} scenarios")
+    print(f"manifest: {manifest_path}")
+    print(f"archived for diffing: {archive}")
+    return manifest_path
+
+
+def compare(baseline_dir: Path, benchmark: str | None,
+            names: list[str] | None) -> int:
+    """Re-run the scenarios and diff against a captured baseline."""
+    baseline_dir = Path(baseline_dir)
+    baseline = artifacts.read_manifest(baseline_dir / "manifest.json")
+    baseline_workspace = baseline_dir / "workspace"
+
+    current_workspace = RUN_DIR
+    current = run_scenarios(current_workspace, names=names, benchmark=benchmark)
+
+    problems: list[str] = []
+    for name in sorted(set(baseline) | set(current)):
+        if name not in current:
+            print(f"[skip] {name}: not run now (present in baseline)")
+            continue
+        if name not in baseline:
+            problems.append(f"{name}: ran now but absent from the baseline")
+            continue
+        before, after = baseline[name], current[name]
+        scenario = scenarios.BY_NAME[name]
+        for artifact in sorted(set(before) | set(after)):
+            if before.get(artifact) == after.get(artifact):
+                continue
+            detail = artifacts.explain(
+                baseline_workspace / scenario.output / artifact,
+                current_workspace / scenario.output / artifact)
+            problems.append(f"{name}/{artifact}\n{detail}")
+
+    if problems:
+        print(f"\n{len(problems)} artifact(s) changed:\n")
+        for problem in problems[:25]:
+            print(f"  * {problem}")
+        if len(problems) > 25:
+            print(f"  ... and {len(problems) - 25} more")
+        return 1
+    total = sum(len(entries) for entries in current.values())
+    print(f"\nall {total} artifacts identical across {len(current)} scenarios")
+    return 0
+
+
+def against_ref(ref: str, benchmark: str | None, names: list[str] | None) -> int:
+    """Capture a baseline from ``ref`` in a temporary worktree, then compare.
+
+    The *harness* always runs from the working tree while only the *package
+    under test* comes from ``ref``. Running the ref's own copy of the harness
+    would be circular and, more importantly, impossible for any revision older
+    than the harness itself -- which is every revision worth comparing against.
+    """
+    repo = Path(__file__).resolve().parents[2]
+    worktree = DEFAULT_WORKSPACE / f"ref-{ref.replace('/', '_')}"
+    baseline = DEFAULT_WORKSPACE / "baseline"
+    if worktree.exists():
+        subprocess.run(["git", "-C", str(repo), "worktree", "remove", "--force",
+                        str(worktree)], check=False, capture_output=True)
+        shutil.rmtree(worktree, ignore_errors=True)
+    worktree.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "-C", str(repo), "worktree", "add", "--quiet",
+                    "--detach", str(worktree), ref], check=True)
+
+    neutral_cwd = DEFAULT_WORKSPACE / "cwd"
+    neutral_cwd.mkdir(parents=True, exist_ok=True)
+    try:
+        print(f"--- capturing baseline from {ref} ---")
+        env = dict(os.environ)
+        # The worktree comes first so `chrombpnet` resolves to the ref's code;
+        # the repo follows so `tests.regression` resolves to this harness. The
+        # cwd is neither, because -m prepends it to sys.path and would let the
+        # working tree's chrombpnet shadow the worktree's.
+        env["PYTHONPATH"] = os.pathsep.join(
+            [str(worktree), str(repo)] +
+            ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else []))
+        env["CHROMBPNET_EXPECT_PACKAGE_ROOT"] = str(worktree)
+        argv = [sys.executable, "-m", "tests.regression.harness", "capture",
+                "--out", str(baseline)]
+        if benchmark:
+            argv += ["--benchmark", benchmark]
+        for name in names or []:
+            argv += ["--scenario", name]
+        subprocess.run(argv, cwd=neutral_cwd, env=env, check=True)
+    finally:
+        subprocess.run(["git", "-C", str(repo), "worktree", "remove", "--force",
+                        str(worktree)], check=False, capture_output=True)
+
+    print(f"\n--- comparing working tree against {ref} ---")
+    return compare(baseline, benchmark, names)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = parser.add_subparsers(dest="command", required=True)
+    for name in ("capture", "compare", "against"):
+        child = sub.add_parser(name)
+        child.add_argument("--benchmark", default=None,
+                           help="benchmark level to pass to training commands "
+                                "(omit for the CLI default, 'lite')")
+        child.add_argument("--scenario", action="append", dest="scenarios",
+                           help="run only this scenario (repeatable)")
+        if name == "capture":
+            child.add_argument("--out", required=True, type=Path)
+        elif name == "compare":
+            child.add_argument("--baseline", required=True, type=Path)
+        else:
+            child.add_argument("--ref", default="main")
+    args = parser.parse_args(argv)
+
+    if args.command == "capture":
+        capture(args.out, args.benchmark, args.scenarios)
+        return 0
+    if args.command == "compare":
+        return compare(args.baseline, args.benchmark, args.scenarios)
+    return against_ref(args.ref, args.benchmark, args.scenarios)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

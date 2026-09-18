@@ -45,3 +45,6 @@ include = ["chrombpnet*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+markers = [
+  "regression: replays the CLI and compares every artifact against a captured baseline (slow; see tests/regression/README.md)",
+]
