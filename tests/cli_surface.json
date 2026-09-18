@@ -1,0 +1,2664 @@
+{
+  "bias help": {
+    "choices": null,
+    "default": "'==SUPPRESS=='",
+    "nargs": "0",
+    "options": [
+      "--help",
+      "-h"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "bias pipeline ATAC_ref_path": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--ATAC-ref-path"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "bias pipeline DNASE_ref_path": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--DNASE-ref-path"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "bias pipeline architecture_from_file": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--architecture-from-file",
+      "-a"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "bias pipeline batch_size": {
+    "choices": null,
+    "default": "64",
+    "nargs": "None",
+    "options": [
+      "--batch-size",
+      "-bs"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias pipeline benchmark": {
+    "choices": [
+      "lite",
+      "max",
+      "medium",
+      "none"
+    ],
+    "default": "'lite'",
+    "nargs": "'?'",
+    "options": [
+      "--benchmark"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "bias pipeline bias_threshold_factor": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--bias-threshold-factor",
+      "-b"
+    ],
+    "required": true,
+    "type": "float"
+  },
+  "bias pipeline bsort": {
+    "choices": null,
+    "default": "False",
+    "nargs": "0",
+    "options": [
+      "--bsort"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "bias pipeline chr_fold_path": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--chr-fold-path",
+      "-fl"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "bias pipeline chrom_sizes": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--chrom-sizes",
+      "-c"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "bias pipeline data_type": {
+    "choices": [
+      "ATAC",
+      "DNASE"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--data-type",
+      "-d"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "bias pipeline device": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--device"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "bias pipeline early_stop": {
+    "choices": null,
+    "default": "5",
+    "nargs": "None",
+    "options": [
+      "--early-stop",
+      "-es"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias pipeline epochs": {
+    "choices": null,
+    "default": "50",
+    "nargs": "None",
+    "options": [
+      "--epochs",
+      "-e"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias pipeline file_prefix": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--file-prefix",
+      "-fp"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "bias pipeline filters": {
+    "choices": null,
+    "default": "128",
+    "nargs": "None",
+    "options": [
+      "--filters",
+      "-fil"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias pipeline genome": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--genome",
+      "-g"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "bias pipeline help": {
+    "choices": null,
+    "default": "'==SUPPRESS=='",
+    "nargs": "0",
+    "options": [
+      "--help",
+      "-h"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "bias pipeline html_prefix": {
+    "choices": null,
+    "default": "'./'",
+    "nargs": "None",
+    "options": [
+      "--html-prefix",
+      "-hp"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "bias pipeline input_bam_file": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--input-bam-file",
+      "-ibam"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "bias pipeline input_fragment_file": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--input-fragment-file",
+      "-ifrag"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "bias pipeline input_tagalign_file": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--input-tagalign-file",
+      "-itag"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "bias pipeline inputlen": {
+    "choices": null,
+    "default": "2114",
+    "nargs": "None",
+    "options": [
+      "--inputlen",
+      "-il"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias pipeline interpret_batch_size": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--interpret-batch-size",
+      "-ibs"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias pipeline learning_rate": {
+    "choices": null,
+    "default": "0.001",
+    "nargs": "None",
+    "options": [
+      "--learning-rate",
+      "-l"
+    ],
+    "required": false,
+    "type": "float"
+  },
+  "bias pipeline max_jitter": {
+    "choices": null,
+    "default": "0",
+    "nargs": "None",
+    "options": [
+      "--max-jitter",
+      "-j"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias pipeline n_dilation_layers": {
+    "choices": null,
+    "default": "4",
+    "nargs": "None",
+    "options": [
+      "--n-dilation-layers",
+      "-dil"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias pipeline no_st": {
+    "choices": null,
+    "default": "False",
+    "nargs": "0",
+    "options": [
+      "--no-st"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "bias pipeline nonpeaks": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--nonpeaks",
+      "-n"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "bias pipeline num_samples": {
+    "choices": null,
+    "default": "10000",
+    "nargs": "None",
+    "options": [
+      "--num-samples"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias pipeline outlier_threshold": {
+    "choices": null,
+    "default": "0.9999",
+    "nargs": "None",
+    "options": [
+      "--outlier-threshold",
+      "-oth"
+    ],
+    "required": false,
+    "type": "float"
+  },
+  "bias pipeline output_dir": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--output-dir",
+      "-o"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "bias pipeline outputlen": {
+    "choices": null,
+    "default": "1000",
+    "nargs": "None",
+    "options": [
+      "--outputlen",
+      "-ol"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias pipeline peaks": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--peaks",
+      "-p"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "bias pipeline seed": {
+    "choices": null,
+    "default": "1234",
+    "nargs": "None",
+    "options": [
+      "--seed",
+      "-s"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias pipeline tmpdir": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--tmpdir"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "bias pipeline trackables": {
+    "choices": null,
+    "default": "['logcount_predictions_loss', 'loss', 'logits_profile_predictions_loss', 'val_logcount_predictions_loss', 'val_loss', 'val_logits_profile_predictions_loss']",
+    "nargs": "'*'",
+    "options": [
+      "--trackables",
+      "-track"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "bias qc batch_size": {
+    "choices": null,
+    "default": "64",
+    "nargs": "None",
+    "options": [
+      "--batch-size",
+      "-bs"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias qc bias_model": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--bias-model",
+      "-bm"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "bias qc bigwig": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--bigwig",
+      "-bw"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "bias qc chr_fold_path": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--chr-fold-path",
+      "-fl"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "bias qc chrom_sizes": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--chrom-sizes",
+      "-c"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "bias qc data_type": {
+    "choices": [
+      "ATAC",
+      "DNASE"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--data-type",
+      "-d"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "bias qc device": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--device"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "bias qc file_prefix": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--file-prefix",
+      "-fp"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "bias qc genome": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--genome",
+      "-g"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "bias qc help": {
+    "choices": null,
+    "default": "'==SUPPRESS=='",
+    "nargs": "0",
+    "options": [
+      "--help",
+      "-h"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "bias qc html_prefix": {
+    "choices": null,
+    "default": "'./'",
+    "nargs": "None",
+    "options": [
+      "--html-prefix",
+      "-hp"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "bias qc interpret_batch_size": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--interpret-batch-size",
+      "-ibs"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias qc nonpeaks": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--nonpeaks",
+      "-n"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "bias qc output_dir": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--output-dir",
+      "-o"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "bias qc peaks": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--peaks",
+      "-p"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "bias train ATAC_ref_path": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--ATAC-ref-path"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "bias train DNASE_ref_path": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--DNASE-ref-path"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "bias train architecture_from_file": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--architecture-from-file",
+      "-a"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "bias train batch_size": {
+    "choices": null,
+    "default": "64",
+    "nargs": "None",
+    "options": [
+      "--batch-size",
+      "-bs"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias train benchmark": {
+    "choices": [
+      "lite",
+      "max",
+      "medium",
+      "none"
+    ],
+    "default": "'lite'",
+    "nargs": "'?'",
+    "options": [
+      "--benchmark"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "bias train bias_threshold_factor": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--bias-threshold-factor",
+      "-b"
+    ],
+    "required": true,
+    "type": "float"
+  },
+  "bias train bsort": {
+    "choices": null,
+    "default": "False",
+    "nargs": "0",
+    "options": [
+      "--bsort"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "bias train chr_fold_path": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--chr-fold-path",
+      "-fl"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "bias train chrom_sizes": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--chrom-sizes",
+      "-c"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "bias train data_type": {
+    "choices": [
+      "ATAC",
+      "DNASE"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--data-type",
+      "-d"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "bias train device": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--device"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "bias train early_stop": {
+    "choices": null,
+    "default": "5",
+    "nargs": "None",
+    "options": [
+      "--early-stop",
+      "-es"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias train epochs": {
+    "choices": null,
+    "default": "50",
+    "nargs": "None",
+    "options": [
+      "--epochs",
+      "-e"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias train file_prefix": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--file-prefix",
+      "-fp"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "bias train filters": {
+    "choices": null,
+    "default": "128",
+    "nargs": "None",
+    "options": [
+      "--filters",
+      "-fil"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias train genome": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--genome",
+      "-g"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "bias train help": {
+    "choices": null,
+    "default": "'==SUPPRESS=='",
+    "nargs": "0",
+    "options": [
+      "--help",
+      "-h"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "bias train html_prefix": {
+    "choices": null,
+    "default": "'./'",
+    "nargs": "None",
+    "options": [
+      "--html-prefix",
+      "-hp"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "bias train input_bam_file": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--input-bam-file",
+      "-ibam"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "bias train input_fragment_file": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--input-fragment-file",
+      "-ifrag"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "bias train input_tagalign_file": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--input-tagalign-file",
+      "-itag"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "bias train inputlen": {
+    "choices": null,
+    "default": "2114",
+    "nargs": "None",
+    "options": [
+      "--inputlen",
+      "-il"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias train interpret_batch_size": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--interpret-batch-size",
+      "-ibs"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias train learning_rate": {
+    "choices": null,
+    "default": "0.001",
+    "nargs": "None",
+    "options": [
+      "--learning-rate",
+      "-l"
+    ],
+    "required": false,
+    "type": "float"
+  },
+  "bias train max_jitter": {
+    "choices": null,
+    "default": "0",
+    "nargs": "None",
+    "options": [
+      "--max-jitter",
+      "-j"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias train n_dilation_layers": {
+    "choices": null,
+    "default": "4",
+    "nargs": "None",
+    "options": [
+      "--n-dilation-layers",
+      "-dil"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias train no_st": {
+    "choices": null,
+    "default": "False",
+    "nargs": "0",
+    "options": [
+      "--no-st"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "bias train nonpeaks": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--nonpeaks",
+      "-n"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "bias train num_samples": {
+    "choices": null,
+    "default": "10000",
+    "nargs": "None",
+    "options": [
+      "--num-samples"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias train outlier_threshold": {
+    "choices": null,
+    "default": "0.9999",
+    "nargs": "None",
+    "options": [
+      "--outlier-threshold",
+      "-oth"
+    ],
+    "required": false,
+    "type": "float"
+  },
+  "bias train output_dir": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--output-dir",
+      "-o"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "bias train outputlen": {
+    "choices": null,
+    "default": "1000",
+    "nargs": "None",
+    "options": [
+      "--outputlen",
+      "-ol"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias train peaks": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--peaks",
+      "-p"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "bias train seed": {
+    "choices": null,
+    "default": "1234",
+    "nargs": "None",
+    "options": [
+      "--seed",
+      "-s"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias train tmpdir": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--tmpdir"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "bias train trackables": {
+    "choices": null,
+    "default": "['logcount_predictions_loss', 'loss', 'logits_profile_predictions_loss', 'val_logcount_predictions_loss', 'val_loss', 'val_logits_profile_predictions_loss']",
+    "nargs": "'*'",
+    "options": [
+      "--trackables",
+      "-track"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "contribs_bw batch_size": {
+    "choices": null,
+    "default": "64",
+    "nargs": "None",
+    "options": [
+      "--batch-size"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "contribs_bw chrom_sizes": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--chrom-sizes",
+      "-c"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "contribs_bw debug_chr": {
+    "choices": null,
+    "default": "None",
+    "nargs": "'+'",
+    "options": [
+      "--debug-chr",
+      "-d"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "contribs_bw device": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--device"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "contribs_bw genome": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--genome",
+      "-g"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "contribs_bw help": {
+    "choices": null,
+    "default": "'==SUPPRESS=='",
+    "nargs": "0",
+    "options": [
+      "--help",
+      "-h"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "contribs_bw interpret_batch_size": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--interpret-batch-size",
+      "-ibs"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "contribs_bw model_h5": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--model-h5",
+      "-m"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "contribs_bw num_shuffles": {
+    "choices": null,
+    "default": "20",
+    "nargs": "None",
+    "options": [
+      "--num-shuffles"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "contribs_bw output_prefix": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--output-prefix",
+      "-op"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "contribs_bw output_prefix_stats": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--output-prefix-stats",
+      "-os"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "contribs_bw profile_or_counts": {
+    "choices": [
+      "counts",
+      "profile"
+    ],
+    "default": "['counts', 'profile']",
+    "nargs": "'+'",
+    "options": [
+      "--profile-or-counts",
+      "-pc"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "contribs_bw regions": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--regions",
+      "-r"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "contribs_bw seed": {
+    "choices": null,
+    "default": "1234",
+    "nargs": "None",
+    "options": [
+      "--seed"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "contribs_bw tqdm": {
+    "choices": null,
+    "default": "1",
+    "nargs": "None",
+    "options": [
+      "--tqdm",
+      "-t"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "footprints batch_size": {
+    "choices": null,
+    "default": "64",
+    "nargs": "None",
+    "options": [
+      "--batch-size",
+      "-bs"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "footprints chr_fold_path": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--chr-fold-path",
+      "-fl"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "footprints device": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--device"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "footprints genome": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--genome",
+      "-g"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "footprints help": {
+    "choices": null,
+    "default": "'==SUPPRESS=='",
+    "nargs": "0",
+    "options": [
+      "--help",
+      "-h"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "footprints model_h5": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--model-h5",
+      "-m"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "footprints motifs_to_pwm": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--motifs-to-pwm",
+      "-pwm_f"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "footprints output_prefix": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--output-prefix",
+      "-op"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "footprints regions": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--regions",
+      "-r"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "footprints ylim": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--ylim"
+    ],
+    "required": false,
+    "type": "tuple"
+  },
+  "help": {
+    "choices": null,
+    "default": "'==SUPPRESS=='",
+    "nargs": "0",
+    "options": [
+      "--help",
+      "-h"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "modisco_motifs h5py": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--h5py",
+      "-i"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "modisco_motifs help": {
+    "choices": null,
+    "default": "'==SUPPRESS=='",
+    "nargs": "0",
+    "options": [
+      "--help",
+      "-h"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "modisco_motifs max_seqlets": {
+    "choices": null,
+    "default": "50000",
+    "nargs": "None",
+    "options": [
+      "--max-seqlets",
+      "-n"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "modisco_motifs n_leiden": {
+    "choices": null,
+    "default": "2",
+    "nargs": "None",
+    "options": [
+      "--n-leiden",
+      "-l"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "modisco_motifs output_prefix": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--output-prefix",
+      "-op"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "modisco_motifs verbose": {
+    "choices": null,
+    "default": "False",
+    "nargs": "0",
+    "options": [
+      "--verbose",
+      "-v"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "modisco_motifs window": {
+    "choices": null,
+    "default": "500",
+    "nargs": "None",
+    "options": [
+      "--window",
+      "-w"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "pipeline ATAC_ref_path": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--ATAC-ref-path"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "pipeline DNASE_ref_path": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--DNASE-ref-path"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "pipeline architecture_from_file": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--architecture-from-file",
+      "-a"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "pipeline batch_size": {
+    "choices": null,
+    "default": "64",
+    "nargs": "None",
+    "options": [
+      "--batch-size",
+      "-bs"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "pipeline benchmark": {
+    "choices": [
+      "lite",
+      "max",
+      "medium",
+      "none"
+    ],
+    "default": "'lite'",
+    "nargs": "'?'",
+    "options": [
+      "--benchmark"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "pipeline bias_model_path": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--bias-model-path",
+      "-b"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "pipeline bsort": {
+    "choices": null,
+    "default": "False",
+    "nargs": "0",
+    "options": [
+      "--bsort"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "pipeline chr_fold_path": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--chr-fold-path",
+      "-fl"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "pipeline chrom_sizes": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--chrom-sizes",
+      "-c"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "pipeline data_type": {
+    "choices": [
+      "ATAC",
+      "DNASE"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--data-type",
+      "-d"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "pipeline device": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--device"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "pipeline early_stop": {
+    "choices": null,
+    "default": "5",
+    "nargs": "None",
+    "options": [
+      "--early-stop",
+      "-es"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "pipeline epochs": {
+    "choices": null,
+    "default": "50",
+    "nargs": "None",
+    "options": [
+      "--epochs",
+      "-e"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "pipeline file_prefix": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--file-prefix",
+      "-fp"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "pipeline filters": {
+    "choices": null,
+    "default": "512",
+    "nargs": "None",
+    "options": [
+      "--filters",
+      "-fil"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "pipeline genome": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--genome",
+      "-g"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "pipeline help": {
+    "choices": null,
+    "default": "'==SUPPRESS=='",
+    "nargs": "0",
+    "options": [
+      "--help",
+      "-h"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "pipeline html_prefix": {
+    "choices": null,
+    "default": "'./'",
+    "nargs": "None",
+    "options": [
+      "--html-prefix",
+      "-hp"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "pipeline input_bam_file": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--input-bam-file",
+      "-ibam"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "pipeline input_fragment_file": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--input-fragment-file",
+      "-ifrag"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "pipeline input_tagalign_file": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--input-tagalign-file",
+      "-itag"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "pipeline inputlen": {
+    "choices": null,
+    "default": "2114",
+    "nargs": "None",
+    "options": [
+      "--inputlen",
+      "-il"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "pipeline interpret_batch_size": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--interpret-batch-size",
+      "-ibs"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "pipeline learning_rate": {
+    "choices": null,
+    "default": "0.001",
+    "nargs": "None",
+    "options": [
+      "--learning-rate",
+      "-l"
+    ],
+    "required": false,
+    "type": "float"
+  },
+  "pipeline max_jitter": {
+    "choices": null,
+    "default": "500",
+    "nargs": "None",
+    "options": [
+      "--max-jitter",
+      "-j"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "pipeline n_dilation_layers": {
+    "choices": null,
+    "default": "8",
+    "nargs": "None",
+    "options": [
+      "--n-dilation-layers",
+      "-dil"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "pipeline negative_sampling_ratio": {
+    "choices": null,
+    "default": "0.1",
+    "nargs": "None",
+    "options": [
+      "--negative-sampling-ratio",
+      "-sr"
+    ],
+    "required": false,
+    "type": "float"
+  },
+  "pipeline no_st": {
+    "choices": null,
+    "default": "False",
+    "nargs": "0",
+    "options": [
+      "--no-st"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "pipeline nonpeaks": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--nonpeaks",
+      "-n"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "pipeline num_samples": {
+    "choices": null,
+    "default": "10000",
+    "nargs": "None",
+    "options": [
+      "--num-samples"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "pipeline outlier_threshold": {
+    "choices": null,
+    "default": "0.9999",
+    "nargs": "None",
+    "options": [
+      "--outlier-threshold",
+      "-oth"
+    ],
+    "required": false,
+    "type": "float"
+  },
+  "pipeline output_dir": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--output-dir",
+      "-o"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "pipeline outputlen": {
+    "choices": null,
+    "default": "1000",
+    "nargs": "None",
+    "options": [
+      "--outputlen",
+      "-ol"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "pipeline peaks": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--peaks",
+      "-p"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "pipeline seed": {
+    "choices": null,
+    "default": "1234",
+    "nargs": "None",
+    "options": [
+      "--seed",
+      "-s"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "pipeline tmpdir": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--tmpdir"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "pipeline trackables": {
+    "choices": null,
+    "default": "['logcount_predictions_loss', 'loss', 'logits_profile_predictions_loss', 'val_logcount_predictions_loss', 'val_loss', 'val_logits_profile_predictions_loss']",
+    "nargs": "'*'",
+    "options": [
+      "--trackables",
+      "-track"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "pred_bw batch_size": {
+    "choices": null,
+    "default": "64",
+    "nargs": "None",
+    "options": [
+      "--batch-size",
+      "-bs"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "pred_bw bias_model": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--bias-model",
+      "-bm"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "pred_bw bigwig": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--bigwig",
+      "-bw"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "pred_bw chrom_sizes": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--chrom-sizes",
+      "-c"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "pred_bw chrombpnet_model": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--chrombpnet-model",
+      "-cm"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "pred_bw chrombpnet_model_nb": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--chrombpnet-model-nb",
+      "-cmb"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "pred_bw debug_chr": {
+    "choices": null,
+    "default": "None",
+    "nargs": "'+'",
+    "options": [
+      "--debug-chr",
+      "-d"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "pred_bw device": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--device"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "pred_bw genome": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--genome",
+      "-g"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "pred_bw help": {
+    "choices": null,
+    "default": "'==SUPPRESS=='",
+    "nargs": "0",
+    "options": [
+      "--help",
+      "-h"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "pred_bw output_prefix": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--output-prefix",
+      "-op"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "pred_bw output_prefix_stats": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--output-prefix-stats",
+      "-os"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "pred_bw regions": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--regions",
+      "-r"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "pred_bw tqdm": {
+    "choices": null,
+    "default": "1",
+    "nargs": "None",
+    "options": [
+      "--tqdm",
+      "-t"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "prep help": {
+    "choices": null,
+    "default": "'==SUPPRESS=='",
+    "nargs": "0",
+    "options": [
+      "--help",
+      "-h"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "prep nonpeaks blacklist_regions": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--blacklist-regions",
+      "-br"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "prep nonpeaks chr_fold_path": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--chr-fold-path",
+      "-fl"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "prep nonpeaks chrom_sizes": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--chrom-sizes",
+      "-c"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "prep nonpeaks genome": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--genome",
+      "-g"
+    ],
+    "required": true,
+    "type": "None"
+  },
+  "prep nonpeaks help": {
+    "choices": null,
+    "default": "'==SUPPRESS=='",
+    "nargs": "0",
+    "options": [
+      "--help",
+      "-h"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "prep nonpeaks inputlen": {
+    "choices": null,
+    "default": "2114",
+    "nargs": "None",
+    "options": [
+      "--inputlen",
+      "-il"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "prep nonpeaks neg_to_pos_ratio_train": {
+    "choices": null,
+    "default": "2",
+    "nargs": "None",
+    "options": [
+      "--neg-to-pos-ratio-train",
+      "-npr"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "prep nonpeaks output_prefix": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--output-prefix",
+      "-o"
+    ],
+    "required": true,
+    "type": "None"
+  },
+  "prep nonpeaks peaks": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--peaks",
+      "-p"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "prep nonpeaks seed": {
+    "choices": null,
+    "default": "1234",
+    "nargs": "None",
+    "options": [
+      "--seed",
+      "-s"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "prep nonpeaks stride": {
+    "choices": null,
+    "default": "1000",
+    "nargs": "None",
+    "options": [
+      "--stride",
+      "-st"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "prep splits chrom_sizes": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--chrom-sizes",
+      "-c"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "prep splits help": {
+    "choices": null,
+    "default": "'==SUPPRESS=='",
+    "nargs": "0",
+    "options": [
+      "--help",
+      "-h"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "prep splits output_prefix": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--output_prefix",
+      "-op"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "prep splits test_chroms": {
+    "choices": null,
+    "default": "None",
+    "nargs": "'*'",
+    "options": [
+      "--test-chroms",
+      "-tcr"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "prep splits valid_chroms": {
+    "choices": null,
+    "default": "None",
+    "nargs": "'*'",
+    "options": [
+      "--valid-chroms",
+      "-vcr"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "qc batch_size": {
+    "choices": null,
+    "default": "64",
+    "nargs": "None",
+    "options": [
+      "--batch-size",
+      "-bs"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "qc bigwig": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--bigwig",
+      "-bw"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "qc chr_fold_path": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--chr-fold-path",
+      "-fl"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "qc chrom_sizes": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--chrom-sizes",
+      "-c"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "qc chrombpnet_model": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--chrombpnet-model",
+      "-cm"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "qc chrombpnet_model_nb": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--chrombpnet-model-nb",
+      "-cmb"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "qc data_type": {
+    "choices": [
+      "ATAC",
+      "DNASE"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--data-type",
+      "-d"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "qc device": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--device"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "qc file_prefix": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--file-prefix",
+      "-fp"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "qc genome": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--genome",
+      "-g"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "qc help": {
+    "choices": null,
+    "default": "'==SUPPRESS=='",
+    "nargs": "0",
+    "options": [
+      "--help",
+      "-h"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "qc html_prefix": {
+    "choices": null,
+    "default": "'./'",
+    "nargs": "None",
+    "options": [
+      "--html-prefix",
+      "-hp"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "qc interpret_batch_size": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--interpret-batch-size",
+      "-ibs"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "qc nonpeaks": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--nonpeaks",
+      "-n"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "qc output_dir": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--output-dir",
+      "-o"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "qc peaks": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--peaks",
+      "-p"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "train ATAC_ref_path": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--ATAC-ref-path"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "train DNASE_ref_path": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--DNASE-ref-path"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "train architecture_from_file": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--architecture-from-file",
+      "-a"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "train batch_size": {
+    "choices": null,
+    "default": "64",
+    "nargs": "None",
+    "options": [
+      "--batch-size",
+      "-bs"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "train benchmark": {
+    "choices": [
+      "lite",
+      "max",
+      "medium",
+      "none"
+    ],
+    "default": "'lite'",
+    "nargs": "'?'",
+    "options": [
+      "--benchmark"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "train bias_model_path": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--bias-model-path",
+      "-b"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "train bsort": {
+    "choices": null,
+    "default": "False",
+    "nargs": "0",
+    "options": [
+      "--bsort"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "train chr_fold_path": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--chr-fold-path",
+      "-fl"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "train chrom_sizes": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--chrom-sizes",
+      "-c"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "train data_type": {
+    "choices": [
+      "ATAC",
+      "DNASE"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--data-type",
+      "-d"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "train device": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--device"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "train early_stop": {
+    "choices": null,
+    "default": "5",
+    "nargs": "None",
+    "options": [
+      "--early-stop",
+      "-es"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "train epochs": {
+    "choices": null,
+    "default": "50",
+    "nargs": "None",
+    "options": [
+      "--epochs",
+      "-e"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "train file_prefix": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--file-prefix",
+      "-fp"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "train filters": {
+    "choices": null,
+    "default": "512",
+    "nargs": "None",
+    "options": [
+      "--filters",
+      "-fil"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "train genome": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--genome",
+      "-g"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "train help": {
+    "choices": null,
+    "default": "'==SUPPRESS=='",
+    "nargs": "0",
+    "options": [
+      "--help",
+      "-h"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "train html_prefix": {
+    "choices": null,
+    "default": "'./'",
+    "nargs": "None",
+    "options": [
+      "--html-prefix",
+      "-hp"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "train input_bam_file": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--input-bam-file",
+      "-ibam"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "train input_fragment_file": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--input-fragment-file",
+      "-ifrag"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "train input_tagalign_file": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--input-tagalign-file",
+      "-itag"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "train inputlen": {
+    "choices": null,
+    "default": "2114",
+    "nargs": "None",
+    "options": [
+      "--inputlen",
+      "-il"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "train interpret_batch_size": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--interpret-batch-size",
+      "-ibs"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "train learning_rate": {
+    "choices": null,
+    "default": "0.001",
+    "nargs": "None",
+    "options": [
+      "--learning-rate",
+      "-l"
+    ],
+    "required": false,
+    "type": "float"
+  },
+  "train max_jitter": {
+    "choices": null,
+    "default": "500",
+    "nargs": "None",
+    "options": [
+      "--max-jitter",
+      "-j"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "train n_dilation_layers": {
+    "choices": null,
+    "default": "8",
+    "nargs": "None",
+    "options": [
+      "--n-dilation-layers",
+      "-dil"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "train negative_sampling_ratio": {
+    "choices": null,
+    "default": "0.1",
+    "nargs": "None",
+    "options": [
+      "--negative-sampling-ratio",
+      "-sr"
+    ],
+    "required": false,
+    "type": "float"
+  },
+  "train no_st": {
+    "choices": null,
+    "default": "False",
+    "nargs": "0",
+    "options": [
+      "--no-st"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "train nonpeaks": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--nonpeaks",
+      "-n"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "train num_samples": {
+    "choices": null,
+    "default": "10000",
+    "nargs": "None",
+    "options": [
+      "--num-samples"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "train outlier_threshold": {
+    "choices": null,
+    "default": "0.9999",
+    "nargs": "None",
+    "options": [
+      "--outlier-threshold",
+      "-oth"
+    ],
+    "required": false,
+    "type": "float"
+  },
+  "train output_dir": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--output-dir",
+      "-o"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "train outputlen": {
+    "choices": null,
+    "default": "1000",
+    "nargs": "None",
+    "options": [
+      "--outputlen",
+      "-ol"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "train peaks": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--peaks",
+      "-p"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "train seed": {
+    "choices": null,
+    "default": "1234",
+    "nargs": "None",
+    "options": [
+      "--seed",
+      "-s"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "train tmpdir": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--tmpdir"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "train trackables": {
+    "choices": null,
+    "default": "['logcount_predictions_loss', 'loss', 'logits_profile_predictions_loss', 'val_logcount_predictions_loss', 'val_loss', 'val_logits_profile_predictions_loss']",
+    "nargs": "'*'",
+    "options": [
+      "--trackables",
+      "-track"
+    ],
+    "required": false,
+    "type": "None"
+  }
+}

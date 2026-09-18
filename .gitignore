@@ -1,16 +1,29 @@
-# Compiler outputs #
-*.a
-*.bat
-*.exe
-*.json
-*.pyc
-*.ipynb_checkpoints
-*.pkl
-*.npy
-# Directories #
-# logs
-results
-experimental_scripts
-tracks
-needs_cleanup
-old
+# Byte-compiled / cached
+__pycache__/
+*.py[cod]
+*.so
+.ipynb_checkpoints
+
+# Packaging / build output
+*.egg-info/
+build/
+dist/
+
+# Test and coverage caches
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local scratch directories
+results/
+experimental_scripts/
+tracks/
+needs_cleanup/
+old/
+
+# Model checkpoints and large genomics outputs produced by pipeline runs.
+# Listed explicitly rather than via a blanket rule so that committed fixtures
+# and snapshots are never silently excluded.
+*.pt
+*.bw
+*.h5
