@@ -26,14 +26,15 @@ back to CPU. Commands accept `--device cpu`, `--device cuda`, or a specific
 device such as `--device cuda:1`.
 
 Motif discovery and reports use TF-MoDISco 2.6, pinned in `requirements.txt` to
-upstream commit `6990c65ae320cc891c1265f010e8c16ad772e198`. The refactor calls
+upstream commit `0791eaf5f00dcd37c344778871d5354e5945902c`. The refactor calls
 the current `modiscolite` Python API directly and writes the `pos_patterns` /
 `neg_patterns` HDF5 schema.
 
-The environment does not install the MEME Suite executable: its current Conda
-build requires a newer glibc than Sherlock provides, and this repository does
-not invoke that executable. If an external workflow requires `meme`, use the
-Sherlock module or a locally built MEME Suite installation.
+`environment.yml` installs MEME Suite 5.5.9 for its `tomtom` executable, which
+TF-MoDISco's report generation can use. That specific version is pinned because
+its `tomtom` binary needs at most GLIBC_2.14, and Sherlock provides 2.17. The
+package itself never invokes `tomtom`: report generation is called with
+`is_writing_tomtom_matrix=False`.
 
 ## Python API
 

@@ -1,3 +1,6 @@
+# Adapted from https://github.com/kundajelab/deeplift/blob/16ef5dd05c3e05e9e5c7ec04d1d8a24fad046d96/deeplift/visualization/viz_sequence.py
+# Original authored by Avanti Shrikumar
+
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np

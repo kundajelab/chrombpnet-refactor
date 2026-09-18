@@ -5,6 +5,7 @@
 # this environment's runtime before importing PyTorch/SciPy extensions. This is
 # process-local and avoids conda environment-variable overrides and warnings.
 import ctypes
+from importlib import metadata as _metadata
 import os
 from pathlib import Path
 import sys
@@ -30,7 +31,10 @@ from chrombpnet.model import (
     save_model,
 )
 
-__version__ = "1.0.1+torch"
+try:
+    __version__ = _metadata.version("chrombpnet-refactor")
+except _metadata.PackageNotFoundError:  # running from a source tree
+    __version__ = "0.0.0+unknown"
 
 __all__ = [
     "BPNet",

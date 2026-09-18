@@ -15,8 +15,6 @@ contourpy==1.3.2
 torch==2.5.1+cu118
 
 tangermeme @ git+https://github.com/jmschrei/tangermeme.git
-# 0.3 uses libdeflater 1.x, which needs a newer assembler than Sherlock has.
-pybigtools==0.2.4
 deepdish>=0.3
 modisco @ git+https://github.com/kundajelab/tfmodisco@0791eaf5f00dcd37c344778871d5354e5945902c
 pytest>=8
