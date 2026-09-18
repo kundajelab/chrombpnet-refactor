@@ -107,3 +107,30 @@ branches of `predict_to_bigwig`.
 
 The three scenarios that run motif discovery need `modiscolite`, which is only
 the optional `[reports]` extra; they skip where it is absent.
+
+## `qc` is not reproducible, so it is not compared
+
+`05_bias_qc` and `06_qc` still run -- that catches crashes -- but their
+artifacts are excluded from the comparison, because the commands themselves are
+nondeterministic:
+
+`qc` and `bias qc` expose neither `--seed` nor `--benchmark`, so
+`initializers.initialize_generators` passes `benchmark_seed=None` and
+`make_generator_rng` returns the *global* `np.random`. Nothing in the qc path
+ever seeds it -- `np.random.seed` is only called in `train.get_model`, which qc
+never reaches. `subsample_nonpeak_data` then draws a different 1:1 nonpeak
+subsample for the test set on every run.
+
+Measured across two identical `bias qc` runs: `coords/coords_center` in
+`bias_predictions.h5` differed by up to 32475 (an entirely different region
+set), `predictions/logcounts` by 0.05, and the reported counts pearsonr in
+`overall_report.html` moved from `-0.0` to `-0.21`. So the headline QC numbers
+for a model are not reproducible today.
+
+The training scenarios are unaffected despite the same unseeded global stream,
+because they pass `nonpeaks "None"` to `predict`, which takes the peaks-only
+branch of `crop_revcomp_data` and never reaches the subsample. That is also why
+`04_train` compares clean while `06_qc` does not.
+
+Once this is fixed, drop the `nondeterministic=` marker from both scenarios in
+`scenarios.py` and they become byte-comparable like the rest.

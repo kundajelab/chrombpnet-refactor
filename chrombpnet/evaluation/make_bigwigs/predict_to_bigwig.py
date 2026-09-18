@@ -5,7 +5,6 @@ import pandas as pd
 import pyfaidx
 import chrombpnet.evaluation.make_bigwigs.bigwig_helper as bigwig_helper
 import chrombpnet.training.utils.data_utils as data_utils 
-import chrombpnet.training.utils.one_hot as one_hot
 from chrombpnet.model import load_prediction_model, resolve_device
 import h5py
 import json

@@ -45,6 +45,11 @@ class Scenario:
     #: modiscolite is only an optional [reports] extra, and the qc pipelines
     #: run motif discovery, so those scenarios are skipped where it is absent.
     needs_modiscolite: bool = False
+    #: Set to the reason when a scenario's output is not reproducible. Such
+    #: scenarios still run -- that catches crashes and import errors -- but
+    #: their artifacts are not compared, because a diff would be noise rather
+    #: than a regression signal.
+    nondeterministic: str | None = None
     #: Artifacts to ignore when hashing, relative to ``output``.
     ignore: tuple[str, ...] = field(default_factory=tuple)
 
@@ -98,6 +103,12 @@ def _scenarios() -> list[Scenario]:
         ),
         Scenario(
             name="05_bias_qc",
+            nondeterministic=(
+                "qc exposes neither --seed nor --benchmark, so "
+                "initializers passes benchmark_seed=None and make_generator_rng "
+                "returns the global np.random, which nothing in the qc path ever "
+                "seeds. subsample_nonpeak_data therefore draws a different test-set "
+                "nonpeak subsample on every run."),
             output="05_bias_qc",
             needs_modiscolite=True,
             argv=["bias", "qc",
@@ -109,6 +120,12 @@ def _scenarios() -> list[Scenario]:
         ),
         Scenario(
             name="06_qc",
+            nondeterministic=(
+                "qc exposes neither --seed nor --benchmark, so "
+                "initializers passes benchmark_seed=None and make_generator_rng "
+                "returns the global np.random, which nothing in the qc path ever "
+                "seeds. subsample_nonpeak_data therefore draws a different test-set "
+                "nonpeak subsample on every run."),
             output="06_qc",
             needs_modiscolite=True,
             argv=["qc",

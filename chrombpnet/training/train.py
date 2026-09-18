@@ -9,13 +9,13 @@ import json
 import os
 import random
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Dict
 
 import numpy as np
 import torch
 
 import chrombpnet.training.data_generators.initializers as initializers
-from chrombpnet.model import ChromBPNet, resolve_device, save_model
+from chrombpnet.model import resolve_device, save_model
 from chrombpnet.training.utils.benchmark_utils import (
     benchmark_enables,
     benchmark_level,

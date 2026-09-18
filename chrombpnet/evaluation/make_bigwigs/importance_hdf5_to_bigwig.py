@@ -1,6 +1,4 @@
 import argparse
-import pyBigWig
-import numpy as np
 import deepdish
 import chrombpnet.evaluation.make_bigwigs.bigwig_helper as bigwig_helper
 

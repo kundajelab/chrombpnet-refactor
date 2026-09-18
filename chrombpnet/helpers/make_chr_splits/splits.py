@@ -1,6 +1,5 @@
 import json
 import argparse
-import os
 import pandas as pd
 
 def get_parsers():

@@ -1,11 +1,7 @@
-import pyBigWig
 import pandas as pd
 import numpy as np
 import h5py
-import os
 import pyfaidx
-import random
-import pickle as pkl
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt

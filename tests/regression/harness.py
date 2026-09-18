@@ -120,6 +120,11 @@ def run_scenarios(workspace: Path, names: list[str] | None = None,
                 f"argv: {' '.join(argv)}\n"
                 f"--- stdout tail ---\n{completed.stdout[-3000:]}\n"
                 f"--- stderr tail ---\n{completed.stderr[-3000:]}")
+        if scenario.nondeterministic:
+            if verbose:
+                print(f"[ran]  {scenario.name}: completed in {elapsed:.1f}s; "
+                      f"artifacts not compared ({scenario.nondeterministic})")
+            continue
         manifests[scenario.name] = artifacts.manifest(output, scenario.ignore)
         if verbose:
             print(f"[ok]   {scenario.name}: "

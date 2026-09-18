@@ -1,7 +1,6 @@
 import chrombpnet.parsers as parsers
 import os
 from chrombpnet.data import DefaultDataFile, get_default_data_path
-from chrombpnet.data import print_meme_motif_file
 import chrombpnet.pipelines as pipelines
 import copy
 import pandas as pd
@@ -82,11 +81,6 @@ def main():
 		import chrombpnet.evaluation.marginal_footprints.marginal_footprinting as marginal_footprinting
 		marginal_footprinting.main(args)
 
-	elif args.cmd == "snp_score":
-	
-		import chrombpnet.evaluation.variant_effect_prediction.snp_scoring as snp_scoring
-		snp_scoring.main(args)
-		
 	elif args.cmd == "modisco_motifs":
 		from chrombpnet.evaluation.modisco.api import generate_report, run_motifs
 		meme_file=get_default_data_path(DefaultDataFile.motifs_meme)
@@ -121,7 +115,6 @@ def main():
 	
 			# prepare candidate negatives
 	
-			exclude_bed = pd.read_csv(args.peaks, sep="\t", header=None)
 			peaks_slop = args.output_prefix+"_auxiliary/peaks_slop.bed"
 			with open(peaks_slop, "w") as output:
 				subprocess.run(["bedtools", "slop", "-i", args.peaks, "-g", args.chrom_sizes,

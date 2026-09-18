@@ -1,6 +1,3 @@
-import pandas as pd
-import os
-import scipy.stats
 import numpy as np
 import json
 import h5py

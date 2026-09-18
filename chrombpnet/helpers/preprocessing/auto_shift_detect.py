@@ -1,5 +1,4 @@
 import argparse
-import pyBigWig
 import pyfaidx
 import subprocess
 import pandas as pd
@@ -7,7 +6,6 @@ import numpy as np
 import itertools
 import warnings
 from termcolor import colored
-import os
 from chrombpnet.evaluation.custom_sequences import viz_sequence
 import chrombpnet.training.utils.one_hot as one_hot
 from chrombpnet.data import DefaultDataFile, get_default_data_path

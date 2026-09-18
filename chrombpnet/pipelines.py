@@ -3,7 +3,6 @@ import os
 import json
 import copy
 from chrombpnet.data import DefaultDataFile, get_default_data_path
-from chrombpnet.data import print_meme_motif_file
 import numpy as np
 def _run_modisco_motifs(input_path, output_path, max_seqlets=50000, window=500):
 	from chrombpnet.evaluation.modisco.api import run_motifs
@@ -148,8 +147,6 @@ def chrombpnet_train_pipeline(args):
 	args_copy.debug_chr = None
 	interpret.main(args_copy)
 	
-	import chrombpnet
-	chrombpnet_src_dir = os.path.dirname(chrombpnet.__file__)
 	meme_file=get_default_data_path(DefaultDataFile.motifs_meme)
 	
 	# TF-MoDISco 2.6 pipeline
@@ -237,8 +234,6 @@ def chrombpnet_qc(args):
 	args_copy.debug_chr = None
 	interpret.main(args_copy)
 	
-	import chrombpnet
-	chrombpnet_src_dir = os.path.dirname(chrombpnet.__file__)
 	meme_file=get_default_data_path(DefaultDataFile.motifs_meme)
 	
 	# TF-MoDISco 2.6 pipeline
@@ -347,8 +342,6 @@ def train_bias_pipeline(args):
 	args_copy.debug_chr = None
 	interpret.main(args_copy)
 	
-	import chrombpnet
-	chrombpnet_src_dir = os.path.dirname(chrombpnet.__file__)
 	meme_file=get_default_data_path(DefaultDataFile.motifs_meme)
 	# TF-MoDISco 2.6 pipeline
 	
@@ -413,8 +406,6 @@ def bias_model_qc(args):
 	args_copy.debug_chr = None
 	interpret.main(args_copy)
 	
-	import chrombpnet
-	chrombpnet_src_dir = os.path.dirname(chrombpnet.__file__)
 	meme_file=get_default_data_path(DefaultDataFile.motifs_meme)
 	
 	# TF-MoDISco 2.6 pipeline

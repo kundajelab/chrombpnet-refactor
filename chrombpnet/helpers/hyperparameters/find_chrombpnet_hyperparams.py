@@ -4,7 +4,6 @@ import pyBigWig
 import pandas as pd
 import numpy as np
 from chrombpnet.training.utils.benchmark_utils import benchmark_enables
-import os
 from chrombpnet.helpers.hyperparameters import param_utils as param_utils
 import json
 import torch

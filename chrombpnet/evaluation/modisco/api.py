@@ -9,8 +9,6 @@ drifting apart again.
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
-import os
-import tempfile
 
 import h5py
 import numpy as np

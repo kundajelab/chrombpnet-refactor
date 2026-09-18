@@ -13,7 +13,6 @@ from typing import Any, Dict, Mapping, Optional, Tuple, Union
 import numpy as np
 import torch
 from torch import Tensor, nn
-import torch.nn.functional as F
 
 
 SOURCE_COMMIT = "09938fdb4397ec0006510e5251e48920a505d4de"

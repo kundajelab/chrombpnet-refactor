@@ -1,5 +1,4 @@
 import chrombpnet.training.data_generators.batchgen_generator as batchgen_generator
-from chrombpnet.training.utils import data_utils
 from chrombpnet.training.utils.benchmark_utils import benchmark_enables
 import pandas as pd
 import json

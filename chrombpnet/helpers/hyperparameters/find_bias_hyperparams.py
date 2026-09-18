@@ -3,7 +3,6 @@ import pyfaidx
 import pyBigWig
 import pandas as pd
 import numpy as np
-import os
 import json
 import chrombpnet.helpers.hyperparameters.param_utils as param_utils
 

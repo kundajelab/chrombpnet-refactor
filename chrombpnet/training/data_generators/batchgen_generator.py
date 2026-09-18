@@ -6,11 +6,7 @@ from chrombpnet.training.utils.benchmark_utils import (
     normalize_benchmark_level,
 )
 import numpy as np
-import random
-import string
 import math
-import os
-import json
 
 def subsample_nonpeak_data(nonpeak_seqs, nonpeak_cts, nonpeak_coords, peak_data_size, negative_sampling_ratio, rng=None):
     #Randomly samples a portion of the non-peak data to use in training
@@ -104,8 +100,6 @@ class ChromBPNetBatchGenerator:
             self.coords = cropped_coords
 
         elif self.nonpeak_seqs is not None:
-            #print(self.nonpeak_seqs.shape)
-
             self.seqs = self.nonpeak_seqs
             self.cts = self.nonpeak_cts
             self.coords = self.nonpeak_coords

@@ -1,10 +1,7 @@
 import argparse
-import pyBigWig
-import pyfaidx
 import subprocess
 import tempfile
 import os
-import numpy as np
 import chrombpnet.helpers.preprocessing.auto_shift_detect as auto_shift_detect
 from chrombpnet.data import DefaultDataFile, get_default_data_path
 
