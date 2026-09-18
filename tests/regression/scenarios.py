@@ -52,6 +52,10 @@ class Scenario:
     nondeterministic: str | None = None
     #: Artifacts to ignore when hashing, relative to ``output``.
     ignore: tuple[str, ...] = field(default_factory=tuple)
+    #: Scenarios whose outputs this one consumes. The harness clears the whole
+    #: workspace before a run, so selecting a scenario with --scenario has to
+    #: pull its prerequisites in too or the models it loads will not exist.
+    depends_on: tuple[str, ...] = field(default_factory=tuple)
 
 
 def _scenarios() -> list[Scenario]:
@@ -92,6 +96,7 @@ def _scenarios() -> list[Scenario]:
         ),
         Scenario(
             name="04_train",
+            depends_on=("03_bias_train",),
             output="04_train",
             argv=["train",
                   "-g", "{genome}", "-c", "{chrom_sizes}", "-itag", "{reads}",
@@ -109,6 +114,7 @@ def _scenarios() -> list[Scenario]:
                 "returns the global np.random, which nothing in the qc path ever "
                 "seeds. subsample_nonpeak_data therefore draws a different test-set "
                 "nonpeak subsample on every run."),
+            depends_on=("03_bias_train",),
             output="05_bias_qc",
             needs_modiscolite=True,
             argv=["bias", "qc",
@@ -126,6 +132,7 @@ def _scenarios() -> list[Scenario]:
                 "returns the global np.random, which nothing in the qc path ever "
                 "seeds. subsample_nonpeak_data therefore draws a different test-set "
                 "nonpeak subsample on every run."),
+            depends_on=("04_train",),
             output="06_qc",
             needs_modiscolite=True,
             argv=["qc",
@@ -139,6 +146,7 @@ def _scenarios() -> list[Scenario]:
         ),
         Scenario(
             name="07_pred_bw",
+            depends_on=("03_bias_train", "04_train",),
             output="07_pred_bw",
             argv=["pred_bw",
                   "-bm", "{root}/03_bias_train/models/bias.pt",
@@ -151,6 +159,7 @@ def _scenarios() -> list[Scenario]:
         ),
         Scenario(
             name="08_contribs_bw",
+            depends_on=("04_train",),
             output="08_contribs_bw",
             argv=["contribs_bw",
                   "-m", "{root}/04_train/models/chrombpnet_nobias.pt",
@@ -162,6 +171,7 @@ def _scenarios() -> list[Scenario]:
         ),
         Scenario(
             name="09_footprints",
+            depends_on=("04_train",),
             output="09_footprints",
             argv=["footprints",
                   "-m", "{root}/04_train/models/chrombpnet_nobias.pt",
@@ -172,6 +182,7 @@ def _scenarios() -> list[Scenario]:
         ),
         Scenario(
             name="10_modisco_motifs",
+            depends_on=("08_contribs_bw",),
             output="10_modisco_motifs",
             needs_modiscolite=True,
             argv=["modisco_motifs",
@@ -184,3 +195,22 @@ def _scenarios() -> list[Scenario]:
 
 SCENARIOS = _scenarios()
 BY_NAME = {scenario.name: scenario for scenario in SCENARIOS}
+
+
+def with_dependencies(names: list[str]) -> list[str]:
+    """Expand a scenario selection to include prerequisites, in run order."""
+    wanted: set[str] = set()
+
+    def visit(name: str) -> None:
+        if name in wanted:
+            return
+        wanted.add(name)
+        for dependency in BY_NAME[name].depends_on:
+            visit(dependency)
+
+    for name in names:
+        if name not in BY_NAME:
+            raise KeyError(
+                f"unknown scenario {name!r}; choose from {sorted(BY_NAME)}")
+        visit(name)
+    return [scenario.name for scenario in SCENARIOS if scenario.name in wanted]

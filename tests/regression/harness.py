@@ -103,8 +103,14 @@ def run_scenarios(workspace: Path, names: list[str] | None = None,
     roots = {str(package_file.parent.parent), str(package_file.resolve().parent.parent)}
     substitutions = tuple((root, "<package-root>") for root in sorted(roots, reverse=True))
 
-    selected = [s for s in scenarios.SCENARIOS
-                if names is None or s.name in names]
+    if names is None:
+        selected = list(scenarios.SCENARIOS)
+    else:
+        expanded = scenarios.with_dependencies(names)
+        if set(expanded) != set(names):
+            added = sorted(set(expanded) - set(names))
+            print(f"[deps] also running {', '.join(added)}")
+        selected = [s for s in scenarios.SCENARIOS if s.name in expanded]
     manifests: dict[str, dict[str, str]] = {}
     for scenario in selected:
         if scenario.needs_modiscolite and not modiscolite_available():
