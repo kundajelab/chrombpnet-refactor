@@ -108,12 +108,6 @@ def _scenarios() -> list[Scenario]:
         ),
         Scenario(
             name="05_bias_qc",
-            nondeterministic=(
-                "qc exposes neither --seed nor --benchmark, so "
-                "initializers passes benchmark_seed=None and make_generator_rng "
-                "returns the global np.random, which nothing in the qc path ever "
-                "seeds. subsample_nonpeak_data therefore draws a different test-set "
-                "nonpeak subsample on every run."),
             depends_on=("03_bias_train",),
             output="05_bias_qc",
             needs_modiscolite=True,
@@ -126,12 +120,6 @@ def _scenarios() -> list[Scenario]:
         ),
         Scenario(
             name="06_qc",
-            nondeterministic=(
-                "qc exposes neither --seed nor --benchmark, so "
-                "initializers passes benchmark_seed=None and make_generator_rng "
-                "returns the global np.random, which nothing in the qc path ever "
-                "seeds. subsample_nonpeak_data therefore draws a different test-set "
-                "nonpeak subsample on every run."),
             depends_on=("04_train",),
             output="06_qc",
             needs_modiscolite=True,

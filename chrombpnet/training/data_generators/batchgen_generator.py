@@ -2,11 +2,18 @@ from chrombpnet.training.utils import augment
 from chrombpnet.training.utils import data_utils
 from chrombpnet.training.utils.benchmark_utils import (
     benchmark_enables,
+    generator_seed,
     make_generator_rng,
     normalize_benchmark_level,
 )
 import numpy as np
 import math
+
+#: Seed used for test-set nonpeak selection when the invoking command does not
+#: expose --seed. Matches the --seed default the training parsers use, so a
+#: pipeline and a standalone qc run on the same model agree.
+DEFAULT_TEST_SEED = 1234
+
 
 def subsample_nonpeak_data(nonpeak_seqs, nonpeak_cts, nonpeak_coords, peak_data_size, negative_sampling_ratio, rng=None):
     #Randomly samples a portion of the non-peak data to use in training
@@ -64,6 +71,23 @@ class ChromBPNetBatchGenerator:
         self.crop_revcomp_data()
 
     def _make_rng(self):
+        if self.mode == "test":
+            # Prediction and QC have to be reproducible at every benchmark
+            # level, including the default. In test mode the only consumer of
+            # this stream is subsample_nonpeak_data, which selects *which*
+            # nonpeaks make up the test set -- that is data selection, not
+            # augmentation, and the validation split already seeds the
+            # equivalent choice unconditionally (initializers.py, valid branch).
+            #
+            # Without this, `chrombpnet qc` and `chrombpnet bias qc` fall back
+            # to the global np.random, which nothing on those paths ever seeds,
+            # because neither command exposes --seed or --benchmark. Two
+            # identical bias qc runs then disagree: measured on a synthetic
+            # fixture, coords_center moved by up to 32475 and the reported
+            # counts pearsonr went from -0.0 to -0.21.
+            seed = (self.benchmark_seed if self.benchmark_seed is not None
+                    else DEFAULT_TEST_SEED)
+            return np.random.RandomState(generator_seed(seed, "test", self.epoch))
         return make_generator_rng(self.benchmark, self.benchmark_seed, self.mode, self.epoch)
 
     def __len__(self):

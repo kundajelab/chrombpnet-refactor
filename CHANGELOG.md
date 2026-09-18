@@ -1,5 +1,26 @@
 # Changelog
 
+## PyTorch refactor - qc and bias qc are now reproducible
+- `chrombpnet qc` and `chrombpnet bias qc` previously reported different
+  metrics on every run for the same model and inputs. Neither command exposes
+  `--seed` or `--benchmark`, so the batch generator's RNG fell back to the
+  global `np.random` stream, which nothing on the qc code path ever seeds --
+  `np.random.seed` is only called in `train.get_model`, which qc never reaches.
+  `subsample_nonpeak_data` then drew a different 1:1 nonpeak subsample for the
+  test set each time.
+- Measured across two identical `bias qc` runs on a synthetic fixture:
+  `coords/coords_center` in `bias_predictions.h5` differed by up to 32475 (an
+  entirely different region set), `predictions/logcounts` by 0.05, and the
+  counts pearsonr in `overall_report.html` moved from `-0.0` to `-0.21`.
+- Test-mode generators now draw from a dedicated seeded stream at every
+  benchmark level. Test-set nonpeak selection is data selection rather than
+  augmentation, and the validation split already seeded the equivalent choice
+  unconditionally. Training is unaffected: its generators keep the streams they
+  had, so trained weights do not change.
+- **This changes qc output.** The reported metrics are now a specific
+  reproducible draw instead of a random one. Existing qc numbers are not
+  comparable to new ones, though they were not comparable to each other either.
+
 ## PyTorch refactor - lite benchmark settings are now the default
 - `--benchmark` now defaults to `lite` when the flag is omitted, so ordinary
   runs match the TensorFlow implementation this package is a port of:
