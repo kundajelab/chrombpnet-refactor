@@ -1,0 +1,42 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      # The suite shells out to bedtools, samtools and bedGraphToBigWig, and
+      # WeasyPrint needs the native Pango/Cairo stack, so the conda environment
+      # is the dependency set -- not pip alone.
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          environment-file: environment.yml
+          activate-environment: chrombpnet-refactor
+          auto-activate-base: false
+
+      - name: Report the environment
+        run: |
+          python -c "import sys, torch; print(sys.version); print('torch', torch.__version__)"
+          for tool in bedtools samtools bedGraphToBigWig; do
+            printf '%-20s %s\n' "$tool" "$(command -v $tool || echo MISSING)"
+          done
+
+      # modiscolite is the optional [reports] extra; the tests that need it
+      # skip without it, so the suite is expected to pass either way.
+      - name: Run the test suite
+        run: python -m pytest -ra
+
+      # Not run on CI: the golden-artifact regression sweep. It compares a run
+      # against a baseline captured from another revision, which is a
+      # developer workflow rather than a pass/fail gate -- and its artifacts
+      # depend on the installed PyTorch build. See tests/regression/README.md.

@@ -1,28 +1,38 @@
-name: Docker Image CI
+name: Docker Image
 
+# Publishing is manual. The previous version of this workflow never ran and
+# would have done the wrong thing if it had:
+#   * `on: push: branch:` -- the key is `branches`, so the filter was ignored
+#   * it targeted `master`; this repository's default branch is `main`
+#   * `if: GitHub.ref` -- expression contexts are case-sensitive, so this was
+#     never true
+#   * it pushed to `kundajelab/chrombpnet:latest`, the upstream TensorFlow
+#     image, which this PyTorch fork must not overwrite
+#
+# Set the DOCKER_IMAGE repository variable (for example
+# `myorg/chrombpnet-refactor`) before running it.
 on:
-  push:
-    branch:        
-      - master    
+  workflow_dispatch:
+
 jobs:
-
-  build:
-
+  build-and-push:
     runs-on: ubuntu-latest
-    if: GitHub.ref == 'refs/heads/master'
     steps:
-    - uses: actions/checkout@v2
-    - name: Build the Docker image
-      env:
-        DOCKER_USER: ${{secrets.DOCKER_USER}}
-        DOCKER_PASSWORD: ${{secrets.DOCKER_PASSWORD}}
-      run: |
-        docker login -u $DOCKER_USER -p $DOCKER_PASSWORD 
-              
-    - name: Build the Docker image
+      - uses: actions/checkout@v4
 
-      run: docker build . --file dockerfile --tag kundajelab/chrombpnet:latest
-      
-    - name: Docker Push
-      run: docker push kundajelab/chrombpnet:latest
-      
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push
+        env:
+          IMAGE: ${{ vars.DOCKER_IMAGE }}
+        run: |
+          if [ -z "$IMAGE" ]; then
+            echo "Set the DOCKER_IMAGE repository variable first." >&2
+            exit 1
+          fi
+          docker build . --file dockerfile --tag "$IMAGE:latest"
+          docker push "$IMAGE:latest"

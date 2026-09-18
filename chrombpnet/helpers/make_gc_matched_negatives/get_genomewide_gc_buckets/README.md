@@ -2,8 +2,12 @@ Scripts to find the gc content of genome wide bins.
 
 ### Usage
 
+This step runs as part of `chrombpnet prep nonpeaks`; it has no separate
+console entry point. To drive it directly:
+
 ```
-chrombpnet_genomewide_gc -g [genome] -o [output_prefix]  -f [inputlen] -s [stride]
+python -m chrombpnet.helpers.make_gc_matched_negatives.get_genomewide_gc_buckets.get_genomewide_gc_bins \
+    -g [genome] -o [output_prefix] -il [inputlen] -st [stride]
 ```
 
 The above scripts bins the genome into `inputlen` length regions. The bin intervals are spaced at `stride` length.
@@ -25,5 +29,7 @@ at  http://mitra.stanford.edu/kundaje/anusri/chrombpnet_downloads/genomewide_gc_
 ```
 wget https://www.encodeproject.org/files/GRCh38_no_alt_analysis_set_GCA_000001405.15/@@download/GRCh38_no_alt_analysis_set_GCA_000001405.15.fasta.gz
 gzip -d GRCh38_no_alt_analysis_set_GCA_000001405.15.fasta.gz
-chrombpnet_genomewide_gc -g GRCh38_no_alt_analysis_set_GCA_000001405.15.fasta -o genomewide_gc_hg38_stride_1000_inputlen_2114 -f 2114 -s 1000
+python -m chrombpnet.helpers.make_gc_matched_negatives.get_genomewide_gc_buckets.get_genomewide_gc_bins \
+    -g GRCh38_no_alt_analysis_set_GCA_000001405.15.fasta \
+    -o genomewide_gc_hg38_stride_1000_inputlen_2114 -il 2114 -st 1000
 ```

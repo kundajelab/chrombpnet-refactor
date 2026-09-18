@@ -1,12 +1,14 @@
 
 # Scripts to get contribution scores from ChromBPNet models
 
-The scripts in this folder are used to do get sequence contribution scores for the chrombpnet models. These scripts require the `shap` installation. Chrombpnet models have two heads - (1) profile head (to predict the shape of a profile) and (2) counts head  (to predict the total counts in a profile). The scripts can provide sequence contribution scores for both the heads.
+The scripts in this folder are used to do get sequence contribution scores for the chrombpnet models. Contribution scores are computed with Tangermeme's DeepLIFT-SHAP; the `shap` package is not used. Chrombpnet models have two heads - (1) profile head (to predict the shape of a profile) and (2) counts head  (to predict the total counts in a profile). The scripts can provide sequence contribution scores for both the heads.
 
 ## Usage
 
 ```
-chrombpne_deepshap -g [genome_fasta] -r [regions] -m [model_h5] -o [output_prefix] -d [debug_chr] -p [profile_or_counts]
+chrombpnet contribs_bw -g [genome_fasta] -c [chrom_sizes] -r [regions] \
+    -m [model.pt] -op [output_prefix] [-pc counts profile] \
+    [-d debug_chr ...] [-ibs interpret_batch_size] [--device cpu]
 ```
 
 ## Example Usage

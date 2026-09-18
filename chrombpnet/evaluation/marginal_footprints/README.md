@@ -5,13 +5,17 @@ The scripts in this folder provide marginal footprints for a given motif and bac
 ## Usage
 
 ```
-chrombpnet_marginal_footprints -g [genome_fasta] -r [regions] -chr [test_chr] -m [model_h5] -bs [batch_size] -o [output_prefix] -pwm_f [motifs_to_pwm_file] --ylim (min-y, max-y)
+chrombpnet footprints -g [genome_fasta] -r [regions] -fl [chr_fold_path] \
+    -m [model.pt] -op [output_prefix] -pwm_f [motifs_to_pwm_file] \
+    [-bs batch_size] [--device cpu] [--ylim "(min_y,max_y)"]
 ```
 
 ## Example Usage
 
 ```
-chrombpnet_marginal_footprints -g /path/to/genome_fasta -r /path/to/bed_file -chr chr1 -m /path/to/model.h5 -o /path/to/output_dir/outputprefix -pwm_f /path/to/motif_to_pwm.tsv
+chrombpnet footprints -g /path/to/genome.fa -r /path/to/nonpeaks.bed \
+    -fl /path/to/folds.json -m /path/to/chrombpnet_nobias.pt \
+    -op /path/to/output_dir/prefix -pwm_f /path/to/motif_to_pwm.tsv
 ```
 
 ## Input Format

@@ -1,9 +1,10 @@
 # TF-MoDISco integration
 
-ChromBPNet uses the TF-MoDISco 2.6 checkout at
-`/path/to/workdir/software/tfmodisco`. Version 2.6 renamed
-the import package from `modiscolite` to `modisco` and replaced the old
-workflow-object HDF5 hierarchy with:
+ChromBPNet uses the TF-MoDISco checkout pinned in `requirements.txt`. Note
+that the *distribution* is named `modisco` -- that is the name
+`importlib.metadata.version` answers to -- while the *import package* is still
+`modiscolite`, which is what `api.py` imports. The pinned version replaced the
+old workflow-object HDF5 hierarchy with:
 
 ```text
 pos_patterns/pattern_N/{sequence,contrib_scores,hypothetical_contribs,seqlets}
