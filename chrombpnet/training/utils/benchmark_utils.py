@@ -33,8 +33,6 @@ A bare ``--benchmark`` with no value means ``max``.
 
 from __future__ import annotations
 
-import hashlib
-from pathlib import Path
 
 import numpy as np
 
@@ -210,9 +208,3 @@ def canonical_bpnet_weights(filters, n_dilation_layers, seed):
     return values
 
 
-def sha256_file(path):
-    digest = hashlib.sha256()
-    with Path(path).open("rb") as handle:
-        for block in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()

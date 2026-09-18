@@ -1,6 +1,5 @@
 import numpy as np
 import chrombpnet.training.utils.one_hot as one_hot
-from chrombpnet.model import load_prediction_model
 
 def filter_edge_regions(peaks_df, bw, width, peaks_bool):
     """
@@ -51,11 +50,4 @@ def get_seqs_cts(genome, bw, peaks_df, input_width=2114, output_width=1000):
                             (r['start'] + r['summit']) + output_width//2))
         vals.append(bigwig_vals)
     return (np.sum(np.array(vals),axis=1), one_hot.dna_to_one_hot(seqs))
-
-def load_model_wrapper(model_h5):
-    model=load_prediction_model(model_h5, device="cpu")
-    print("got the model")
-    model.summary()
-    return model
-
 

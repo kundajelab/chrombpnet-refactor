@@ -55,13 +55,3 @@ def fetch_predict_args():
     return args
 
 
-def fetch_modisco_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-s", "--scores-prefix", type=str, required=True, help="Prefix to counts/profile h5 files. Will use prefix.{profile,counts}_scores.h5")
-    parser.add_argument("-p","--profile-or-counts", type=str, required=True, help="Scoring method to use, profile or counts scores")
-    parser.add_argument("-o", "--output-dir", type=str, required=True, help="Output directory")
-    parser.add_argument("-c", "--crop", type=int, default=500, help="Crop scores to this width from the center for each example")
-    parser.add_argument("-m", "--max-seqlets", type=int, default=50000, help="Max number of seqlets per metacluster for modisco")
-
-    args = parser.parse_args()
-    return args
