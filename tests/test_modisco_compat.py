@@ -1,5 +1,4 @@
-import importlib.metadata
-from pathlib import Path
+import inspect
 import subprocess
 import sys
 
@@ -92,14 +91,34 @@ def test_run_motifs_calls_current_python_api(monkeypatch, tmp_path):
     assert calls["save"] == (str(output_path), ["positive"], ["negative"], 8)
 
 
-def test_requested_modisco_checkout_is_installed():
-    modisco, tfmodisco, io, report = api._modisco_modules()
-    assert tuple(map(int, importlib.metadata.version("modisco").split(".")[:2])) >= (2, 6)
-    assert Path(modisco.__file__).resolve().is_relative_to(
-        Path("/path/to/workdir/software/tfmodisco").resolve())
+def test_installed_modisco_exposes_the_api_this_adapter_calls():
+    """Pin the TF-MoDISco surface the adapter uses, not a version or a path.
+
+    The pinned checkout still reports version 2.5.2 while providing the 2.6
+    API, and it may live anywhere on sys.path, so asserting either would fail
+    for a working install. What actually has to hold is that the three
+    entry points exist and accept the arguments api.py passes them.
+    """
+    pytest.importorskip("modiscolite")
+    _, tfmodisco, io, report = api._modisco_modules()
+
     assert callable(tfmodisco.TFMoDISco)
     assert callable(io.save_hdf5)
     assert callable(report.report_motifs)
+
+    # run_arrays passes these by keyword; a rename upstream must fail loudly.
+    discovery = inspect.signature(tfmodisco.TFMoDISco).parameters
+    for name in ("one_hot", "hypothetical_contribs", "max_seqlets_per_metacluster",
+                 "sliding_window_size", "flank_size", "trim_to_window_size",
+                 "initial_flank_to_add", "final_flank_to_add",
+                 "target_seqlet_fdr", "n_leiden_runs", "verbose"):
+        assert name in discovery, name
+
+    # io.save_hdf5(path, pos, neg, window) is the current 4-argument form.
+    assert len(inspect.signature(io.save_hdf5).parameters) == 4
+
+    # generate_report relies on is_writing_tomtom_matrix being accepted.
+    assert "is_writing_tomtom_matrix" in inspect.signature(report.report_motifs).parameters
 
 
 def test_adapter_cli_exposes_workflow_commands():

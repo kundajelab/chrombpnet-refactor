@@ -15,10 +15,23 @@ import tempfile
 import h5py
 import numpy as np
 
-from modiscolite import io, report, tfmodisco
-
 
 PATTERN_GROUPS = ("pos_patterns", "neg_patterns")
+
+
+def _modisco_modules():
+    """Import TF-MoDISco lazily and return ``(modisco, tfmodisco, io, report)``.
+
+    Importing at call time keeps this module importable where ``modiscolite``
+    is not installed, which matters because the package is an optional
+    ``[reports]`` extra. Tests substitute this function to exercise the adapter
+    without the real dependency.
+    """
+    import modiscolite
+    from modiscolite import io, report, tfmodisco
+
+    return modiscolite, tfmodisco, io, report
+
 
 
 @dataclass(frozen=True)
@@ -109,6 +122,7 @@ def run_arrays(sequences, attributions, output_path, max_seqlets=50000, window=N
         "verbose": True,
     }
     options.update(kwargs)
+    _, tfmodisco, io, _ = _modisco_modules()
     pos_patterns, neg_patterns = tfmodisco.TFMoDISco(
         one_hot=sequences,
         hypothetical_contribs=attributions,
@@ -124,6 +138,7 @@ def generate_report(input_path, output_dir, motif_file=None, image_suffix="./"):
     """Generate the latest supported compact HTML report (``motifs.html``)."""
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    *_, report = _modisco_modules()
     report.report_motifs(
         Path(input_path),
         str(output_dir),
