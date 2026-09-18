@@ -1,12 +1,9 @@
 import argparse
-import pyfaidx
-import pyBigWig
 import pandas as pd
 import numpy as np
 from chrombpnet.training.utils.benchmark_utils import benchmark_enables
 from chrombpnet.helpers.hyperparameters import param_utils as param_utils
-from chrombpnet.regions import NARROWPEAK_SCHEMA
-import json
+from chrombpnet.helpers.hyperparameters import common
 import torch
 from chrombpnet.model import load_model, save_model
 
@@ -59,37 +56,10 @@ def adjust_bias_model_logcounts(bias_model, seqs, cts):
 def main(args): 
 
     # read the fold information - we will evaluate hyperparams on the train+valid set and do nothing on the test set 
-    splits_dict=json.load(open(args.chr_fold_path))
-    chroms_to_keep=splits_dict["train"]+splits_dict["valid"]
-    test_chroms_to_keep=splits_dict["test"]
-    print("evaluating hyperparameters on the following chromosomes",chroms_to_keep)
-
-    # read from bigwigw and fasta file
-    bw = pyBigWig.open(args.bigwig) 
-    genome = pyfaidx.Fasta(args.genome)
-
-    # read peaks and non peaks    
-    in_peaks =  pd.read_csv(args.peaks,
-                           sep='\t',
-                           header=None,
-                           names=NARROWPEAK_SCHEMA)
-    in_nonpeaks =  pd.read_csv(args.nonpeaks,
-                           sep='\t',
-                           header=None,
-                           names=NARROWPEAK_SCHEMA)
-
-    if in_peaks.empty or in_nonpeaks.empty:
-        raise ValueError("Peak and nonpeak files must both be non-empty")
-    if args.inputlen < args.outputlen:
-        raise ValueError("inputlen must be at least outputlen")
-                                            # inputlen and outlen are chosen based on the filters and dilations layers used
-
-    # get train/valid peaks and test peaks seperately
-    peaks = in_peaks[(in_peaks["chr"].isin(chroms_to_keep))]
-    test_peaks = in_peaks[(in_peaks["chr"].isin(test_chroms_to_keep))]
-
-    nonpeaks = in_nonpeaks[(in_nonpeaks["chr"].isin(chroms_to_keep))]
-    test_nonpeaks = in_nonpeaks[(in_nonpeaks["chr"].isin(test_chroms_to_keep))]
+    inputs = common.FoldInputs(args)
+    bw, genome = inputs.bw, inputs.genome
+    peaks, test_peaks = inputs.peaks, inputs.test_peaks
+    nonpeaks, test_nonpeaks = inputs.nonpeaks, inputs.test_nonpeaks
 
     # step 1 filtering: filter peaks that are in the edges - which prevents us from making the inputlen regions - do this for all splits
     peaks = param_utils.filter_edge_regions(peaks, bw, args.inputlen+2*args.max_jitter, peaks_bool=1)
@@ -137,14 +107,10 @@ def main(args):
     all_nonpeaks.to_csv("{}filtered.nonpeaks.bed".format(args.output_prefix), sep="\t", header=False, index=False)
 
     # find counts loss weight for model training - using train and validation set
-    counts_loss_weight = np.median(final_cnts[(final_cnts <= upper_thresh) & (final_cnts>=lower_thresh)])/10
-    if counts_loss_weight == 0:
-        raise ValueError("Computed counts loss weight is zero")
-                                     # check peak-calling
-
-    if counts_loss_weight < 1.0:
-        counts_loss_weight = 1.0
-        print("WARNING: you are training on low-read depth data")
+    # Inclusive bounds here, strict in find_bias_hyperparams; see
+    # common.counts_loss_weight.
+    counts_loss_weight = common.counts_loss_weight(
+        final_cnts, lower_thresh, upper_thresh, inclusive=True)
 
     # adjust bias model for training  - using train and validation set
     # the bias model might be trained on a difference read depth compared to the given data - so this step scales the bias model to account for that
@@ -154,34 +120,28 @@ def main(args):
     save_model(bias_model_scaled, "{}bias_model_scaled.pt".format(args.output_prefix), kind="bias")
 
     # store the parameters being used  - in a TSV file
-    file = open("{}chrombpnet_data_params.tsv".format(args.output_prefix),"w")
-    file.write("\t".join(["counts_sum_min_thresh", str(round(lower_thresh,2))]))
-    file.write("\n")
-    file.write("\t".join(["counts_sum_max_thresh", str(round(upper_thresh,2))]))
-    file.write("\n")
-    file.write("\t".join(["trainings_pts_post_thresh", str(sum((final_cnts<upper_thresh) & (final_cnts>lower_thresh)))]))
-    file.write("\n")
-    file.close()
+    common.write_params_tsv(
+        "{}chrombpnet_data_params.tsv".format(args.output_prefix),
+        [("counts_sum_min_thresh", round(lower_thresh, 2)),
+         ("counts_sum_max_thresh", round(upper_thresh, 2)),
+         ("trainings_pts_post_thresh",
+          sum((final_cnts < upper_thresh) & (final_cnts > lower_thresh)))],
+        trailing_newline=True)
 
-    file = open("{}chrombpnet_model_params.tsv".format(args.output_prefix),"w")
-    file.write("\t".join(["counts_loss_weight", str(round(counts_loss_weight,2))]))
-    file.write("\n")
-    file.write("\t".join(["filters", str(args.filters)]))
-    file.write("\n")
-    file.write("\t".join(["n_dil_layers", str(args.n_dilation_layers)]))
-    file.write("\n")
-    file.write("\t".join(["bias_model_path", "{}bias_model_scaled.pt".format(args.output_prefix)]))
-    file.write("\n")
-    file.write("\t".join(["inputlen", str(args.inputlen)]))
-    file.write("\n")
-    file.write("\t".join(["outputlen", str(args.outputlen)]))
-    file.write("\n")
-    file.write("\t".join(["max_jitter", str(args.max_jitter)]))
-    file.write("\n")
-    file.write("\t".join(["chr_fold_path", str(args.chr_fold_path)]))
-    file.write("\n")
-    file.write("\t".join(["negative_sampling_ratio", str(args.negative_sampling_ratio)]))
-    file.close()
+    common.write_params_tsv(
+        "{}chrombpnet_model_params.tsv".format(args.output_prefix),
+        [("counts_loss_weight", round(counts_loss_weight, 2)),
+         ("filters", args.filters),
+         ("n_dil_layers", args.n_dilation_layers),
+         ("bias_model_path",
+          "{}bias_model_scaled.pt".format(args.output_prefix)),
+         ("inputlen", args.inputlen),
+         ("outputlen", args.outputlen),
+         ("max_jitter", args.max_jitter),
+         ("chr_fold_path", args.chr_fold_path),
+         ("negative_sampling_ratio", args.negative_sampling_ratio)],
+        trailing_newline=False)
+
 
 if __name__=="__main__":
     # read the arguments

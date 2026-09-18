@@ -1,11 +1,8 @@
 import argparse
-import pyfaidx
-import pyBigWig
 import pandas as pd
 import numpy as np
-import json
 import chrombpnet.helpers.hyperparameters.param_utils as param_utils
-from chrombpnet.regions import NARROWPEAK_SCHEMA
+from chrombpnet.helpers.hyperparameters import common
 
 def parse_data_args():
     parser=argparse.ArgumentParser(description="find hyper-parameters for chrombpnet defined in src/training/models/chrombpnet_with_bias_model.py")
@@ -33,37 +30,10 @@ def main(args):
 
     # read the fold information - we will evaluate hyperparams and filter outliers on the train+valid set 
     # do nothing on the test set 
-    splits_dict=json.load(open(args.chr_fold_path))
-    chroms_to_keep=splits_dict["train"]+splits_dict["valid"]
-    test_chroms_to_keep=splits_dict["test"]
-    print("evaluating hyperparameters on the following chromosomes",chroms_to_keep)
-
-    # read from bigwigs and fasta file
-    bw = pyBigWig.open(args.bigwig) 
-    genome = pyfaidx.Fasta(args.genome)
-
-    # read peaks and non peaks    
-    in_peaks =  pd.read_csv(args.peaks,
-                           sep='\t',
-                           header=None,
-                           names=NARROWPEAK_SCHEMA)
-    in_nonpeaks =  pd.read_csv(args.nonpeaks,
-                           sep='\t',
-                           header=None,
-                           names=NARROWPEAK_SCHEMA)
-
-    if in_peaks.empty or in_nonpeaks.empty:
-        raise ValueError("Peak and nonpeak files must both be non-empty")
-    if args.inputlen < args.outputlen:
-        raise ValueError("inputlen must be at least outputlen")
-                                            # inputlen and outlen are chosen based on the filters and dilations layers used
-
-    # get train/valid peaks and test peaks seperately
-    peaks = in_peaks[(in_peaks["chr"].isin(chroms_to_keep))]
-    test_peaks = in_peaks[(in_peaks["chr"].isin(test_chroms_to_keep))]
-
-    nonpeaks = in_nonpeaks[(in_nonpeaks["chr"].isin(chroms_to_keep))]
-    test_nonpeaks = in_nonpeaks[(in_nonpeaks["chr"].isin(test_chroms_to_keep))]
+    inputs = common.FoldInputs(args)
+    bw, genome = inputs.bw, inputs.genome
+    peaks, test_peaks = inputs.peaks, inputs.test_peaks
+    nonpeaks, test_nonpeaks = inputs.nonpeaks, inputs.test_nonpeaks
 
     # step 1 filtering: filter nonpeaks that are in the edges - prevents us from making the inputlen regions - do this for all train/test/valid   
     nonpeaks = param_utils.filter_edge_regions(nonpeaks, bw, args.inputlen, peaks_bool=0)
@@ -108,42 +78,34 @@ def main(args):
     all_peaks.to_csv("{}filtered.bias_peaks.bed".format(args.output_prefix), sep="\t", header=False, index=False)
 
     # find counts loss weight for model training - using train and validation set
-    counts_loss_weight = np.median(final_cnts[(final_cnts < upper_thresh) & (final_cnts>lower_thresh)])/10
+    # Strict bounds here, inclusive in find_chrombpnet_hyperparams; see
+    # common.counts_loss_weight.
+    counts_loss_weight = common.counts_loss_weight(
+        final_cnts, lower_thresh, upper_thresh, inclusive=False)
     print("counts_loss_weight:", counts_loss_weight)
-    if counts_loss_weight == 0:
-        raise ValueError("Computed counts loss weight is zero")
-
-    if counts_loss_weight < 1.0:
-        counts_loss_weight = 1.0
-        print("WARNING: you are training on low-read depth data")
 
     # store the parameters being used  - in a TSV file
-    file = open("{}bias_data_params.tsv".format(args.output_prefix),"w")
-    file.write("\t".join(["counts_sum_min_thresh", str(round(lower_thresh,2))]))
-    file.write("\n")
-    file.write("\t".join(["counts_sum_max_thresh", str(round(upper_thresh,2))]))
-    file.write("\n")
-    file.write("\t".join(["trainings_pts_post_thresh", str(sum((final_cnts<upper_thresh) & (final_cnts>lower_thresh)))]))
-    file.write("\n")
-    file.close()
+    common.write_params_tsv(
+        "{}bias_data_params.tsv".format(args.output_prefix),
+        [("counts_sum_min_thresh", round(lower_thresh, 2)),
+         ("counts_sum_max_thresh", round(upper_thresh, 2)),
+         ("trainings_pts_post_thresh",
+          sum((final_cnts < upper_thresh) & (final_cnts > lower_thresh)))],
+        trailing_newline=True)
 
-    file = open("{}bias_model_params.tsv".format(args.output_prefix),"w")
-    file.write("\t".join(["counts_loss_weight", str(round(counts_loss_weight,2))]))
-    file.write("\n")
-    file.write("\t".join(["filters", str(args.filters)]))
-    file.write("\n")
-    file.write("\t".join(["n_dil_layers", str(args.n_dilation_layers)]))
-    file.write("\n")
-    file.write("\t".join(["inputlen", str(args.inputlen)]))
-    file.write("\n")
-    file.write("\t".join(["outputlen", str(args.outputlen)]))
-    file.write("\n")
-    file.write("\t".join(["max_jitter", str(args.max_jitter)]))
-    file.write("\n")
-    file.write("\t".join(["chr_fold_path", str(args.chr_fold_path)]))
-    file.write("\n")
-    file.write("\t".join(["negative_sampling_ratio", str(1.0)])) # this is just a dummy variable because the train.py pipeline needs it - all negatives will be used for bias model training
-    file.close()
+    common.write_params_tsv(
+        "{}bias_model_params.tsv".format(args.output_prefix),
+        [("counts_loss_weight", round(counts_loss_weight, 2)),
+         ("filters", args.filters),
+         ("n_dil_layers", args.n_dilation_layers),
+         ("inputlen", args.inputlen),
+         ("outputlen", args.outputlen),
+         ("max_jitter", args.max_jitter),
+         ("chr_fold_path", args.chr_fold_path),
+         # A dummy: bias training uses every negative, but train.py's
+         # get_model_param_dict requires the key to be present.
+         ("negative_sampling_ratio", 1.0)],
+        trailing_newline=False)
 
 
 if __name__=="__main__":
