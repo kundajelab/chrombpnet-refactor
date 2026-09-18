@@ -41,17 +41,9 @@ def train_report(fpx,prefix):
 	If the value is less than -0.5 the pipline will automatically throw an error.'
 	
 	data = json.load(open(os.path.join(prefix,"evaluation/bias_metrics.json")))
-	df = pd.json_normalize(data['counts_metrics']).round(2)
-	df = pd.json_normalize(data['counts_metrics'])
-	df.index = ['counts_metrics']
-	df = df[df.columns.drop(list(df.filter(regex='peaks_and_nonpeaks')))]
-	df = df[df.columns.drop(list(df.filter(regex='spearmanr')))]
+	df = report_shell.metrics_table(data, 'counts_metrics', 'counts_metrics')
 
-	df1 = pd.json_normalize(data['profile_metrics']).round(2)
-	df1 = pd.json_normalize(data['profile_metrics'])
-	df1.index = ['profile_metrics']
-	df1 = df1[df1.columns.drop(list(df1.filter(regex='peaks_and_nonpeaks')))]
-	df1 = df1[df1.columns.drop(list(df1.filter(regex='spearmanr')))]
+	df1 = report_shell.metrics_table(data, 'profile_metrics', 'profile_metrics')
 
 	bias_image_loc=os.path.join("./","{}bw_shift_qc.png".format(fpx))
 
@@ -96,17 +88,9 @@ def qc_report(fpx,prefix,data_type):
 
 
 	data = json.load(open(os.path.join(prefix,"evaluation/{}chrombpnet_metrics.json".format(fpx))))
-	pdf = pd.json_normalize(data['counts_metrics']).round(2)
-	pdf = pd.json_normalize(data['counts_metrics'])
-	pdf.index = ['counts_metrics']
-	pdf = pdf[pdf.columns.drop(list(pdf.filter(regex='peaks_and_nonpeaks')))]
-	pdf = pdf[pdf.columns.drop(list(pdf.filter(regex='spearmanr')))]
+	pdf = report_shell.metrics_table(data, 'counts_metrics', 'counts_metrics')
 
-	pdf1 = pd.json_normalize(data['profile_metrics']).round(2)
-	pdf1 = pd.json_normalize(data['profile_metrics'])
-	pdf1.index = ['profile_metrics']
-	pdf1 = pdf1[pdf1.columns.drop(list(pdf1.filter(regex='peaks_and_nonpeaks')))]
-	pdf1 = pdf1[pdf1.columns.drop(list(pdf1.filter(regex='spearmanr')))]
+	pdf1 = report_shell.metrics_table(data, 'profile_metrics', 'profile_metrics')
 		
 	## Marginal footprinting on enzyme bias
 	

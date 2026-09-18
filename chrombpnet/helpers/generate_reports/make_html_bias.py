@@ -64,15 +64,9 @@ def qc_report(fpx,prefix):
 	
 
 	data = json.load(open(os.path.join(prefix,"evaluation/{}bias_metrics.json".format(fpx))))
-	df = pd.json_normalize(data['counts_metrics']).round(2)
-	df.index = ['counts_metrics']
-	df = df[df.columns.drop(list(df.filter(regex='peaks_and_nonpeaks')))]
-	df = df[df.columns.drop(list(df.filter(regex='spearmanr')))]
+	df = report_shell.metrics_table(data, 'counts_metrics', 'counts_metrics')
 
-	df1 = pd.json_normalize(data['profile_metrics']).round(2)
-	df1.index = ['profile_metrics']
-	df1 = df1[df1.columns.drop(list(df1.filter(regex='peaks_and_nonpeaks')))]
-	df1 = df1[df1.columns.drop(list(df1.filter(regex='spearmanr')))]
+	df1 = report_shell.metrics_table(data, 'profile_metrics', 'profile_metrics')
 
 	## TFModisco motifs learnt by bias model (bias.pt) model 
 	

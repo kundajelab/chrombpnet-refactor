@@ -1,5 +1,15 @@
 # Changelog
 
+## PyTorch refactor - the ChromBPNet report now rounds its metrics
+- `make_html` computed `pd.json_normalize(...).round(2)` and then immediately
+  overwrote the result with the unrounded frame on the next line, in all four
+  of its metrics tables. The ChromBPNet report therefore displayed
+  full-precision numbers (`0.488836`) where the bias report, which had a single
+  call, displayed rounded ones (`0.49`).
+- Both reports now round, via one shared helper. **This changes
+  `overall_report.html` and `overall_report.pdf` for ChromBPNet runs**; the
+  underlying `*_metrics.json` is unaffected and still carries full precision.
+
 ## PyTorch refactor - DNase footprinting and the footprint plot window
 - The DNase marginal-footprinting table listed `dnase_2` with `dnase_1`'s
   sequence (`TTTACAAGTCCA`), so every DNase run footprinted the same motif

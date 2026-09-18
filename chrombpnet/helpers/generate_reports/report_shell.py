@@ -78,3 +78,24 @@ def write_report(prefix: str, fpx: str, main_html: str, html_prefix: str) -> Non
 
     with open(html_path, 'w') as handle:
         handle.write(main_html.replace("./", html_prefix))
+
+def metrics_table(data, key, index_label, decimals=2):
+    """One metrics section of a *_metrics.json, as a display-ready DataFrame.
+
+    Flattens the nested dict, labels the single row, and drops the columns the
+    reports do not show: the combined peaks_and_nonpeaks figures and the
+    Spearman correlations.
+
+    This idiom appeared six times across the two report generators, and four of
+    those copies computed ``.round(decimals)`` and then immediately overwrote
+    the result with the unrounded frame on the next line -- so the ChromBPNet
+    report displayed full-precision numbers while the bias report, which had
+    only a single call, displayed rounded ones. Rounding happens once here.
+    """
+    import pandas as pd
+
+    frame = pd.json_normalize(data[key]).round(decimals)
+    frame.index = [index_label]
+    for pattern in ("peaks_and_nonpeaks", "spearmanr"):
+        frame = frame[frame.columns.drop(list(frame.filter(regex=pattern)))]
+    return frame
