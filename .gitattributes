@@ -1,0 +1,14 @@
+# Normalize line endings for text so a read/write round-trip in any tool cannot
+# silently rewrite an entire file. Several sources in chrombpnet/ previously
+# mixed CRLF and LF within a single file, which made unrelated one-line edits
+# show up as whole-file diffs.
+* text=auto eol=lf
+
+# Binary assets, so git never tries to translate them.
+*.png binary
+*.pdf binary
+*.bw binary
+*.h5 binary
+*.pt binary
+*.gz binary
+*.ipynb -text
