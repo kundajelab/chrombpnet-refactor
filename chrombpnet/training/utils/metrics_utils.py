@@ -8,11 +8,21 @@ from scipy.interpolate import interpn
 from scipy.spatial.distance import jensenshannon
 
 
-plt.rcParams["figure.figsize"]=10,5
-font = {'family' : 'normal',
-        'weight' : 'bold',
-        'size'   : 10}
-matplotlib.rc('font', **font)
+def configure_plot_style():
+    """Apply the shared figure size and font used by every metrics plot.
+
+    metrics.py set the same two rcParams again at import, so which one won
+    depended on import order -- and metrics_utils additionally passed
+    ``'family': 'normal'``, which is not a matplotlib font family. That logged
+    "findfont: Font family 'normal' not found" eight times per figure and then
+    fell back to the default, so dropping it changes nothing but the noise:
+    verified by rendering a figure both ways and comparing the PNG bytes.
+    """
+    plt.rcParams["figure.figsize"] = 10, 5
+    matplotlib.rc('font', weight='bold', size=10)
+
+
+configure_plot_style()
 
 
 def normalize_profile(profile):

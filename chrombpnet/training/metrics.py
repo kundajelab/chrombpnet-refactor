@@ -1,19 +1,19 @@
-import numpy as np 
-import argparse
+import numpy as np
 from scipy.stats import spearmanr, pearsonr
 from scipy.spatial.distance import jensenshannon
 import matplotlib
 matplotlib.use('Agg')
 from matplotlib import pyplot as plt
-from matplotlib import cm
-from matplotlib.colors import Normalize 
-from scipy.interpolate import interpn
-from chrombpnet.training.utils.metrics_utils import * 
 
-plt.rcParams["figure.figsize"]=10,5
-font = {'weight' : 'bold',
-        'size'   : 10}
-matplotlib.rc('font', **font)
+# Explicit rather than `import *`: the wildcard also re-bound numpy,
+# matplotlib, plt and four scipy names over this module's own imports, so which
+# definition won depended on import order.
+from chrombpnet.training.utils.metrics_utils import (
+    density_scatter,
+    get_min_max_normalized_value,
+    jsd_min_max_bounds,
+    normalize_profile,
+)
 
    
 def counts_metrics(labels,preds,outf,title):
