@@ -1,8 +1,8 @@
 import json
 import pandas as pd
 import os
-import matplotlib.pyplot as plt
 import argparse
+from chrombpnet.helpers.generate_reports import report_shell
 
 
 def read_args():
@@ -60,22 +60,7 @@ def train_report(fpx,prefix):
 	train_hed = 'Training report'
 	train_text = 'The val loss (validation loss) will decrease and saturate after a few epochs.'
 
-	loss = pd.read_csv(os.path.join(prefix,"logs/{}chrombpnet.log".format(fpx)), sep=",", header=0)
-	
-	val_loss = loss["val_loss"]
-	train_loss = loss["loss"]
-	epochs = loss["epoch"]
-	
-	plt.rcParams["figure.figsize"]=4,4
-	plt.figure()
-	plt.plot(epochs, val_loss, label="val loss")
-	plt.plot(epochs, train_loss, label="train loss")
-	plt.legend(loc='best')
-	plt.xlabel('Epochs')
-	plt.ylabel('Total loss')
-	plt.tight_layout()
-	plt.savefig(os.path.join(prefix,"evaluation/{}epoch_loss.png".format(fpx)),format='png',dpi=300)
-	loss_image_loc=os.path.join("./",'{}epoch_loss.png'.format(fpx))
+	loss_image_loc = report_shell.loss_curve(prefix, fpx, "chrombpnet.log")
 
 	# 2. Combine them together using a long f-string
 	html = f'''
@@ -296,117 +281,22 @@ def main(args):
 
 	if (args.command=="pipeline"):
 		page_title_text='Bias factorized ChromBPNet training and quality check report'
-		main_html = f'''
-		<html>
-			<head>
-				<title>{page_title_text}</title>
-			</head>	
-			<body>
-				<h3>{page_title_text}</h3>
-			</body>
-			<body>
-			    <style> 
-  				    table.dataframe, th, td {{font-size:11pt; border:1px solid black; border-collapse:collapse; text-align:center;}}
- 				   th, td {{padding: 5px;}}
-			    </style>
-			    <style> 
-  				    table.new {{font-size:11pt; border:1px solid black; width:100% ; border-collapse:collapse; text-align:center;}}
- 				   th, td {{padding: 5px;}}
-			    </style>
-			</body>
-			'''
+		main_html = report_shell.page_shell(page_title_text)
 		main_html += train_report(fpx,prefix)
 		main_html += qc_report(fpx, prefix, data_type)
 		
 	if (args.command=="train"):
 		page_title_text='Bias factorized ChromBPNet training report'
-		main_html = f'''
-		<html>
-			<head>
-				<title>{page_title_text}</title>
-			</head>	
-			<body>
-				<h3>{page_title_text}</h3>
-			</body>
-			<body>
-			    <style> 
-  				    table.dataframe, th, td {{font-size:11pt; border:1px solid black; border-collapse:collapse; text-align:center;}}
- 				   th, td {{padding: 5px;}}
-			    </style>
-			    <style> 
-  				    table.new {{font-size:11pt; border:1px solid black; width:100% ; border-collapse:collapse; text-align:center;}}
- 				   th, td {{padding: 5px;}}
-			    </style>
-			</body>
-			'''
+		main_html = report_shell.page_shell(page_title_text)
 		main_html += train_report(fpx,prefix)
 
 	if (args.command=="qc"):
 		page_title_text='Bias factorized ChromBPNet quality check report'
-		main_html = f'''
-		<html>
-			<head>
-				<title>{page_title_text}</title>
-			</head>	
-			<body>
-				<h3>{page_title_text}</h3>
-			</body>
-			<body>
-			    <style> 
-  				    table.dataframe, th, td {{font-size:11pt; border:1px solid black; border-collapse:collapse; text-align:center;}}
- 				   th, td {{padding: 5px;}}
-			    </style>
-			    <style> 
-  				    table.new {{font-size:11pt; border:1px solid black; width:100% ; border-collapse:collapse; text-align:center;}}
- 				   th, td {{padding: 5px;}}
-			    </style>
-			</body>
-			'''
+		main_html = report_shell.page_shell(page_title_text)
 		main_html += qc_report(fpx, prefix, data_type)
 
-	end_html = f'''
-	</html>
-		'''	
-		
-	main_html+=end_html
-	
-	# 3. Write the html string as an HTML file
-	with open(os.path.join(prefix,"evaluation/{}overall_report.html".format(fpx)), 'w') as f:
-		f.write(main_html)
+	report_shell.write_report(prefix, fpx, main_html, args.html_prefix)
 
-	from weasyprint import HTML, CSS
-	css = CSS(string='''
-		@page {
-                size: 450mm 700mm;
-                mnargin: 0in 0in 0in 0in;
-                }
-        .center {
-                 max-width:25%;
-                 max-height:5%;
-                 display: block;
-                 margin-left: auto;
-                 margin-right: auto;
-                 }
-        .cover {
-    		 width: 100%;
-   			 display: block;
-			}
-			
-		table {
-  			   font-size: 11pt;
- 			   font-family: Arial;
- 			   text-align: center;
- 		       width: 100%;
- 		       border-collapse: collapse;
- 			   border: 1px solid silver;
-			}
-			
-        ''')
-	HTML(os.path.join(prefix,"evaluation/{}overall_report.html".format(fpx))).write_pdf(os.path.join(prefix,"evaluation/{}overall_report.pdf".format(fpx)), stylesheets=[css])
-
-	with open(os.path.join(prefix,"evaluation/{}overall_report.html".format(fpx)), 'w') as f:
-		f.write(main_html.replace("./",args.html_prefix))
-	
 if __name__=="__main__":
 	args=read_args()
 	main(args)
