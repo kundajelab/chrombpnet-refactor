@@ -1,7 +1,6 @@
 import numpy as np
 import json
 import h5py
-import chrombpnet.training.utils.argmanager as argmanager
 import chrombpnet.training.metrics as metrics
 import chrombpnet.training.data_generators.initializers as initializers
 from chrombpnet.model import load_model_wrapper
@@ -120,9 +119,3 @@ def main(args):
 
     with open(args.output_prefix + '_metrics.json', 'w') as fp:
         json.dump(metrics_dictionary, fp, indent=4)
-
-
-if __name__=="__main__":
-    # read arguments
-    args=argmanager.fetch_predict_args()
-    main(args)

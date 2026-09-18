@@ -2,6 +2,7 @@ import chrombpnet.parsers as parsers
 import os
 from chrombpnet.data import DefaultDataFile, get_default_data_path
 import chrombpnet.pipelines as pipelines
+from chrombpnet.layout import RunLayout
 import copy
 import pandas as pd
 import logging
@@ -15,39 +16,25 @@ def main():
 	args = parsers.read_parser()
 	
 	if args.cmd == "pipeline" or args.cmd == "train":
-		os.makedirs(os.path.join(args.output_dir,"logs"), exist_ok=False)
-		os.makedirs(os.path.join(args.output_dir,"auxiliary"), exist_ok=False)
-		os.makedirs(os.path.join(args.output_dir,"models"), exist_ok=False)
-		os.makedirs(os.path.join(args.output_dir,"evaluation"), exist_ok=False)
-
+		RunLayout.from_args(args).create_training_dirs()
 		pipelines.chrombpnet_train_pipeline(args)
-	
+
 	elif args.cmd == "qc":
-		os.makedirs(os.path.join(args.output_dir,"auxiliary"), exist_ok=True)
-		os.makedirs(os.path.join(args.output_dir,"evaluation"), exist_ok=True)
-		
+		RunLayout.from_args(args).create_qc_dirs()
 		pipelines.chrombpnet_qc(args)
-		
+
 	elif args.cmd == "bias":
 		if args.cmd_bias == "pipeline" or args.cmd_bias == "train":
-			os.makedirs(os.path.join(args.output_dir,"logs"), exist_ok=False)
-			os.makedirs(os.path.join(args.output_dir,"auxiliary"), exist_ok=False)
-			os.makedirs(os.path.join(args.output_dir,"models"), exist_ok=False)
-			os.makedirs(os.path.join(args.output_dir,"evaluation"), exist_ok=False)
-
+			RunLayout.from_args(args).create_training_dirs()
 			pipelines.train_bias_pipeline(args)
-		
+
 		elif args.cmd_bias == "qc":
-			os.makedirs(os.path.join(args.output_dir,"auxiliary"), exist_ok=True)
-			os.makedirs(os.path.join(args.output_dir,"evaluation"), exist_ok=True)
-			
+			RunLayout.from_args(args).create_qc_dirs()
 			pipelines.bias_model_qc(args)
-			
+
 		else:
 			print("Command not found")
 
-			
-	
 	elif args.cmd == "pred_bw":
 	
 		if not any((args.bias_model, args.chrombpnet_model, args.chrombpnet_model_nb)):

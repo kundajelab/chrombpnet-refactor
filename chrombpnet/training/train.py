@@ -254,9 +254,3 @@ def main(args):
     with open(args.output_prefix + ".args.json", "w") as handle:
         json.dump(vars(args), handle, indent=4)
     return model
-
-
-if __name__ == "__main__":
-    import chrombpnet.training.utils.argmanager as argmanager
-
-    main(argmanager.fetch_train_args())

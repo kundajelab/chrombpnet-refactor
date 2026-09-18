@@ -1,417 +1,236 @@
-import pandas as pd
-import os
-import json
-import copy
-from chrombpnet.data import DefaultDataFile, get_default_data_path
-import numpy as np
+"""The four end-to-end workflows behind the CLI's pipeline/train/qc commands.
+
+Each is an explicit ordered sequence of steps from :mod:`chrombpnet.stages`,
+with paths resolved by :class:`chrombpnet.layout.RunLayout`. The order is the
+contract -- these functions exist to run things in a particular sequence -- so
+the mapping to the previous inline implementation is recorded per function.
+
+``train`` and ``bias train`` share their pipeline with ``pipeline`` and
+``bias pipeline`` respectively, returning early after the report rather than
+going on to evaluate.
+"""
+
+from __future__ import annotations
+
+from chrombpnet import stages
+from chrombpnet.layout import RunLayout
 from chrombpnet.model import load_model_wrapper
-def _run_modisco_motifs(input_path, output_path, max_seqlets=50000, window=500):
-	from chrombpnet.evaluation.modisco.api import run_motifs
-	run_motifs(input_path, output_path, max_seqlets=max_seqlets, window=window)
 
-
-def _run_modisco_report(input_path, output_dir, motif_file):
-	from chrombpnet.evaluation.modisco.api import generate_report
-	generate_report(input_path, output_dir, motif_file)
 
 def chrombpnet_train_pipeline(args):
+    """Train a bias-factorized ChromBPNet model, then evaluate it.
 
-	if args.file_prefix:
-		fpx = args.file_prefix+"_"
-	else:
-		fpx = ""
-		
-	# Shift bam and convert to bigwig
-	import chrombpnet.helpers.preprocessing.reads_to_bigwig as reads_to_bigwig	
-	args.output_prefix = os.path.join(args.output_dir,"auxiliary/{}data".format(fpx))
-	args.plus_shift = None
-	args.minus_shift = None
-	reads_to_bigwig.main(args)
-	
-	# QC bigwig
-	import chrombpnet.helpers.preprocessing.analysis.build_pwm_from_bigwig as build_pwm_from_bigwig	
-	args.bigwig = os.path.join(args.output_dir,"auxiliary/{}data_unstranded.bw".format(fpx))
-	args.output_prefix = os.path.join(args.output_dir,"evaluation/{}bw_shift_qc".format(fpx))
-	folds = json.load(open(args.chr_fold_path))
-	if not folds["valid"]:
-		raise ValueError("Validation chromosome list is empty")
-	args.chr = folds["valid"][0]
-	args.pwm_width=24
-	build_pwm_from_bigwig.main(args)
+    Steps: preprocess -> hyperparameters -> QC the input bias model ->
+    move params into logs/ -> train -> move logs -> (stop here for `train`) ->
+    predict -> footprints -> interpret -> modisco -> report.
+    """
+    layout = RunLayout.from_args(args)
 
-	# fetch hyperparameters for training
-	import chrombpnet.helpers.hyperparameters.find_chrombpnet_hyperparams as find_chrombpnet_hyperparams
-	args_copy = copy.deepcopy(args)
-	args_copy.output_prefix = os.path.join(args.output_dir,"auxiliary/{}".format(fpx))
-	find_chrombpnet_hyperparams.main(args_copy)
-	
-	# make predictions with input bias model in peaks
-	import chrombpnet.training.predict as predict
-	args_copy = copy.deepcopy(args)
-	args_copy.output_prefix = os.path.join(args_copy.output_dir,"evaluation/bias")
-	args_copy.peaks = os.path.join(args.output_dir,"auxiliary/{}filtered.peaks.bed".format(fpx))
-	args_copy.model_h5 = args.bias_model_path
-	args_copy.nonpeaks = "None"
-	predict.main(args_copy)
-	
-	# QC bias model performance in peaks
-	bias_metrics = json.load(open(os.path.join(args_copy.output_dir,"evaluation/bias_metrics.json")))
-	print("Bias model pearsonr performance in peaks is: {}".format(str(np.round(bias_metrics["counts_metrics"]["peaks"]["pearsonr"],2))))
-	if bias_metrics["counts_metrics"]["peaks"]["pearsonr"] <= -0.5:
-		raise ValueError("Bias model has strongly negative peak count correlation")
-	
-	# separating models from logs
-	os.rename(os.path.join(args.output_dir,"auxiliary/{}bias_model_scaled.pt".format(fpx)),os.path.join(args.output_dir,"models/{}bias_model_scaled.pt".format(fpx)))
-	os.rename(os.path.join(args.output_dir,"auxiliary/{}chrombpnet_model_params.tsv".format(fpx)),os.path.join(args.output_dir,"logs/{}chrombpnet_model_params.tsv".format(fpx)))
-	os.rename(os.path.join(args.output_dir,"auxiliary/{}chrombpnet_data_params.tsv".format(fpx)),os.path.join(args.output_dir,"logs/{}chrombpnet_data_params.tsv".format(fpx)))
+    stages.preprocess_and_qc_bigwig(args, layout)
 
-	params = open(os.path.join(args.output_dir,"logs/{}chrombpnet_model_params.tsv".format(fpx))).read()
-	params = params.replace(os.path.join(args.output_dir,"auxiliary/{}bias_model_scaled.pt".format(fpx)),os.path.join(args.output_dir,"models/{}bias_model_scaled.pt".format(fpx)))
-	with open(os.path.join(args.output_dir,"logs/{}chrombpnet_model_params.tsv".format(fpx)),"w") as f:
-		f.write(params)
-		
-	# get model architecture path and train chromBPNet model
-	import chrombpnet.training.models.chrombpnet_with_bias_model as chrombpnet_with_bias_model
-	import chrombpnet.training.train as train
-	args_copy = copy.deepcopy(args)
-	if args_copy.architecture_from_file is None:
-		args_copy.architecture_from_file = 	chrombpnet_with_bias_model.__file__
-	args_copy.peaks = os.path.join(args.output_dir,"auxiliary/{}filtered.peaks.bed".format(fpx))
-	args_copy.nonpeaks = os.path.join(args.output_dir,"auxiliary/{}filtered.nonpeaks.bed".format(fpx))
-	args_copy.output_prefix = os.path.join(args.output_dir,"models/{}chrombpnet".format(fpx))
-	args_copy.params = os.path.join(args.output_dir,"logs/{}chrombpnet_model_params.tsv".format(fpx))
-	train.main(args_copy)
-	
-	# separating models from logs
-	os.rename(os.path.join(args.output_dir,"models/{}chrombpnet.log".format(fpx)),os.path.join(args.output_dir,"logs/{}chrombpnet.log".format(fpx)))
-	os.rename(os.path.join(args.output_dir,"models/{}chrombpnet.log.batch".format(fpx)),os.path.join(args.output_dir,"logs/{}chrombpnet.log.batch".format(fpx)))
-	#os.rename(os.path.join(args.output_dir,"models/{}chrombpnet.params.json".format(fpx)),os.path.join(args.output_dir,"logs/{}chrombpnet.params.json".format(fpx)))
-	os.rename(os.path.join(args.output_dir,"models/{}chrombpnet.args.json").format(fpx),os.path.join(args.output_dir,"logs/{}chrombpnet.args.json".format(fpx)))
+    import chrombpnet.helpers.hyperparameters.find_chrombpnet_hyperparams as find_chrombpnet_hyperparams
+    stages.find_hyperparameters(args, layout, find_chrombpnet_hyperparams)
 
-	if args.cmd == "train":
-		import chrombpnet.helpers.generate_reports.make_html as make_html
-		args_copy = copy.deepcopy(args)
-		args_copy.input_dir = args_copy.output_dir
-		args_copy.command = args.cmd
-		make_html.main(args_copy)
-		print("Finished training! Exiting!")
-		return
-		
-	# make predictions with trained chrombpnet model
-	args_copy = copy.deepcopy(args)
-	args_copy.output_prefix = os.path.join(args.output_dir,"evaluation/{}chrombpnet".format(fpx))
-	args_copy.model_h5 = os.path.join(args.output_dir,"models/{}chrombpnet.pt".format(fpx))
-	args_copy.nonpeaks = "None"
-	args_copy.peaks = os.path.join(args.output_dir,"auxiliary/{}filtered.peaks.bed".format(fpx))
-	predict.main(args_copy)
-	
-	# marginal footprinting with model
-	import chrombpnet.evaluation.marginal_footprints.marginal_footprinting as marginal_footprinting
-	if args.data_type == "ATAC":
-		bias_motifs = [["tn5_1","GCACAGTACAGAGCTG"],["tn5_2","GTGCACAGTTCTAGAGTGTGCAG"],["tn5_3","CCTCTACACTGTGCAGAA"],["tn5_4","GCACAGTTCTAGACTGTGCAG"],["tn5_5","CTGCACAGTGTAGAGTTGTGC"]]
+    # Check the supplied bias model against observed peak counts before
+    # spending a training run on it. Note the unprefixed "evaluation/bias"
+    # output prefix, which check_bias_model_quality reads back.
+    filtered_peaks = layout.aux("filtered.peaks.bed")
+    stages.run_predictions(
+        args, layout,
+        output_prefix=layout.unprefixed("evaluation", "bias"),
+        model_path=args.bias_model_path,
+        peaks=filtered_peaks, nonpeaks="None")
+    stages.check_bias_model_quality(layout)
 
-	elif args.data_type == "DNASE":
-		bias_motifs = [["dnase_1","TTTACAAGTCCA"],["dnase_2","TTTACAAGTCCA"]]
-	else:
-		print("unknown data type: "+args.data_type)
-	df = pd.DataFrame(bias_motifs)
-	df.to_csv(os.path.join(args_copy.output_dir,"auxiliary/motif_to_pwm.tsv"),sep="\t",header=False,index=False)
-	
-	args_copy = copy.deepcopy(args)
-	args_copy.model_h5 = os.path.join(args.output_dir,"models/{}chrombpnet_nobias.pt".format(fpx))
-	args_copy.regions = args.nonpeaks
-	args_copy.output_prefix = os.path.join(args.output_dir,"evaluation/{}chrombpnet_nobias".format(fpx))
-	args_copy.motifs_to_pwm = os.path.join(args_copy.output_dir,"auxiliary/motif_to_pwm.tsv")
-	args_copy.ylim = None
-	marginal_footprinting.main(args_copy)
-	
-	# separating models from logs
-	os.rename(os.path.join(args.output_dir,"evaluation/{}chrombpnet_nobias_footprints.h5".format(fpx)),os.path.join(args.output_dir,"auxiliary/{}chrombpnet_nobias_footprints.h5".format(fpx)))
+    # Separate models and params from the auxiliary scratch directory.
+    layout.move("auxiliary", "models", "bias_model_scaled.pt")
+    layout.move("auxiliary", "logs", "chrombpnet_model_params.tsv")
+    layout.move("auxiliary", "logs", "chrombpnet_data_params.tsv")
 
-	# get contributions scores with model
-	args_copy = copy.deepcopy(args)
-	args_copy.peaks = os.path.join(args.output_dir,"auxiliary/{}filtered.peaks.bed".format(fpx))
-	import chrombpnet.evaluation.interpret.interpret as interpret
-	peaks = pd.read_csv(os.path.join(args_copy.peaks),sep="\t",header=None)
-	if peaks.shape[0] > 30000:
-		sub_peaks = peaks.sample(30000, random_state=1234)
-	else:
-		sub_peaks = peaks
-	sub_peaks.to_csv(os.path.join(args_copy.output_dir,"auxiliary/{}30K_subsample_peaks.bed".format(fpx)),sep="\t", header=False, index=False)
-	os.makedirs(os.path.join(args.output_dir,"auxiliary/interpret_subsample/"), exist_ok=False)
+    # The params table still points at the pre-move bias model, and train.py
+    # loads the model from it, so rewrite that one path.
+    model_params = layout.logs("chrombpnet_model_params.tsv")
+    params = open(model_params).read()
+    params = params.replace(layout.aux("bias_model_scaled.pt"),
+                            layout.models("bias_model_scaled.pt"))
+    with open(model_params, "w") as handle:
+        handle.write(params)
 
-	#args_copy.profile_or_counts = ["counts", "profile"]
-	args_copy.profile_or_counts = ["profile"]	
-	args_copy.regions = os.path.join(args_copy.output_dir,"auxiliary/{}30K_subsample_peaks.bed".format(fpx))	
-	args_copy.model_h5 = os.path.join(args.output_dir,"models/{}chrombpnet_nobias.pt".format(fpx))
-	args_copy.output_prefix = os.path.join(args.output_dir,"auxiliary/interpret_subsample/{}chrombpnet_nobias".format(fpx))
-	args_copy.debug_chr = None
-	interpret.main(args_copy)
-	
-	meme_file=get_default_data_path(DefaultDataFile.motifs_meme)
-	
-	# TF-MoDISco 2.6 pipeline
-	
-	_run_modisco_motifs(os.path.join(args.output_dir,"auxiliary/interpret_subsample/{}chrombpnet_nobias.profile_scores.h5".format(fpx)), os.path.join(args.output_dir,"auxiliary/interpret_subsample/{}modisco_results_profile_scores.h5".format(fpx)))
-	_run_modisco_report(os.path.join(args.output_dir,"auxiliary/interpret_subsample/{}modisco_results_profile_scores.h5".format(fpx)), os.path.join(args.output_dir,"evaluation/modisco_profile/"), meme_file)
+    import chrombpnet.training.models.chrombpnet_with_bias_model as chrombpnet_with_bias_model
+    import chrombpnet.training.train as train
+    import copy
 
-	import chrombpnet.evaluation.modisco.convert_html_to_pdf as convert_html_to_pdf
-	#convert_html_to_pdf.main(os.path.join(args.output_dir,"evaluation/modisco_counts/motifs.html"),os.path.join(args.output_dir,"evaluation/{}chrombpnet_nobias_counts.pdf".format(fpx)))
-	convert_html_to_pdf.main(os.path.join(args.output_dir,"evaluation/modisco_profile/motifs.html"),os.path.join(args.output_dir,"evaluation/{}chrombpnet_nobias_profile.pdf".format(fpx)))
-	
-	import chrombpnet.helpers.generate_reports.make_html as make_html
-	args_copy = copy.deepcopy(args)
-	args_copy.input_dir = args_copy.output_dir
-	args_copy.command = args.cmd
-	make_html.main(args_copy)
-	
+    args_copy = copy.deepcopy(args)
+    if args_copy.architecture_from_file is None:
+        args_copy.architecture_from_file = chrombpnet_with_bias_model.__file__
+    args_copy.peaks = filtered_peaks
+    args_copy.nonpeaks = layout.aux("filtered.nonpeaks.bed")
+    args_copy.output_prefix = layout.models("chrombpnet")
+    args_copy.params = model_params
+    train.main(args_copy)
+
+    layout.move("models", "logs", "chrombpnet.log")
+    layout.move("models", "logs", "chrombpnet.log.batch")
+    layout.move("models", "logs", "chrombpnet.args.json")
+
+    import chrombpnet.helpers.generate_reports.make_html as make_html
+    if args.cmd == "train":
+        stages.write_report(args, layout, make_html, args.cmd)
+        print("Finished training! Exiting!")
+        return
+
+    nobias_model = layout.models("chrombpnet_nobias.pt")
+
+    stages.run_predictions(
+        args, layout,
+        output_prefix=layout.evaluation("chrombpnet"),
+        model_path=layout.models("chrombpnet.pt"),
+        peaks=filtered_peaks, nonpeaks="None")
+
+    motifs_to_pwm = stages.write_bias_motif_table(args, layout)
+    stages.run_marginal_footprints(
+        args, layout, model_path=nobias_model, regions=args.nonpeaks,
+        output_prefix=layout.evaluation("chrombpnet_nobias"),
+        motifs_to_pwm=motifs_to_pwm)
+    layout.move("evaluation", "auxiliary", "chrombpnet_nobias_footprints.h5")
+
+    subsample = stages.subsample_peaks_for_interpretation(layout, filtered_peaks)
+    # Profile only, deliberately: make_html renders just the profile MoDISco
+    # table for ChromBPNet models. The bias pipelines score both.
+    stages.run_interpret(
+        args, layout, model_path=nobias_model, regions=subsample,
+        output_prefix=layout.interpret_subsample("chrombpnet_nobias"),
+        profile_or_counts=["profile"])
+    stages.run_modisco(layout, "chrombpnet_nobias", "profile",
+                       "chrombpnet_nobias_profile.pdf")
+
+    stages.write_report(args, layout, make_html, args.cmd)
+
+
 def chrombpnet_qc(args):
+    """Evaluate an already-trained ChromBPNet model.
 
-	if args.file_prefix:
-		fpx = args.file_prefix+"_"
-	else:
-		fpx = ""
-	
-    
-	chrombpnet_md = load_model_wrapper(args.chrombpnet_model,
-		getattr(args, "device", None), announce=False)
-	args.inputlen = int(chrombpnet_md.input_shape[1])
-	args.outputlen = int(chrombpnet_md.output_shape[0][1])
-	
-	# make predictions with trained chrombpnet model
-	import chrombpnet.training.predict as predict
-	args_copy = copy.deepcopy(args)
-	args_copy.output_prefix = os.path.join(args.output_dir,"evaluation/{}chrombpnet".format(fpx))
-	args_copy.model_h5 = args.chrombpnet_model
-	args_copy.peaks = args.peaks
-	args_copy.nonpeaks = "None"
-	predict.main(args_copy)
-	
-	# marginal footprinting with model
-	import chrombpnet.evaluation.marginal_footprints.marginal_footprinting as marginal_footprinting
-	if args.data_type == "ATAC":
-		bias_motifs = [["tn5_1","GCACAGTACAGAGCTG"],["tn5_2","GTGCACAGTTCTAGAGTGTGCAG"],["tn5_3","CCTCTACACTGTGCAGAA"],["tn5_4","GCACAGTTCTAGACTGTGCAG"],["tn5_5","CTGCACAGTGTAGAGTTGTGC"]]
+    The same tail as chrombpnet_train_pipeline from the prediction step on, but
+    against user-supplied models and peak files rather than ones this run
+    produced.
+    """
+    layout = RunLayout.from_args(args)
 
-	elif args.data_type == "DNASE":
-		bias_motifs = [["dnase_1","TTTACAAGTCCA"],["dnase_2","TTTACAAGTCCA"]]
-	else:
-		print("unknown data type: "+args.data_type)
-	df = pd.DataFrame(bias_motifs)
-	df.to_csv(os.path.join(args_copy.output_dir,"auxiliary/motif_to_pwm.tsv"),sep="\t",header=False,index=False)
-	
-	args_copy = copy.deepcopy(args)
-	args_copy.model_h5 = args.chrombpnet_model_nb
-	args_copy.regions = args.nonpeaks
-	args_copy.output_prefix = os.path.join(args.output_dir,"evaluation/{}chrombpnet_nobias".format(fpx))
-	args_copy.motifs_to_pwm = os.path.join(args_copy.output_dir,"auxiliary/motif_to_pwm.tsv")
-	args_copy.ylim = None
-	marginal_footprinting.main(args_copy)
-	
-	# separating models from logs
-	os.rename(os.path.join(args.output_dir,"evaluation/{}chrombpnet_nobias_footprints.h5".format(fpx)),os.path.join(args.output_dir,"auxiliary/{}chrombpnet_nobias_footprints.h5".format(fpx)))
+    # Read the geometry off the checkpoint; qc has no --inputlen/--outputlen.
+    chrombpnet_md = load_model_wrapper(
+        args.chrombpnet_model, getattr(args, "device", None), announce=False)
+    args.inputlen = int(chrombpnet_md.input_shape[1])
+    args.outputlen = int(chrombpnet_md.output_shape[0][1])
 
-	# get contributions scores with model
-	args_copy = copy.deepcopy(args)
-	import chrombpnet.evaluation.interpret.interpret as interpret
-	args_copy.peaks = args.peaks
-	peaks = pd.read_csv(os.path.join(args_copy.peaks),sep="\t",header=None)
-	if peaks.shape[0] > 30000:
-		sub_peaks = peaks.sample(30000, random_state=1234)
-	else:
-		sub_peaks = peaks
-	sub_peaks.to_csv(os.path.join(args_copy.output_dir,"auxiliary/{}30K_subsample_peaks.bed".format(fpx)),sep="\t", header=False, index=False)
-	os.makedirs(os.path.join(args.output_dir,"auxiliary/interpret_subsample/"), exist_ok=False)
+    stages.run_predictions(
+        args, layout,
+        output_prefix=layout.evaluation("chrombpnet"),
+        model_path=args.chrombpnet_model,
+        peaks=args.peaks, nonpeaks="None")
 
-	#args_copy.profile_or_counts = ["counts", "profile"]
-	args_copy.profile_or_counts = ["profile"]
-	args_copy.regions = os.path.join(args_copy.output_dir,"auxiliary/{}30K_subsample_peaks.bed".format(fpx))	
-	args_copy.model_h5 = args.chrombpnet_model_nb
-	args_copy.output_prefix = os.path.join(args.output_dir,"auxiliary/interpret_subsample/{}chrombpnet_nobias".format(fpx))
-	args_copy.debug_chr = None
-	interpret.main(args_copy)
-	
-	meme_file=get_default_data_path(DefaultDataFile.motifs_meme)
-	
-	# TF-MoDISco 2.6 pipeline
-	
-	_run_modisco_motifs(os.path.join(args.output_dir,"auxiliary/interpret_subsample/{}chrombpnet_nobias.profile_scores.h5".format(fpx)), os.path.join(args.output_dir,"auxiliary/interpret_subsample/{}modisco_results_profile_scores.h5".format(fpx)))
-	_run_modisco_report(os.path.join(args.output_dir,"auxiliary/interpret_subsample/{}modisco_results_profile_scores.h5".format(fpx)), os.path.join(args.output_dir,"evaluation/modisco_profile/"), meme_file)
+    motifs_to_pwm = stages.write_bias_motif_table(args, layout)
+    stages.run_marginal_footprints(
+        args, layout, model_path=args.chrombpnet_model_nb,
+        regions=args.nonpeaks,
+        output_prefix=layout.evaluation("chrombpnet_nobias"),
+        motifs_to_pwm=motifs_to_pwm)
+    layout.move("evaluation", "auxiliary", "chrombpnet_nobias_footprints.h5")
 
-	import chrombpnet.evaluation.modisco.convert_html_to_pdf as convert_html_to_pdf
-	#convert_html_to_pdf.main(os.path.join(args.output_dir,"evaluation/modisco_counts/motifs.html"),os.path.join(args.output_dir,"evaluation/{}chrombpnet_nobias_counts.pdf".format(fpx)))
-	convert_html_to_pdf.main(os.path.join(args.output_dir,"evaluation/modisco_profile/motifs.html"),os.path.join(args.output_dir,"evaluation/{}chrombpnet_nobias_profile.pdf".format(fpx)))
-	
-	import chrombpnet.helpers.generate_reports.make_html as make_html
-	args_copy = copy.deepcopy(args)
-	args_copy.input_dir = args_copy.output_dir
-	args_copy.command = args.cmd
-	make_html.main(args_copy)
-	
+    subsample = stages.subsample_peaks_for_interpretation(layout, args.peaks)
+    stages.run_interpret(
+        args, layout, model_path=args.chrombpnet_model_nb, regions=subsample,
+        output_prefix=layout.interpret_subsample("chrombpnet_nobias"),
+        profile_or_counts=["profile"])
+    stages.run_modisco(layout, "chrombpnet_nobias", "profile",
+                       "chrombpnet_nobias_profile.pdf")
+
+    import chrombpnet.helpers.generate_reports.make_html as make_html
+    stages.write_report(args, layout, make_html, args.cmd)
+
+
 def train_bias_pipeline(args):
+    """Train a bias model on low-count nonpeaks, then evaluate it.
 
-	if args.file_prefix:
-		fpx = args.file_prefix+"_"
-	else:
-		fpx = ""
-		
-	# Shift bam and convert to bigwig
-	import chrombpnet.helpers.preprocessing.reads_to_bigwig as reads_to_bigwig	
-	args.output_prefix = os.path.join(args.output_dir,"auxiliary/{}data".format(fpx))
-	args.plus_shift = None
-	args.minus_shift = None
-	reads_to_bigwig.main(args)
-	
-	# QC bigwig
-	import chrombpnet.helpers.preprocessing.analysis.build_pwm_from_bigwig as build_pwm_from_bigwig	
-	args.bigwig = os.path.join(args.output_dir,"auxiliary/{}data_unstranded.bw".format(fpx))
-	args.output_prefix = os.path.join(args.output_dir,"evaluation/{}bw_shift_qc".format(fpx))
-	folds = json.load(open(args.chr_fold_path))
-	if not folds["valid"]:
-		raise ValueError("Validation chromosome list is empty")
-	args.chr = folds["valid"][0]
-	args.pwm_width=24
-	build_pwm_from_bigwig.main(args)
-	
+    Unlike the ChromBPNet pipeline this trains on nonpeaks only (peaks are
+    passed as the "None" sentinel) and scores both counts and profile
+    contributions.
+    """
+    layout = RunLayout.from_args(args)
 
-	# fetch hyperparameters for training
-	import chrombpnet.helpers.hyperparameters.find_bias_hyperparams as find_bias_hyperparams
-	args_copy = copy.deepcopy(args)
-	args_copy.output_prefix = os.path.join(args.output_dir,"auxiliary/{}".format(fpx))
-	find_bias_hyperparams.main(args_copy)
-	
-	# separating models from logs
-	os.rename(os.path.join(args.output_dir,"auxiliary/{}bias_model_params.tsv".format(fpx)),os.path.join(args.output_dir,"logs/{}bias_model_params.tsv".format(fpx)))
-	os.rename(os.path.join(args.output_dir,"auxiliary/{}bias_data_params.tsv".format(fpx)),os.path.join(args.output_dir,"logs/{}bias_data_params.tsv".format(fpx)))
-		
-	# get model architecture path and train chromBPNet model
-	import chrombpnet.training.models.bpnet_model as bpnet_model
-	import chrombpnet.training.train as train
-	args_copy = copy.deepcopy(args)
-	if args_copy.architecture_from_file is None:
-		args_copy.architecture_from_file = 	bpnet_model.__file__
-	args_copy.peaks = "None"
-	args_copy.nonpeaks = os.path.join(args_copy.output_dir,"auxiliary/{}filtered.bias_nonpeaks.bed".format(fpx))
-	args_copy.output_prefix = os.path.join(args_copy.output_dir,"models/{}bias".format(fpx))
-	args_copy.params = os.path.join(args_copy.output_dir,"logs/{}bias_model_params.tsv".format(fpx))
-	train.main(args_copy)
-	
-	# separating models from logs
-	os.rename(os.path.join(args.output_dir,"models/{}bias.args.json".format(fpx)),os.path.join(args.output_dir,"logs/{}bias.args.json".format(fpx)))
-	os.rename(os.path.join(args.output_dir,"models/{}bias.log".format(fpx)),os.path.join(args.output_dir,"logs/{}bias.log".format(fpx)))
-	os.rename(os.path.join(args.output_dir,"models/{}bias.log.batch".format(fpx)),os.path.join(args.output_dir,"logs/{}bias.log.batch".format(fpx)))
-#	os.rename(os.path.join(args.output_dir,"models/{}bias.#".format(fpx)),os.path.join(args.output_dir,"logs/{}bias.params.json".format(fpx)))
+    stages.preprocess_and_qc_bigwig(args, layout)
 
-	if args.cmd_bias == "train":
-		import chrombpnet.helpers.generate_reports.make_html_bias as make_html_bias
-		args_copy = copy.deepcopy(args)
-		args_copy.input_dir = args_copy.output_dir
-		args_copy.command = args_copy.cmd_bias
-		make_html_bias.main(args_copy) 
-		print("Finished training! Exiting!")
-		return
-		
-	# make predictions with trained bias model 
-	import chrombpnet.training.predict as predict
-	args_copy = copy.deepcopy(args)
-	args_copy.nonpeaks = os.path.join(args_copy.output_dir,"auxiliary/{}filtered.bias_nonpeaks.bed".format(fpx))
-	args_copy.peaks = os.path.join(args_copy.output_dir,"auxiliary/{}filtered.bias_peaks.bed".format(fpx))
-	args_copy.output_prefix = os.path.join(args_copy.output_dir,"evaluation/{}bias".format(fpx))
-	args_copy.model_h5 = os.path.join(args.output_dir,"models/{}bias.pt".format(fpx))
-	predict.main(args_copy)
+    import chrombpnet.helpers.hyperparameters.find_bias_hyperparams as find_bias_hyperparams
+    stages.find_hyperparameters(args, layout, find_bias_hyperparams)
 
-	# get contributions scores with model
-	import chrombpnet.evaluation.interpret.interpret as interpret
-	args_copy.peaks = os.path.join(args_copy.output_dir,"auxiliary/{}filtered.bias_peaks.bed".format(fpx))
-	peaks = pd.read_csv(os.path.join(args_copy.peaks),sep="\t",header=None)
-	if peaks.shape[0] > 30000:
-		sub_peaks = peaks.sample(30000, random_state=1234)
-	else:
-		sub_peaks = peaks
-	sub_peaks.to_csv(os.path.join(args_copy.output_dir,"auxiliary/{}30K_subsample_peaks.bed".format(fpx)),sep="\t", header=False, index=False)
-	os.makedirs(os.path.join(args.output_dir,"auxiliary/interpret_subsample/"), exist_ok=False)
+    layout.move("auxiliary", "logs", "bias_model_params.tsv")
+    layout.move("auxiliary", "logs", "bias_data_params.tsv")
 
-	args_copy = copy.deepcopy(args)
-	args_copy.profile_or_counts = ["counts", "profile"]
-	args_copy.regions = os.path.join(args_copy.output_dir,"auxiliary/{}30K_subsample_peaks.bed".format(fpx))	
-	args_copy.model_h5 = os.path.join(args.output_dir,"models/{}bias.pt".format(fpx))
-	args_copy.output_prefix = os.path.join(args.output_dir,"auxiliary/interpret_subsample/{}bias".format(fpx))
-	args_copy.debug_chr = None
-	interpret.main(args_copy)
-	
-	meme_file=get_default_data_path(DefaultDataFile.motifs_meme)
-	# TF-MoDISco 2.6 pipeline
-	
-	_run_modisco_motifs(os.path.join(args.output_dir,"auxiliary/interpret_subsample/{}bias.profile_scores.h5".format(fpx)), os.path.join(args.output_dir,"auxiliary/interpret_subsample/{}modisco_results_profile_scores.h5".format(fpx)))
-	_run_modisco_report(os.path.join(args.output_dir,"auxiliary/interpret_subsample/{}modisco_results_profile_scores.h5".format(fpx)), os.path.join(args.output_dir,"evaluation/modisco_profile/"), meme_file)
-	_run_modisco_motifs(os.path.join(args.output_dir,"auxiliary/interpret_subsample/{}bias.counts_scores.h5".format(fpx)), os.path.join(args.output_dir,"auxiliary/interpret_subsample/{}modisco_results_counts_scores.h5".format(fpx)))
-	_run_modisco_report(os.path.join(args.output_dir,"auxiliary/interpret_subsample/{}modisco_results_counts_scores.h5".format(fpx)), os.path.join(args.output_dir,"evaluation/modisco_counts/"), meme_file)
-	
-	import chrombpnet.evaluation.modisco.convert_html_to_pdf as convert_html_to_pdf
-	convert_html_to_pdf.main(os.path.join(args.output_dir,"evaluation/modisco_counts/motifs.html"),os.path.join(args.output_dir,"evaluation/{}bias_counts.pdf".format(fpx)))
-	convert_html_to_pdf.main(os.path.join(args.output_dir,"evaluation/modisco_profile/motifs.html"),os.path.join(args.output_dir,"evaluation/{}bias_profile.pdf".format(fpx)))
+    import chrombpnet.training.models.bpnet_model as bpnet_model
+    import chrombpnet.training.train as train
+    import copy
 
-	import chrombpnet.helpers.generate_reports.make_html_bias as make_html_bias
-	args_copy = copy.deepcopy(args)
-	args_copy.input_dir = args_copy.output_dir
-	args_copy.command = args_copy.cmd_bias
-	make_html_bias.main(args_copy)
+    filtered_nonpeaks = layout.aux("filtered.bias_nonpeaks.bed")
+    args_copy = copy.deepcopy(args)
+    if args_copy.architecture_from_file is None:
+        args_copy.architecture_from_file = bpnet_model.__file__
+    args_copy.peaks = "None"
+    args_copy.nonpeaks = filtered_nonpeaks
+    args_copy.output_prefix = layout.models("bias")
+    args_copy.params = layout.logs("bias_model_params.tsv")
+    train.main(args_copy)
+
+    layout.move("models", "logs", "bias.args.json")
+    layout.move("models", "logs", "bias.log")
+    layout.move("models", "logs", "bias.log.batch")
+
+    import chrombpnet.helpers.generate_reports.make_html_bias as make_html_bias
+    if args.cmd_bias == "train":
+        stages.write_report(args, layout, make_html_bias, args.cmd_bias)
+        print("Finished training! Exiting!")
+        return
+
+    bias_model = layout.models("bias.pt")
+    filtered_peaks = layout.aux("filtered.bias_peaks.bed")
+
+    stages.run_predictions(
+        args, layout,
+        output_prefix=layout.evaluation("bias"),
+        model_path=bias_model,
+        peaks=filtered_peaks, nonpeaks=filtered_nonpeaks)
+
+    subsample = stages.subsample_peaks_for_interpretation(layout, filtered_peaks)
+    stages.run_interpret(
+        args, layout, model_path=bias_model, regions=subsample,
+        output_prefix=layout.interpret_subsample("bias"),
+        profile_or_counts=["counts", "profile"])
+    stages.run_modisco(layout, "bias", "profile", "bias_profile.pdf")
+    stages.run_modisco(layout, "bias", "counts", "bias_counts.pdf")
+
+    stages.write_report(args, layout, make_html_bias, args.cmd_bias)
+
 
 def bias_model_qc(args):
+    """Evaluate an already-trained bias model."""
+    layout = RunLayout.from_args(args)
 
-	if args.file_prefix:
-		fpx = args.file_prefix+"_"
-	else:
-		fpx = ""
-	
-    
-	bias_md = load_model_wrapper(args.bias_model,
-		getattr(args, "device", None), announce=False)
-	args.inputlen = int(bias_md.input_shape[1])
-	args.outputlen = int(bias_md.output_shape[0][1])
-	
-	# make predictions with trained bias model 
-	import chrombpnet.training.predict as predict
-	args_copy = copy.deepcopy(args)
-	args_copy.nonpeaks = args.nonpeaks
-	args_copy.peaks = args.peaks
-	args_copy.output_prefix = os.path.join(args_copy.output_dir,"evaluation/{}bias".format(fpx))
-	args_copy.model_h5 = args.bias_model
-	predict.main(args_copy)
+    bias_md = load_model_wrapper(
+        args.bias_model, getattr(args, "device", None), announce=False)
+    args.inputlen = int(bias_md.input_shape[1])
+    args.outputlen = int(bias_md.output_shape[0][1])
 
-	# get contributions scores with model
-	import chrombpnet.evaluation.interpret.interpret as interpret
-	args_copy.peaks = args.peaks
-	peaks = pd.read_csv(os.path.join(args_copy.peaks),sep="\t",header=None)
-	if peaks.shape[0] > 30000:
-		sub_peaks = peaks.sample(30000, random_state=1234)
-	else:
-		sub_peaks = peaks
-	sub_peaks.to_csv(os.path.join(args_copy.output_dir,"auxiliary/{}30K_subsample_peaks.bed".format(fpx)),sep="\t", header=False, index=False)
-	os.makedirs(os.path.join(args.output_dir,"auxiliary/interpret_subsample/"), exist_ok=False)
+    stages.run_predictions(
+        args, layout,
+        output_prefix=layout.evaluation("bias"),
+        model_path=args.bias_model,
+        peaks=args.peaks, nonpeaks=args.nonpeaks)
 
-	args_copy = copy.deepcopy(args)
-	args_copy.profile_or_counts = ["counts", "profile"]
-	args_copy.regions = os.path.join(args_copy.output_dir,"auxiliary/{}30K_subsample_peaks.bed".format(fpx))	
-	args_copy.model_h5 = args.bias_model
-	args_copy.output_prefix = os.path.join(args.output_dir,"auxiliary/interpret_subsample/{}bias".format(fpx))
-	args_copy.debug_chr = None
-	interpret.main(args_copy)
-	
-	meme_file=get_default_data_path(DefaultDataFile.motifs_meme)
-	
-	# TF-MoDISco 2.6 pipeline
-	
-	_run_modisco_motifs(os.path.join(args.output_dir,"auxiliary/interpret_subsample/{}bias.profile_scores.h5".format(fpx)), os.path.join(args.output_dir,"auxiliary/interpret_subsample/{}modisco_results_profile_scores.h5".format(fpx)))
-	_run_modisco_report(os.path.join(args.output_dir,"auxiliary/interpret_subsample/{}modisco_results_profile_scores.h5".format(fpx)), os.path.join(args.output_dir,"evaluation/modisco_profile/"), meme_file)
-	_run_modisco_motifs(os.path.join(args.output_dir,"auxiliary/interpret_subsample/{}bias.counts_scores.h5".format(fpx)), os.path.join(args.output_dir,"auxiliary/interpret_subsample/{}modisco_results_counts_scores.h5".format(fpx)))
-	_run_modisco_report(os.path.join(args.output_dir,"auxiliary/interpret_subsample/{}modisco_results_counts_scores.h5".format(fpx)), os.path.join(args.output_dir,"evaluation/modisco_counts/"), meme_file)
-	
-	import chrombpnet.evaluation.modisco.convert_html_to_pdf as convert_html_to_pdf
-	convert_html_to_pdf.main(os.path.join(args.output_dir,"evaluation/modisco_counts/motifs.html"),os.path.join(args.output_dir,"evaluation/{}bias_counts.pdf".format(fpx)))
-	convert_html_to_pdf.main(os.path.join(args.output_dir,"evaluation/modisco_profile/motifs.html"),os.path.join(args.output_dir,"evaluation/{}bias_profile.pdf".format(fpx)))
+    subsample = stages.subsample_peaks_for_interpretation(layout, args.peaks)
+    stages.run_interpret(
+        args, layout, model_path=args.bias_model, regions=subsample,
+        output_prefix=layout.interpret_subsample("bias"),
+        profile_or_counts=["counts", "profile"])
+    stages.run_modisco(layout, "bias", "profile", "bias_profile.pdf")
+    stages.run_modisco(layout, "bias", "counts", "bias_counts.pdf")
 
-	import chrombpnet.helpers.generate_reports.make_html_bias as make_html_bias
-	args_copy = copy.deepcopy(args)
-	args_copy.input_dir = args_copy.output_dir
-	args_copy.command = args_copy.cmd_bias
-	make_html_bias.main(args_copy)	
+    import chrombpnet.helpers.generate_reports.make_html_bias as make_html_bias
+    stages.write_report(args, layout, make_html_bias, args.cmd_bias)
