@@ -89,6 +89,30 @@ chrombpnet footprints
 Model arguments now point to `.pt` files. Run `chrombpnet <command> --help` for
 the complete set of genomics inputs and options.
 
+## Regression testing
+
+`pytest` covers the model, data and CLI surfaces. Two additional harnesses
+guard the things unit tests cannot:
+
+```bash
+pytest                                   # 66 tests, offline, ~70s
+
+# Check that a change did not move any CLI output. Runs ten real
+# `chrombpnet` invocations against a synthetic fixture and compares every
+# produced file -- checkpoints, HDF5, bigwigs, PNGs, PDFs, HTML, logs --
+# against a baseline captured from another revision.
+python -m tests.regression.harness against --ref main
+
+# Check the CLI surface itself: all ~240 argument declarations against a
+# committed snapshot, plus the full --help text of every subcommand.
+pytest tests/test_cli_surface.py
+tests/dump_cli_help.sh > /tmp/help.txt
+```
+
+See [`tests/regression/README.md`](tests/regression/README.md) for what makes
+the comparison valid and which fixture constants are pinned by hardcoded values
+elsewhere in the package.
+
 ## Cross-framework parity
 
 Run the self-contained comparison from this repository:
