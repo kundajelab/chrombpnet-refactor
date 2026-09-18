@@ -5,45 +5,12 @@ import pandas as pd
 import pyfaidx
 import chrombpnet.evaluation.make_bigwigs.bigwig_helper as bigwig_helper
 import chrombpnet.training.utils.data_utils as data_utils 
-from chrombpnet.model import load_prediction_model, resolve_device
+from chrombpnet.model import load_model_wrapper
+from chrombpnet.predictions import softmax, write_predictions_h5py
+from chrombpnet.regions import NARROWPEAK_SCHEMA
 import h5py
 import json
 
-NARROWPEAK_SCHEMA = ["chr", "start", "end", "1", "2", "3", "4", "5", "6", "summit"]
-
-def write_predictions_h5py(output_prefix, profile, logcts, coords):
-    # open h5 file for writing predictions
-    output_h5_fname = "{}_predictions.h5".format(output_prefix)
-    h5_file = h5py.File(output_h5_fname, "w")
-    # create groups
-    coord_group = h5_file.create_group("coords")
-    pred_group = h5_file.create_group("predictions")
-
-    num_examples=len(coords)
-
-    coords_chrom_dset =  [str(coords[i][0]) for i in range(num_examples)]
-    coords_center_dset =  [int(coords[i][1]) for i in range(num_examples)]
-
-    dt = h5py.special_dtype(vlen=str)
-
-    # create the "coords" group datasets
-    coords_chrom_dset = coord_group.create_dataset(
-        "coords_chrom", data=np.array(coords_chrom_dset, dtype=dt),
-        dtype=dt, compression="gzip")
-    coords_start_dset = coord_group.create_dataset(
-        "coords_center", data=coords_center_dset, dtype=int, compression="gzip")
-
-    # create the "predictions" group datasets
-    profs_dset = pred_group.create_dataset(
-        "profs",
-        data=profile,
-        dtype=float, compression="gzip")
-    logcounts_dset = pred_group.create_dataset(
-        "logcounts", data=logcts,
-        dtype=float, compression="gzip")
-
-    # close hdf5 file
-    h5_file.close()
 
 def compare_with_observed(bigwig, regions_df, regions, outputlen, pred_logits, pred_logcts, output_prefix):
 
@@ -58,7 +25,8 @@ def compare_with_observed(bigwig, regions_df, regions, outputlen, pred_logits, p
 	counts_sum_predictions = np.asarray(pred_logcts).reshape(-1)
 	coordinates =  [[r[0], r[-1]] for r in regions]
 	
-	write_predictions_h5py(output_prefix, profile_probs_predictions, counts_sum_predictions, coordinates)
+	write_predictions_h5py(output_prefix, profile_probs_predictions,
+		counts_sum_predictions, coordinates, include_peak_flag=False)
 	
 	# store regions, their predictions and corresponding pointwise metrics
 	mnll_pw, mnll_norm, jsd_pw, jsd_norm, jsd_rnd, jsd_rnd_norm, mnll_rnd, mnll_rnd_norm =  metrics.profile_metrics(true_counts,profile_probs_predictions)
@@ -106,32 +74,16 @@ def parse_args():
     return args
 
 
-def softmax(x, temp=1):
-    values = np.asarray(x)
-    if values.ndim != 2:
-        raise ValueError(f"softmax expects a 2-D batch by position array, got {values.shape}")
-    scaled = temp * values
-    scaled -= np.max(scaled, axis=1, keepdims=True)
-    exponentiated = np.exp(scaled)
-    return exponentiated / np.sum(exponentiated, axis=1, keepdims=True)
-
-
 def _stats_path(output_prefix_stats, model_name):
     if output_prefix_stats is None:
         return None
     return f"{output_prefix_stats}_{model_name}.txt"
 
-def load_model_wrapper(model_hdf5, device=None):
-    model=load_prediction_model(model_hdf5, device=resolve_device(device))
-    print("got the model")
-    model.summary()
-    return model
-
 def main(args):
 
 
     if args.chrombpnet_model_nb:
-        model_chrombpnet_nb = load_model_wrapper(model_hdf5=args.chrombpnet_model_nb, device=getattr(args, "device", None))
+        model_chrombpnet_nb = load_model_wrapper(args.chrombpnet_model_nb, getattr(args, "device", None))
         inputlen = int(model_chrombpnet_nb.input_shape[1])
         outputlen = int(model_chrombpnet_nb.output_shape[0][1])
 
@@ -171,7 +123,7 @@ def main(args):
         	
 
     if args.chrombpnet_model:
-        model_chrombpnet = load_model_wrapper(model_hdf5=args.chrombpnet_model, device=getattr(args, "device", None))
+        model_chrombpnet = load_model_wrapper(args.chrombpnet_model, getattr(args, "device", None))
         inputlen = int(model_chrombpnet.input_shape[1])
         outputlen = int(model_chrombpnet.output_shape[0][1])
 
@@ -211,7 +163,7 @@ def main(args):
         	
 
     if args.bias_model:
-        model_bias = load_model_wrapper(model_hdf5=args.bias_model, device=getattr(args, "device", None))
+        model_bias = load_model_wrapper(args.bias_model, getattr(args, "device", None))
         inputlen = int(model_bias.input_shape[1])
         outputlen = int(model_bias.output_shape[0][1])
 

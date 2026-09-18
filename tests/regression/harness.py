@@ -91,6 +91,18 @@ def run_scenarios(workspace: Path, names: list[str] | None = None,
     env.update(PINNED_ENV)
     _verify_package_root(env, workspace)
 
+    # The architecture module's absolute path reaches <prefix>.args.json and
+    # the parameter TSVs, and differs between two checkouts of the same code.
+    # Both the resolved and unresolved roots are substituted: pipelines.py
+    # records `module.__file__`, which is not resolved, so when the package is
+    # exposed through the staging symlink used by `against --ref` the two
+    # differ.
+    import chrombpnet
+
+    package_file = Path(chrombpnet.__file__)
+    roots = {str(package_file.parent.parent), str(package_file.resolve().parent.parent)}
+    substitutions = tuple((root, "<package-root>") for root in sorted(roots, reverse=True))
+
     selected = [s for s in scenarios.SCENARIOS
                 if names is None or s.name in names]
     manifests: dict[str, dict[str, str]] = {}
@@ -125,7 +137,8 @@ def run_scenarios(workspace: Path, names: list[str] | None = None,
                 print(f"[ran]  {scenario.name}: completed in {elapsed:.1f}s; "
                       f"artifacts not compared ({scenario.nondeterministic})")
             continue
-        manifests[scenario.name] = artifacts.manifest(output, scenario.ignore)
+        manifests[scenario.name] = artifacts.manifest(
+            output, scenario.ignore, substitutions)
         if verbose:
             print(f"[ok]   {scenario.name}: "
                   f"{len(manifests[scenario.name])} artifacts in {elapsed:.1f}s")
@@ -227,34 +240,45 @@ def compare(baseline_dir: Path, benchmark: str | None,
 def against_ref(ref: str, benchmark: str | None, names: list[str] | None) -> int:
     """Capture a baseline from ``ref`` in a temporary worktree, then compare.
 
-    The *harness* always runs from the working tree while only the *package
-    under test* comes from ``ref``. Running the ref's own copy of the harness
-    would be circular and, more importantly, impossible for any revision older
-    than the harness itself -- which is every revision worth comparing against.
+    Only the *package under test* comes from ``ref``; the harness itself always
+    runs from the working tree. Running the ref's own harness would be circular
+    and impossible for any revision older than the harness -- which is every
+    revision worth comparing against -- and, more subtly, it would let the two
+    sides digest artifacts with different code.
+
+    Achieving that split needs care, because PYTHONPATH entries expose every
+    top-level name in a directory. Pointing it at the worktree would resolve
+    `chrombpnet` *and* `tests.regression` there. So the worktree's package is
+    exposed through a staging directory holding nothing but a symlink to it:
+    `chrombpnet` resolves from the stage, and `tests` falls through to the repo.
     """
     repo = Path(__file__).resolve().parents[2]
     worktree = DEFAULT_WORKSPACE / f"ref-{ref.replace('/', '_')}"
+    stage = DEFAULT_WORKSPACE / f"stage-{ref.replace('/', '_')}"
     baseline = DEFAULT_WORKSPACE / "baseline"
+
     if worktree.exists():
         subprocess.run(["git", "-C", str(repo), "worktree", "remove", "--force",
                         str(worktree)], check=False, capture_output=True)
         shutil.rmtree(worktree, ignore_errors=True)
+    shutil.rmtree(stage, ignore_errors=True)
     worktree.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "-C", str(repo), "worktree", "add", "--quiet",
                     "--detach", str(worktree), ref], check=True)
+    stage.mkdir(parents=True)
+    (stage / "chrombpnet").symlink_to(worktree / "chrombpnet",
+                                      target_is_directory=True)
 
     neutral_cwd = DEFAULT_WORKSPACE / "cwd"
     neutral_cwd.mkdir(parents=True, exist_ok=True)
     try:
         print(f"--- capturing baseline from {ref} ---")
         env = dict(os.environ)
-        # The worktree comes first so `chrombpnet` resolves to the ref's code;
-        # the repo follows so `tests.regression` resolves to this harness. The
-        # cwd is neither, because -m prepends it to sys.path and would let the
-        # working tree's chrombpnet shadow the worktree's.
         env["PYTHONPATH"] = os.pathsep.join(
-            [str(worktree), str(repo)] +
+            [str(stage), str(repo)] +
             ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else []))
+        # The stage only holds a symlink, so a resolved __file__ lands in the
+        # worktree itself; that is what the check must expect.
         env["CHROMBPNET_EXPECT_PACKAGE_ROOT"] = str(worktree)
         argv = [sys.executable, "-m", "tests.regression.harness", "capture",
                 "--out", str(baseline)]

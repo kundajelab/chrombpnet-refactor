@@ -9,10 +9,11 @@ import argparse
 import json
 from chrombpnet.training.utils.data_utils import get_seq as get_seq
 import chrombpnet.training.utils.one_hot as one_hot
-from chrombpnet.model import load_prediction_model, resolve_device
+from chrombpnet.model import load_model_wrapper
+from chrombpnet.predictions import softmax
+from chrombpnet.regions import NARROWPEAK_SCHEMA
 
 
-NARROWPEAK_SCHEMA = ["chr", "start", "end", "1", "2", "3", "4", "5", "6", "summit"]
 PWM_SCHEMA = ["MOTIF_NAME", "MOTIF_PWM_FWD"]
 
 
@@ -47,16 +48,6 @@ def save_footprints_h5(path, footprints_at_motifs):
 				dataset.attrs["TITLE"] = h5py.Empty("S1")
 				dataset.attrs["VERSION"] = np.bytes_("2.4")
 
-def load_model_wrapper(args):
-    model=load_prediction_model(
-        args.model_h5,
-        device=resolve_device(getattr(args, "device", None)),
-    )
-    print("got the model")
-    model.summary()
-    return model
-
-
 def fetch_footprinting_args():
     parser=argparse.ArgumentParser(description="get marginal footprinting for given model and given motifs")
     parser.add_argument("-g", "--genome", type=str, required=True, help="Genome fasta")
@@ -72,14 +63,6 @@ def fetch_footprinting_args():
     
     args = parser.parse_args()
     return args
-
-def softmax(x, temp=1):
-    scaled = temp * np.asarray(x)
-    if scaled.ndim != 2:
-        raise ValueError(f"softmax expects a 2-D array, got {scaled.shape}")
-    scaled = scaled - np.max(scaled, axis=1, keepdims=True)
-    exponentiated = np.exp(scaled)
-    return exponentiated / np.sum(exponentiated, axis=1, keepdims=True)
 
 def get_footprint_for_motif(seqs, motif, model, inputlen, batch_size):
     '''
@@ -113,7 +96,7 @@ def main(args):
 	print(pwm_df.head())
 	genome_fasta = pyfaidx.Fasta(args.genome)
 
-	model=load_model_wrapper(args)
+	model = load_model_wrapper(args.model_h5, getattr(args, "device", None))
 	inputlen = model.input_shape[1] 
 	outputlen = model.output_shape[0][1] 
 	print("inferred model inputlen: ", inputlen)

@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 import json
 import chrombpnet.helpers.hyperparameters.param_utils as param_utils
+from chrombpnet.regions import NARROWPEAK_SCHEMA
 
 def parse_data_args():
     parser=argparse.ArgumentParser(description="find hyper-parameters for chrombpnet defined in src/training/models/chrombpnet_with_bias_model.py")
@@ -45,11 +46,11 @@ def main(args):
     in_peaks =  pd.read_csv(args.peaks,
                            sep='\t',
                            header=None,
-                           names=["chr", "start", "end", "1", "2", "3", "4", "5", "6", "summit"])
+                           names=NARROWPEAK_SCHEMA)
     in_nonpeaks =  pd.read_csv(args.nonpeaks,
                            sep='\t',
                            header=None,
-                           names=["chr", "start", "end", "1", "2", "3", "4", "5", "6", "summit"])
+                           names=NARROWPEAK_SCHEMA)
 
     if in_peaks.empty or in_nonpeaks.empty:
         raise ValueError("Peak and nonpeak files must both be non-empty")

@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 from chrombpnet.training.utils.benchmark_utils import benchmark_enables
 from chrombpnet.helpers.hyperparameters import param_utils as param_utils
+from chrombpnet.regions import NARROWPEAK_SCHEMA
 import json
 import torch
 from chrombpnet.model import load_model, save_model
@@ -71,11 +72,11 @@ def main(args):
     in_peaks =  pd.read_csv(args.peaks,
                            sep='\t',
                            header=None,
-                           names=["chr", "start", "end", "1", "2", "3", "4", "5", "6", "summit"])
+                           names=NARROWPEAK_SCHEMA)
     in_nonpeaks =  pd.read_csv(args.nonpeaks,
                            sep='\t',
                            header=None,
-                           names=["chr", "start", "end", "1", "2", "3", "4", "5", "6", "summit"])
+                           names=NARROWPEAK_SCHEMA)
 
     if in_peaks.empty or in_nonpeaks.empty:
         raise ValueError("Peak and nonpeak files must both be non-empty")

@@ -109,6 +109,46 @@ def test_explain_reports_the_tensor_that_moved(tmp_path):
     assert "0.25" in report
 
 
+def test_hdf5_digest_ignores_container_layout_but_not_content(tmp_path):
+    """HDF5 files are digested by content, so this must not become a blind spot.
+
+    HDF5's container layout is not a function of the logical content: writing
+    the same datasets in a different creation order yields the same objects and
+    values in a byte-different file. A raw byte hash therefore reports changes
+    that do not exist -- which is exactly what it did when the shared
+    write_predictions_h5py landed, for a file whose every dataset was
+    bit-identical. The content digest has to see through that without also
+    seeing through real changes.
+    """
+    import h5py
+    import numpy as np
+
+    values = np.arange(40, dtype=float).reshape(4, 10)
+
+    def write(path, *, names, payload):
+        with h5py.File(path, "w") as handle:
+            group = handle.create_group("predictions")
+            for name in names:
+                group.create_dataset(name, data=payload, dtype=float,
+                                     compression="gzip")
+
+    forward = tmp_path / "forward.h5"
+    reversed_order = tmp_path / "reversed.h5"
+    changed = tmp_path / "changed.h5"
+    write(forward, names=("profs", "logcounts"), payload=values)
+    write(reversed_order, names=("logcounts", "profs"), payload=values)
+    write(changed, names=("profs", "logcounts"), payload=values + 1.0)
+
+    assert artifacts.sha256(forward) != artifacts.sha256(reversed_order), (
+        "expected creation order to change the container bytes; if this fails "
+        "the test no longer exercises the case it was written for")
+    assert artifacts.hdf5_digest(forward) == artifacts.hdf5_digest(reversed_order)
+    assert artifacts.hdf5_digest(forward) != artifacts.hdf5_digest(changed)
+
+    # The manifest must route .h5 through the content digest, not sha256.
+    assert artifacts.manifest(tmp_path)["forward.h5"] == artifacts.hdf5_digest(forward)
+
+
 def test_explain_handles_a_missing_artifact(tmp_path):
     present = tmp_path / "present.bed"
     present.write_text("chr1\t0\t10\n")

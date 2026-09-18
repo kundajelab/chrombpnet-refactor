@@ -2,6 +2,7 @@ import pyBigWig
 import numpy as np
 from chrombpnet.training.utils.data_utils import one_hot
 import pandas as pd
+from chrombpnet.regions import NARROWPEAK_SCHEMA
 
 def read_chrom_sizes(fname):
     with open(fname) as f:
@@ -41,7 +42,7 @@ def get_regions(regions_file, seqlen, regions_used=None):
     if isinstance(regions_file, pd.DataFrame):
         regions = regions_file.copy()
         if set(("chr", "start", "summit")) <= set(regions.columns):
-            regions = regions[["chr", "start", "end", "1", "2", "3", "4", "5", "6", "summit"]]
+            regions = regions[NARROWPEAK_SCHEMA]
     else:
         regions = pd.read_csv(regions_file,sep='\t',header=None)
     #print(regions)

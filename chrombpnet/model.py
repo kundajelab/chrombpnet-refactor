@@ -381,6 +381,28 @@ def load_prediction_model(
     return PredictionAdapter(load_model(path, map_location=device), device=device)
 
 
+def load_model_wrapper(
+    path: Union[str, Path],
+    device: Optional[str] = None,
+    *,
+    announce: bool = True,
+    summary: bool = True,
+) -> PredictionAdapter:
+    """Load a checkpoint for prediction, with the CLI's console output.
+
+    This replaces five near-identical copies that differed only in what they
+    printed: the two nested in ``pipelines.py`` printed no banner, and
+    ``training/predict.py`` had its ``summary()`` call commented out. The flags
+    keep each call site's stdout exactly as it was.
+    """
+    model = load_prediction_model(path, device=resolve_device(device))
+    if announce:
+        print("got the model")
+    if summary:
+        model.summary()
+    return model
+
+
 def resolve_device(value: Optional[str] = None) -> torch.device:
     if value:
         device = torch.device(value)

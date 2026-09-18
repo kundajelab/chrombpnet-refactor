@@ -16,7 +16,7 @@ from chrombpnet.evaluation.interpret import input_utils
 from chrombpnet.model import load_model, resolve_device
 
 
-NARROWPEAK_SCHEMA = ["chr", "start", "end", "1", "2", "3", "4", "5", "6", "summit"]
+from chrombpnet.regions import NARROWPEAK_SCHEMA
 
 # Contribution scoring needs roughly four times the GPU memory of a training
 # step at the same batch size, for two compounding reasons: DeepLIFT pushes the

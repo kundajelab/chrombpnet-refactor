@@ -4,63 +4,25 @@ import h5py
 import chrombpnet.training.utils.argmanager as argmanager
 import chrombpnet.training.metrics as metrics
 import chrombpnet.training.data_generators.initializers as initializers
-from chrombpnet.model import load_prediction_model, resolve_device
+from chrombpnet.model import load_model_wrapper
+from chrombpnet.predictions import softmax
+from chrombpnet.predictions import (
+    write_predictions_h5py as _write_predictions_h5py,
+)
 #from scipy import nanmean, nanstd
 
 def write_predictions_h5py(output_prefix, profile, logcts, coords):
-    # open h5 file for writing predictions
-    output_h5_fname = "{}_predictions.h5".format(output_prefix)
-    h5_file = h5py.File(output_h5_fname, "w")
-    # create groups
-    coord_group = h5_file.create_group("coords")
-    pred_group = h5_file.create_group("predictions")
+    """Write test-set predictions, including the peak/nonpeak flag.
 
-    num_examples=len(coords)
+    Kept as a module-level function with this exact signature because it is
+    public API: the cross-framework parity harness in test.py imports it for
+    both the TensorFlow and PyTorch workers, and two test modules call it
+    directly. Test-set coordinates always carry the peak indicator in column 4,
+    so this path always writes coords_peak.
+    """
+    _write_predictions_h5py(output_prefix, profile, logcts, coords,
+                            include_peak_flag=True)
 
-    coords_chrom_dset =  [str(coords[i][0]) for i in range(num_examples)]
-    coords_center_dset =  [int(coords[i][1]) for i in range(num_examples)]
-    coords_peak_dset =  [int(coords[i][3]) for i in range(num_examples)]
-
-    dt = h5py.special_dtype(vlen=str)
-
-    # create the "coords" group datasets
-    coords_chrom_dset = coord_group.create_dataset(
-        "coords_chrom", data=np.array(coords_chrom_dset, dtype=dt),
-        dtype=dt, compression="gzip")
-    coords_start_dset = coord_group.create_dataset(
-        "coords_center", data=coords_center_dset, dtype=int, compression="gzip")
-    coords_end_dset = coord_group.create_dataset(
-        "coords_peak", data=coords_peak_dset, dtype=int, compression="gzip")
-
-    # create the "predictions" group datasets
-    profs_dset = pred_group.create_dataset(
-        "profs",
-        data=profile,
-        dtype=float, compression="gzip")
-    logcounts_dset = pred_group.create_dataset(
-        "logcounts", data=logcts,
-        dtype=float, compression="gzip")
-
-    # close hdf5 file
-    h5_file.close()
-
-
-def load_model_wrapper(args):
-    model=load_prediction_model(
-        args.model_h5,
-        device=resolve_device(getattr(args, "device", None)),
-    )
-    print("got the model")
-    #model.summary()
-    return model
-
-def softmax(x, temp=1):
-    scaled = temp * np.asarray(x)
-    if scaled.ndim != 2:
-        raise ValueError(f"softmax expects a 2-D array, got {scaled.shape}")
-    scaled -= np.max(scaled, axis=1, keepdims=True)
-    exponentiated = np.exp(scaled)
-    return exponentiated / np.sum(exponentiated, axis=1, keepdims=True)
 
 def predict_on_batch_wrapper(model,test_generator):
     num_batches=len(test_generator)
@@ -97,7 +59,8 @@ def main(args):
     metrics_dictionary = {"counts_metrics":{}, "profile_metrics":{}}
 
     # get model architecture to load - can load .hdf5 and .weights/.arch
-    model=load_model_wrapper(args)
+    model = load_model_wrapper(
+        args.model_h5, getattr(args, "device", None), summary=False)
 
 
     test_generator = initializers.initialize_generators(args, mode="test", parameters=None, return_coords=True)
@@ -105,7 +68,8 @@ def main(args):
 
 
     # generate prediction on test set and store metrics
-    write_predictions_h5py(args.output_prefix, profile_probs_predictions, counts_sum_predictions, coordinates)
+    write_predictions_h5py(args.output_prefix, profile_probs_predictions,
+                           counts_sum_predictions, coordinates)
 
     # store regions, their predictions and corresponding pointwise metrics
     mnll_pw, mnll_norm, jsd_pw, jsd_norm, jsd_rnd, jsd_rnd_norm, mnll_rnd, mnll_rnd_norm =  metrics.profile_metrics(true_counts,profile_probs_predictions)

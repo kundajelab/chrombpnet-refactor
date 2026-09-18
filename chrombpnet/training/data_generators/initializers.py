@@ -3,7 +3,7 @@ from chrombpnet.training.utils.benchmark_utils import benchmark_enables
 import pandas as pd
 import json
 
-NARROWPEAK_SCHEMA = ["chr", "start", "end", "1", "2", "3", "4", "5", "6", "summit"]
+from chrombpnet.regions import NARROWPEAK_SCHEMA
 
 def fetch_data_and_model_params_based_on_mode(mode, args, parameters, nonpeak_regions, peak_regions):
 

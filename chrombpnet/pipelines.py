@@ -4,6 +4,7 @@ import json
 import copy
 from chrombpnet.data import DefaultDataFile, get_default_data_path
 import numpy as np
+from chrombpnet.model import load_model_wrapper
 def _run_modisco_motifs(input_path, output_path, max_seqlets=50000, window=500):
 	from chrombpnet.evaluation.modisco.api import run_motifs
 	run_motifs(input_path, output_path, max_seqlets=max_seqlets, window=window)
@@ -171,14 +172,9 @@ def chrombpnet_qc(args):
 	else:
 		fpx = ""
 	
-	def load_model_wrapper(model_hdf5):
-		# read .h5 model
-		from chrombpnet.model import load_prediction_model, resolve_device
-		model=load_prediction_model(model_hdf5, device=resolve_device(getattr(args, "device", None)))
-		model.summary()
-		return model
     
-	chrombpnet_md = load_model_wrapper(model_hdf5=args.chrombpnet_model)
+	chrombpnet_md = load_model_wrapper(args.chrombpnet_model,
+		getattr(args, "device", None), announce=False)
 	args.inputlen = int(chrombpnet_md.input_shape[1])
 	args.outputlen = int(chrombpnet_md.output_shape[0][1])
 	
@@ -367,14 +363,9 @@ def bias_model_qc(args):
 	else:
 		fpx = ""
 	
-	def load_model_wrapper(model_hdf5):
-		# read .h5 model
-		from chrombpnet.model import load_prediction_model, resolve_device
-		model=load_prediction_model(model_hdf5, device=resolve_device(getattr(args, "device", None)))
-		model.summary()
-		return model
     
-	bias_md = load_model_wrapper(model_hdf5=args.bias_model)
+	bias_md = load_model_wrapper(args.bias_model,
+		getattr(args, "device", None), announce=False)
 	args.inputlen = int(bias_md.input_shape[1])
 	args.outputlen = int(bias_md.output_shape[0][1])
 	
