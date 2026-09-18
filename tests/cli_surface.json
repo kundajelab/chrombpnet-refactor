@@ -1239,7 +1239,7 @@
       "--ylim"
     ],
     "required": false,
-    "type": "tuple"
+    "type": "ylim_pair"
   },
   "help": {
     "choices": null,

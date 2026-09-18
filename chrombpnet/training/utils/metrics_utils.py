@@ -32,8 +32,8 @@ def density_scatter(x, y, xlab, ylab, ax = None, sort = True, bins = 20):
     x=x[~np.isin(np.arange(x.size),bad_indices)]
     y=y[~np.isin(np.arange(y.size),bad_indices)]
 
-    if ax is None :
-        fig , ax = plt.subplots()
+    if ax is None:
+        _, ax = plt.subplots()
     data , x_e, y_e = np.histogram2d( x, y, bins = bins, density = True )
     z = interpn( ( 0.5*(x_e[1:] + x_e[:-1]) , 0.5*(y_e[1:]+y_e[:-1]) ) , data , np.vstack([x,y]).T , method = "splinef2d", bounds_error = False)
 
@@ -47,7 +47,9 @@ def density_scatter(x, y, xlab, ylab, ax = None, sort = True, bins = 20):
     ax.scatter( x, y, c=z )
 
     norm = Normalize(vmin = np.min(z), vmax = np.max(z))
-    cbar = fig.colorbar(cm.ScalarMappable(norm = norm), ax=ax)
+    # ax.figure rather than a local `fig`: that name was only bound in the
+    # `ax is None` branch, so passing an explicit ax raised UnboundLocalError.
+    cbar = ax.figure.colorbar(cm.ScalarMappable(norm = norm), ax=ax)
     cbar.ax.set_ylabel('Density')
     plt.xlabel(xlab)
     plt.ylabel(ylab)

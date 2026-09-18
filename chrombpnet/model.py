@@ -322,7 +322,10 @@ def load_model(
     else:
         raise ValueError(f"Unknown model_type {kind!r}")
     model.load_state_dict(payload["state_dict"])
-    model.to(map_location)
+    # map_location is a torch.load argument, which also accepts a callable or a
+    # dict; only forward it to .to() when it really is a device.
+    if isinstance(map_location, (str, torch.device)):
+        model.to(map_location)
     model.eval()
     return model
 

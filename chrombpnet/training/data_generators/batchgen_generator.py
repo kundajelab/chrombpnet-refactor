@@ -125,8 +125,10 @@ class ChromBPNetBatchGenerator:
             self.seqs = self.nonpeak_seqs
             self.cts = self.nonpeak_cts
             self.coords = self.nonpeak_coords
-        else :
-            print("Both peak and non-peak arrays are empty")
+        else:
+            raise ValueError(
+                "Both the peak and non-peak arrays are empty; at least one "
+                "region set is required")
 
         self.cur_seqs, self.cur_cts, self.cur_coords = augment.crop_revcomp_augment(
                                             self.seqs, self.cts, self.coords, self.inputlen, self.outputlen, 

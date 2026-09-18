@@ -8,6 +8,30 @@ desc = """======================================================================
 		cis-regulatory sequence syntax, transcription factor footprints and regulatory variants
 		=================================================================================================="""
 
+def ylim_pair(text):
+    """Parse ``--ylim`` as a numeric (lower, upper) pair.
+
+    The argument was declared ``type=tuple``, which makes argparse call
+    ``tuple()`` on the raw string: ``"(0,0.8)"`` became
+    ``('(', '0', ',', '0', '.', '8', ')')``, a 7-element tuple of characters
+    that matplotlib's set_ylim rejects. The flag could not be used in the form
+    its own help text documents.
+
+    Accepts the documented ``(0,0.8)`` as well as a bare ``0,0.8``.
+    """
+    cleaned = text.strip().strip("()[] ")
+    parts = [part for part in cleaned.replace(",", " ").split() if part]
+    if len(parts) != 2:
+        raise argparse.ArgumentTypeError(
+            f"expected two comma-separated numbers such as (0,0.8), got {text!r}")
+    try:
+        lower, upper = (float(part) for part in parts)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"y-limits must be numbers, got {text!r}") from None
+    return (lower, upper)
+
+
 def read_parser():
 
         parser = argparse.ArgumentParser(description=desc,formatter_class=RawTextHelpFormatter)
@@ -273,7 +297,7 @@ def read_parser():
         
         optional_ftps.add_argument("-bs", "--batch-size", type=int, default=64, help="batch size to use for prediction")
         optional_ftps.add_argument('--device', default=None, help="PyTorch device (default: CUDA when available)")
-        optional_ftps.add_argument("--ylim",default=None,type=tuple, required=False,help="lower and upper y-limits for plotting the motif footprint, in the form of a tuple i.e. \
+        optional_ftps.add_argument("--ylim",default=None,type=ylim_pair, required=False,help="lower and upper y-limits for plotting the motif footprint, in the form of a tuple i.e. \
         (0,0.8). If this is set to None, ylim will be autodetermined.")
   
         # Run TF-Modisco

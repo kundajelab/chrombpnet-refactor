@@ -5,6 +5,7 @@ import chrombpnet.training.metrics as metrics
 import chrombpnet.training.data_generators.initializers as initializers
 from chrombpnet.model import load_model_wrapper
 from chrombpnet.predictions import softmax
+from chrombpnet.regions import is_disabled
 from chrombpnet.predictions import (
     write_predictions_h5py as _write_predictions_h5py,
 )
@@ -95,8 +96,12 @@ def main(args):
     _, _, jsd_pw, jsd_norm, jsd_rnd, _, _, _ = metrics.profile_metrics(
         true_counts, profile_probs_predictions)
 
-    has_peaks = args.peaks != "None"
-    has_nonpeaks = args.nonpeaks != "None"
+    # Same sentinel test the generator uses. These used to compare
+    # case-sensitively against "None" while initializers lowercased, so a
+    # lowercase "none" made predict score peak metrics over regions the
+    # generator had excluded.
+    has_peaks = not is_disabled(args.peaks)
+    has_nonpeaks = not is_disabled(args.nonpeaks)
     everything = np.ones(len(coordinates), dtype=bool)
 
     # Order matters: each subset writes its own histogram PNG.

@@ -3,7 +3,7 @@ from chrombpnet.training.utils.benchmark_utils import benchmark_enables
 import pandas as pd
 import json
 
-from chrombpnet.regions import NARROWPEAK_SCHEMA
+from chrombpnet.regions import NARROWPEAK_SCHEMA, is_disabled
 
 def fetch_data_and_model_params_based_on_mode(mode, args, parameters, nonpeak_regions, peak_regions):
 
@@ -47,7 +47,8 @@ def fetch_data_and_model_params_based_on_mode(mode, args, parameters, nonpeak_re
         shuffle_at_epoch_start=False
         
     else:
-        print("mode not defined - only train, valid, test are allowed")
+        raise ValueError(
+            f"mode must be train, valid or test, got {mode!r}")
 
     return inputlen, outputlen,  nonpeak_regions, negative_sampling_ratio, max_jitter, add_revcomp, shuffle_at_epoch_start
 
@@ -69,12 +70,12 @@ def initialize_generators(args, mode, parameters, return_coords):
     # get only those peak/non peak regions corresponding to train/valid/test set
     splits_dict=json.load(open(args.chr_fold_path))
 
-    if args.peaks.lower() != "none":
+    if not is_disabled(args.peaks):
         print("loading peaks...")
         peak_regions=pd.read_csv(args.peaks,header=None,sep='\t',names=NARROWPEAK_SCHEMA)
         peak_regions, chroms=get_bed_regions_for_fold_split(peak_regions, mode, splits_dict)
 
-    if args.nonpeaks.lower() != "none":
+    if not is_disabled(args.nonpeaks):
         print("loading nonpeaks...")
         nonpeak_regions=pd.read_csv(args.nonpeaks,header=None,sep='\t',names=NARROWPEAK_SCHEMA)
         nonpeak_regions, chroms=get_bed_regions_for_fold_split(nonpeak_regions, mode, splits_dict) 

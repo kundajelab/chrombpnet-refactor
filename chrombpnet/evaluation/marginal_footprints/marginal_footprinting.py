@@ -6,6 +6,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import argparse
+import chrombpnet.parsers as parsers
 import json
 from chrombpnet.training.utils.data_utils import get_seq as get_seq
 import chrombpnet.training.utils.one_hot as one_hot
@@ -57,7 +58,7 @@ def fetch_footprinting_args():
     parser.add_argument("-bs", "--batch_size", type=int, default="64", help="input batch size for the model")
     parser.add_argument("-o", "--output_prefix", type=str, required=True, help="Output prefix")
     parser.add_argument("-pwm_f", "--motifs_to_pwm", type=str, required=True, help="Path to a TSV file containing motifs in first column and motif string to use for footprinting in second column")    
-    parser.add_argument("--ylim",default=None,type=tuple, required=False,help="lower and upper y-limits for plotting the motif footprint, in the form of a tuple i.e. \
+    parser.add_argument("--ylim",default=None,type=parsers.ylim_pair, required=False,help="lower and upper y-limits for plotting the motif footprint, in the form of a tuple i.e. \
         (0,0.8). If this is set to None, ylim will be autodetermined.")
     parser.add_argument("--device", default=None, help="PyTorch device (default: CUDA when available)")
     
