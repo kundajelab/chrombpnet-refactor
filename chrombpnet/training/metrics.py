@@ -39,66 +39,88 @@ def counts_metrics(labels,preds,outf,title):
     
     return spearman_cor, pearson_cor, mse
 
-def profile_metrics(true_counts,pred_probs,pseudocount=0.001, seed=1234):
+def _normalize_rows(profiles):
+    """Row-wise `normalize_profile`, with a validity mask instead of None.
+
+    `normalize_profile` returns None for a row it cannot turn into a finite
+    probability vector. Vectorized, that becomes a boolean mask; invalid rows
+    are left as zeros and excluded by the caller, never divided.
+    """
+    profiles = np.asarray(profiles, dtype=np.float64)
+    totals = np.nansum(profiles, axis=1)
+    valid = np.isfinite(totals) & (totals > 0) & np.all(np.isfinite(profiles), axis=1)
+    normalized = np.zeros_like(profiles)
+    np.divide(profiles, totals[:, None], out=normalized, where=valid[:, None])
+    return normalized, valid
+
+
+def _min_max_normalize(values, minimum, maximum):
+    """Row-wise `get_min_max_normalized_value`, clipped to [0, 1].
+
+    The scalar version returns NaN when any input is non-finite or when the
+    bounds coincide, and otherwise clips; `np.isclose` is the same predicate
+    it used.
+    """
+    values = np.asarray(values, dtype=np.float64)
+    minimum = np.asarray(minimum, dtype=np.float64)
+    maximum = np.asarray(maximum, dtype=np.float64)
+    finite = np.isfinite(values) & np.isfinite(minimum) & np.isfinite(maximum)
+    usable = finite & ~np.isclose(minimum, maximum)
+    out = np.full(values.shape, np.nan, dtype=np.float64)
+    np.divide(values - maximum, minimum - maximum, out=out, where=usable)
+    return np.clip(out, 0.0, 1.0, out=out, where=usable)
+
+
+def profile_metrics(true_counts, pred_probs, pseudocount=0.001, seed=1234):
     '''
     Get profile metrics
     '''
-    mnll_pw = []
-    mnll_norm = []
-
-    jsd_pw = []
-    jsd_norm = []
-    jsd_rnd = []
-    jsd_rnd_norm = []
-    mnll_rnd = []
-    mnll_rnd_norm = []
-
+    # Vectorized over regions. This was a Python loop calling
+    # scipy.spatial.distance.jensenshannon three times per region, which
+    # profiled as the largest single cost of `pred_bw`'s finish stage.
+    # `jensenshannon(..., axis=1)` is bit-identical to the per-row calls and
+    # the shuffled draws below reproduce the old RNG stream exactly, so every
+    # returned value is unchanged; a test pins both claims.
+    true_counts = np.asarray(true_counts)
     num_regions = true_counts.shape[0]
+
+    observed_prob, observed_ok = _normalize_rows(true_counts)
+    predicted_prob, predicted_ok = _normalize_rows(pred_probs)
+    valid = observed_ok & predicted_ok
+
+    # The old loop drew one permutation per *surviving* region, in order, and
+    # skipped the draw entirely for regions it discarded. `rng.permutation(x)`
+    # on a 1-D array consumes the same state as `x[rng.permutation(len(x))]`
+    # and returns the same values, so drawing an index permutation per valid
+    # region row reproduces the stream exactly.
     rng = np.random.default_rng(seed)
-    for idx in range(num_regions):
-        observed_prob = normalize_profile(true_counts[idx, :])
-        predicted_prob = normalize_profile(pred_probs[idx, :])
-        if observed_prob is None or predicted_prob is None:
-            jsd_pw.append(np.nan)
-            jsd_norm.append(np.nan)
-            jsd_rnd.append(np.nan)
-            jsd_rnd_norm.append(np.nan)
-            continue
-        # mnll
-        #curr_mnll = mnll(true_counts[idx,:],  probs=pred_probs[idx,:])
-        #mnll_pw.append(curr_mnll)
-        # normalized mnll
-        #min_mnll, max_mnll = mnll_min_max_bounds(true_counts[idx,:])
-        #curr_mnll_norm = get_min_max_normalized_value(curr_mnll, min_mnll, max_mnll)
-        #mnll_norm.append(curr_mnll_norm)
+    width = true_counts.shape[1]
+    shuffled = np.zeros_like(observed_prob)
+    for idx in np.flatnonzero(valid):
+        shuffled[idx] = true_counts[idx][rng.permutation(width)]
+    shuffled_prob, _ = _normalize_rows(shuffled)
 
-        # jsd
-        cur_jsd=jensenshannon(observed_prob, predicted_prob)
-        jsd_pw.append(cur_jsd)
-        # normalized jsd
-        min_jsd, max_jsd = jsd_min_max_bounds(true_counts[idx,:])
-        curr_jsd_norm = get_min_max_normalized_value(cur_jsd, min_jsd, max_jsd)
-        jsd_norm.append(curr_jsd_norm)
+    jsd_pw = np.full(num_regions, np.nan)
+    jsd_rnd = np.full(num_regions, np.nan)
+    max_jsd = np.full(num_regions, np.nan)
+    if valid.any():
+        jsd_pw[valid] = jensenshannon(observed_prob[valid], predicted_prob[valid], axis=1)
+        jsd_rnd[valid] = jensenshannon(observed_prob[valid], shuffled_prob[valid], axis=1)
+        # jsd_min_max_bounds: (0, jsd(profile, uniform)). The profile it
+        # normalizes is true_counts, i.e. observed_prob again.
+        uniform = np.full((int(valid.sum()), width), 1.0 / width)
+        max_jsd[valid] = jensenshannon(observed_prob[valid], uniform, axis=1)
+    min_jsd = np.where(valid, 0.0, np.nan)
 
-        # get random shuffling on labels for a worst case performance on metrics - labels versus shuffled labels
-        shuffled_labels=rng.permutation(true_counts[idx,:])
-        shuffled_labels_prob=normalize_profile(shuffled_labels)
+    jsd_norm = np.full(num_regions, np.nan)
+    jsd_rnd_norm = np.full(num_regions, np.nan)
+    jsd_norm[valid] = _min_max_normalize(jsd_pw[valid], min_jsd[valid], max_jsd[valid])
+    jsd_rnd_norm[valid] = _min_max_normalize(jsd_rnd[valid], min_jsd[valid], max_jsd[valid])
 
-        # mnll random
-        #curr_rnd_mnll = mnll(true_counts[idx,:],  probs=shuffled_labels_prob)
-        #mnll_rnd.append(curr_rnd_mnll)
-        # normalized mnll random
-        #curr_rnd_mnll_norm = get_min_max_normalized_value(curr_rnd_mnll, min_mnll, max_mnll)
-        #mnll_rnd_norm.append(curr_rnd_mnll_norm)   
-
-        # jsd random
-        curr_jsd_rnd=jensenshannon(observed_prob, shuffled_labels_prob)
-        jsd_rnd.append(curr_jsd_rnd)
-        # normalized jsd random
-        curr_rnd_jsd_norm = get_min_max_normalized_value(curr_jsd_rnd, min_jsd, max_jsd)
-        jsd_rnd_norm.append(curr_rnd_jsd_norm)
-
-    return np.array(mnll_pw), np.array(mnll_norm), np.array(jsd_pw), np.array(jsd_norm), np.array(jsd_rnd), np.array(jsd_rnd_norm), np.array(mnll_rnd), np.array(mnll_rnd_norm)
+    # The four mNLL arrays have been empty since the dead mNLL chain was
+    # removed; both call sites unpack and discard them.
+    empty = np.array([])
+    return empty, empty, jsd_pw, jsd_norm, jsd_rnd, jsd_rnd_norm, empty, empty
 
 def plot_histogram(region_jsd, shuffled_labels_jsd, output_prefix, title):
 
