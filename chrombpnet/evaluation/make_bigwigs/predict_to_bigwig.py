@@ -7,7 +7,7 @@ import chrombpnet.evaluation.make_bigwigs.bigwig_helper as bigwig_helper
 import chrombpnet.training.utils.data_utils as data_utils 
 from chrombpnet.model import load_model_wrapper
 from chrombpnet.predictions import softmax, write_predictions_h5py
-from chrombpnet import preimport
+from chrombpnet import finish_stage, preimport
 from chrombpnet.regions import NARROWPEAK_SCHEMA
 import contextlib
 import h5py
@@ -154,7 +154,7 @@ class _SharedInputs:
         return self._observed[key]
 
 
-def _write_model_bigwig(args, model_path, name, shared):
+def _write_model_bigwig(args, model_path, name, shared, finish):
     """Predict over the regions BED with one model and write its bigwig.
 
     This was three ~40-line copies -- roughly 120 of the module's 256 lines --
@@ -195,44 +195,56 @@ def _write_model_bigwig(args, model_path, name, shared):
     # (defect 3 in chrombpnet_bugs.md).
     pred_logits = np.asarray(pred_logits).reshape(len(seqs), -1)
 
-    bigwig_helper.write_bigwig(
+    # Hand the bigwig write and the metrics to the finish stage, which runs
+    # them alongside the *next* model's forward. Both were pure CPU work
+    # sitting behind an idle GPU.
+    #
+    # The filtered frame, not regions_df: compare_with_observed reads observed
+    # counts per row and lines them up against the predictions, which cover
+    # only the in-bounds regions. Passing the unfiltered frame made the two
+    # disagree in length whenever a region sat near a chromosome edge.
+    finish.submit({
         # expm1, because the training target is log(1 + counts) (defect 4).
-        softmax(pred_logits) * np.expm1(pred_logcts),
-        regions,
-        gs,
-        f"{args.output_prefix}_{name}.bw",
-        outstats_file=_stats_path(args.output_prefix_stats, name),
-        debug_chr=args.debug_chr,
-        use_tqdm=args.tqdm)
-
-    if args.bigwig:
-        # The filtered frame, not regions_df: compare_with_observed reads
-        # observed counts per row and lines them up against the predictions,
-        # which cover only the in-bounds regions. Passing the unfiltered frame
-        # made the two disagree in length whenever a region sat near a
-        # chromosome edge.
-        compare_with_observed(args.bigwig, used_regions_df, regions, outputlen,
-                              pred_logits, pred_logcts,
-                              f"{args.output_prefix}_{name}",
-                              obs_data=shared.observed_counts(
-                                  used_regions_df, inputlen, outputlen))
+        "data": softmax(pred_logits) * np.expm1(pred_logcts),
+        "regions": regions,
+        "chrom_sizes": gs,
+        "bigwig_out": f"{args.output_prefix}_{name}.bw",
+        "outstats_file": _stats_path(args.output_prefix_stats, name),
+        "debug_chr": args.debug_chr,
+        "use_tqdm": args.tqdm,
+        "observed_bigwig": args.bigwig,
+        "used_regions_df": used_regions_df,
+        "outputlen": outputlen,
+        "pred_logits": pred_logits,
+        "pred_logcts": pred_logcts,
+        "output_prefix": f"{args.output_prefix}_{name}",
+        "obs_data": (shared.observed_counts(used_regions_df, inputlen, outputlen)
+                     if args.bigwig else None),
+    })
 
 
 def main(args):
-    if args.bigwig:
-        # The metrics stage imports scipy and matplotlib, ~6s that would
-        # otherwise be paid after the forward with the GPU idle. Start them
-        # now so they land under it.
-        preimport.start()
-    # Order preserved from the original three inlined blocks. The FASTA is
-    # opened once for the whole invocation rather than once per model.
-    with pyfaidx.Fasta(args.genome) as genome:
-        shared = _SharedInputs(args, genome)
-        for model_path, name in ((args.chrombpnet_model_nb, "chrombpnet_nobias"),
-                                 (args.chrombpnet_model, "chrombpnet"),
-                                 (args.bias_model, "bias")):
-            if model_path:
-                _write_model_bigwig(args, model_path, name, shared)
+    # Order preserved from the original three inlined blocks.
+    models = [(path, name) for path, name in
+              ((args.chrombpnet_model_nb, "chrombpnet_nobias"),
+               (args.chrombpnet_model, "chrombpnet"),
+               (args.bias_model, "bias")) if path]
+
+    # Fork the finish worker FIRST, before any model is loaded: forking a
+    # process that has already initialized CUDA yields a child with unusable
+    # CUDA state. The worker never touches the GPU, but it inherits whatever
+    # the parent had at fork time.
+    with finish_stage.start(len(models)) as finish:
+        if args.bigwig:
+            # The metrics stage imports scipy and matplotlib, ~6s that would
+            # otherwise be paid with the GPU idle. Start them now so they
+            # land under the forward.
+            preimport.start()
+        # The FASTA is opened once for the whole invocation, not per model.
+        with pyfaidx.Fasta(args.genome) as genome:
+            shared = _SharedInputs(args, genome)
+            for model_path, name in models:
+                _write_model_bigwig(args, model_path, name, shared, finish)
 
 
 if __name__=="__main__":
