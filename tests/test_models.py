@@ -282,3 +282,76 @@ def test_generator_rng_is_dedicated_from_medium_and_replayable_at_max():
     left = make_generator_rng("max", 1234, "train", epoch=2)
     right = make_generator_rng("max", 1234, "train", epoch=2)
     np.testing.assert_array_equal(left.permutation(10), right.permutation(10))
+
+
+def _predict_before_batched_casting(adapter, values, batch_size=64):
+    """The pre-rewrite `PredictionAdapter.predict`, kept as the oracle.
+
+    It cast the whole input to one float32 CPU tensor up front, sliced a
+    permuted non-contiguous view, ran under `no_grad`, and concatenated
+    per-batch lists at the end.
+    """
+    if isinstance(values, list):
+        values = values[0]
+    if isinstance(values, np.ndarray) and any(stride < 0 for stride in values.strides):
+        values = np.ascontiguousarray(values)
+    array = torch.as_tensor(values, dtype=torch.float32)
+    if array.shape[-1] == 4:
+        array = array.permute(0, 2, 1)
+    profiles, logcounts = [], []
+    adapter.model.eval()
+    with torch.no_grad():
+        for start in range(0, array.shape[0], int(batch_size)):
+            profile, counts = adapter.model(
+                array[start:start + int(batch_size)].to(adapter.device))
+            profiles.append(profile.cpu())
+            logcounts.append(counts.cpu())
+    return torch.cat(profiles).numpy(), torch.cat(logcounts).numpy()
+
+
+@pytest.fixture
+def _adapter():
+    torch.manual_seed(0)
+    model = BPNet(ModelConfig(400, 100, filters=8, n_dilation_layers=2)).eval()
+    return PredictionAdapter(model, device="cpu")
+
+
+@pytest.mark.parametrize("batch_size", [8, 64])
+@pytest.mark.parametrize("case", ["nlc_int8", "nlc_float32", "ncl_int8",
+                                  "reverse_complement_view", "single", "ragged"])
+def test_predict_is_bitwise_unchanged_by_the_batched_cast(_adapter, case, batch_size):
+    rng = np.random.default_rng(0)
+    values = {
+        "nlc_int8": lambda: rng.integers(0, 2, (37, 400, 4)).astype(np.int8),
+        "nlc_float32": lambda: rng.random((37, 400, 4)).astype(np.float32),
+        "ncl_int8": lambda: rng.integers(0, 2, (37, 4, 400)).astype(np.int8),
+        # Negative strides: torch cannot wrap these, so the adapter has always
+        # had to materialize them. marginal_footprinting feeds exactly this.
+        "reverse_complement_view":
+            lambda: rng.integers(0, 2, (37, 400, 4)).astype(np.int8)[:, ::-1, ::-1],
+        "single": lambda: rng.integers(0, 2, (1, 400, 4)).astype(np.int8),
+        "ragged": lambda: rng.integers(0, 2, (130, 400, 4)).astype(np.int8),
+    }[case]()
+
+    produced = _adapter.predict([values], batch_size=batch_size)
+    expected = _predict_before_batched_casting(_adapter, [values], batch_size=batch_size)
+    assert np.array_equal(produced[0], expected[0])
+    assert np.array_equal(produced[1], expected[1])
+
+
+def test_predict_still_rejects_an_empty_input(_adapter):
+    """`torch.cat([])` used to raise here; preallocation must not swallow it."""
+    with pytest.raises(RuntimeError, match="empty input"):
+        _adapter.predict([np.zeros((0, 400, 4), dtype=np.int8)])
+
+
+def test_predict_returns_writable_arrays(_adapter):
+    """inference_mode outputs are poison if they escape; these are copies."""
+    profiles, _ = _adapter.predict(
+        [np.zeros((4, 400, 4), dtype=np.int8)])
+    profiles[0, 0] = 1.0
+
+
+def test_predict_rejects_input_without_four_channels(_adapter):
+    with pytest.raises(ValueError, match="four sequence channels"):
+        _adapter.predict([np.zeros((3, 5, 400), dtype=np.int8)])

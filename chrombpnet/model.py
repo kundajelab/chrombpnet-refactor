@@ -351,27 +351,51 @@ class PredictionAdapter:
     ) -> Tuple[np.ndarray, np.ndarray]:
         if isinstance(values, list):
             values = values[0]
-        # NumPy reverse-complement views (for example, x[:, ::-1, ::-1])
-        # have negative strides. PyTorch cannot construct a tensor from those
-        # views, so materialize a contiguous array at this compatibility edge.
-        if isinstance(values, np.ndarray) and any(stride < 0 for stride in values.strides):
-            values = np.ascontiguousarray(values)
-        array = torch.as_tensor(values, dtype=torch.float32)
-        if array.ndim != 3:
+        if not isinstance(values, np.ndarray):
+            values = np.asarray(values.detach().cpu() if torch.is_tensor(values) else values)
+        if values.ndim != 3:
             raise ValueError("Input must be three-dimensional")
-        if array.shape[-1] == 4:
-            array = array.permute(0, 2, 1)
-        elif array.shape[1] != 4:
+        if values.shape[-1] == 4:
+            channel_last = True
+        elif values.shape[1] == 4:
+            channel_last = False
+        else:
             raise ValueError("Input must be NLC or NCL with four sequence channels")
-        profiles = []
-        logcounts = []
+
+        total = values.shape[0]
+        if total == 0:
+            # torch.cat over no batches raised here before the outputs were
+            # preallocated; keep that rather than quietly returning empties.
+            raise RuntimeError("Cannot predict on an empty input")
+
+        batch_size = int(batch_size)
+        profiles = None
+        logcounts = None
         self.model.eval()
-        with torch.no_grad():
-            for start in range(0, array.shape[0], int(batch_size)):
-                profile, counts = self.model(array[start : start + int(batch_size)].to(self.device))
-                profiles.append(profile.cpu())
-                logcounts.append(counts.cpu())
-        return torch.cat(profiles).numpy(), torch.cat(logcounts).numpy()
+        # inference_mode rather than no_grad: same arithmetic, less bookkeeping.
+        # Results are copied into ordinary NumPy buffers below, so no inference
+        # tensor escapes to a caller that might later mutate it.
+        with torch.inference_mode():
+            for start in range(0, total, batch_size):
+                chunk = values[start:start + batch_size]
+                # One contiguous NCL float32 buffer per batch, instead of
+                # casting the whole input up front (16x the one-hot memory:
+                # 676 MB for 20,000 x 2,114) and slicing a permuted,
+                # non-contiguous view that had to be transposed at every
+                # transfer. ascontiguousarray also absorbs the negative-stride
+                # reverse-complement views (x[:, ::-1, ::-1]) that torch
+                # cannot wrap.
+                if channel_last:
+                    chunk = chunk.transpose(0, 2, 1)
+                chunk = np.ascontiguousarray(chunk, dtype=np.float32)
+                profile, counts = self.model(torch.from_numpy(chunk).to(self.device))
+                if profiles is None:
+                    profiles = np.empty((total,) + tuple(profile.shape[1:]), dtype=np.float32)
+                    logcounts = np.empty((total,) + tuple(counts.shape[1:]), dtype=np.float32)
+                stop = start + profile.shape[0]
+                profiles[start:stop] = profile.cpu().numpy()
+                logcounts[start:stop] = counts.cpu().numpy()
+        return profiles, logcounts
 
     def predict_on_batch(self, values: Union[np.ndarray, Tensor, list]):
         size = len(values[0] if isinstance(values, list) else values)
