@@ -1,5 +1,9 @@
 import pyBigWig
 import numpy as np
+
+#: pyBigWig can be built without numpy support, in which case addEntries only
+#: accepts Python lists.
+_PYBIGWIG_NUMPY = bool(getattr(pyBigWig, "numpy", 0))
 from chrombpnet.training.utils.data_utils import one_hot
 import pandas as pd
 from chrombpnet.regions import NARROWPEAK_SCHEMA, window_bounds
@@ -64,7 +68,15 @@ def write_bigwig(data, regions, gs, bw_out, debug_chr=None, use_tqdm=False, outs
     # regions may not be sorted, so get their sorted order
     order_of_regs = sorted(range(len(regions)), key=lambda x:(chr_to_idx[regions[x][0]], regions[x][1]))
 
+    # Hoisted: this set was rebuilt once per region.
+    debug_chroms = set(np.atleast_1d(debug_chr)) if debug_chr else None
+
+    # Only accumulate the written signal when the stats file will consume it.
+    # For 20k regions x 1kb that is 80 MB held plus an 80 MB hstack copy, both
+    # of which used to be paid even with outstats_file=None.
+    collect_entries = outstats_file is not None
     all_entries = []
+    wrote_any = False
     cur_chr = ""
     cur_end = 0
 
@@ -77,7 +89,7 @@ def write_bigwig(data, regions, gs, bw_out, debug_chr=None, use_tqdm=False, outs
         # subset to chromosome (debugging)
         i = order_of_regs[itr]
         i_chr, i_start, i_end, i_mid = regions[i]
-        if debug_chr and i_chr not in set(np.atleast_1d(debug_chr)):
+        if debug_chroms is not None and i_chr not in debug_chroms:
             continue
     
         if i_chr != cur_chr: 
@@ -105,28 +117,41 @@ def write_bigwig(data, regions, gs, bw_out, debug_chr=None, use_tqdm=False, outs
        
         vals = data[i][cur_end - i_start:next_end - i_start]
 
-        bw.addEntries([i_chr]*(next_end-cur_end), 
-                       list(range(cur_end,next_end)), 
-                       ends = list(range(cur_end+1, next_end+1)), 
-                       values=[float(x) for x in vals])
-    
-        all_entries.append(vals)
+        # numpy arrays rather than three Python lists and a float() per base.
+        # pyBigWig's numpy branch only changes how the arguments are parsed
+        # before the same bwAddIntervals call, so the file is byte-identical;
+        # the list form is kept for builds compiled without numpy support.
+        starts = np.arange(cur_end, next_end, dtype=np.int64)
+        if _PYBIGWIG_NUMPY:
+            bw.addEntries([i_chr] * (next_end - cur_end), starts,
+                          ends=starts + 1, values=vals)
+        else:
+            bw.addEntries([i_chr] * (next_end - cur_end), starts.tolist(),
+                          ends=(starts + 1).tolist(), values=vals.tolist())
+
+        wrote_any = True
+        if collect_entries:
+            all_entries.append(vals)
         
         cur_end = next_end
 
     bw.close()
 
-    if not all_entries:
+    # Deliberately a region count, not a base count: a region whose slice is
+    # empty still counted as "written" under the old `if not all_entries`
+    # test, because it appended a zero-length array.
+    if not wrote_any:
         raise ValueError("No BigWig entries were written")
+    if not collect_entries:
+        return
     all_entries = np.hstack(all_entries)
-    if outstats_file != None:
-        with open(outstats_file, 'w') as f:
-            f.write("Min\t{:.6f}\n".format(np.min(all_entries)))
-            f.write(".1%\t{:.6f}\n".format(np.quantile(all_entries, 0.001)))
-            f.write("1%\t{:.6f}\n".format(np.quantile(all_entries, 0.01)))
-            f.write("50%\t{:.6f}\n".format(np.quantile(all_entries, 0.5)))
-            f.write("99%\t{:.6f}\n".format(np.quantile(all_entries, 0.99)))
-            f.write("99.9%\t{:.6f}\n".format(np.quantile(all_entries, 0.999)))
-            f.write("99.95%\t{:.6f}\n".format(np.quantile(all_entries, 0.9995)))
-            f.write("99.99%\t{:.6f}\n".format(np.quantile(all_entries, 0.9999)))
-            f.write("Max\t{:.6f}\n".format(np.max(all_entries)))
+    with open(outstats_file, 'w') as f:
+        f.write("Min\t{:.6f}\n".format(np.min(all_entries)))
+        f.write(".1%\t{:.6f}\n".format(np.quantile(all_entries, 0.001)))
+        f.write("1%\t{:.6f}\n".format(np.quantile(all_entries, 0.01)))
+        f.write("50%\t{:.6f}\n".format(np.quantile(all_entries, 0.5)))
+        f.write("99%\t{:.6f}\n".format(np.quantile(all_entries, 0.99)))
+        f.write("99.9%\t{:.6f}\n".format(np.quantile(all_entries, 0.999)))
+        f.write("99.95%\t{:.6f}\n".format(np.quantile(all_entries, 0.9995)))
+        f.write("99.99%\t{:.6f}\n".format(np.quantile(all_entries, 0.9999)))
+        f.write("Max\t{:.6f}\n".format(np.max(all_entries)))
