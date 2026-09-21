@@ -3,6 +3,7 @@ import numpy as np
 from chrombpnet.training.utils.data_utils import one_hot
 import pandas as pd
 from chrombpnet.regions import NARROWPEAK_SCHEMA, window_bounds
+from chrombpnet.sequences import fetch_windows
 
 def read_chrom_sizes(fname):
     with open(fname) as f:
@@ -12,22 +13,16 @@ def read_chrom_sizes(fname):
     return gs
 
 def get_seq(peaks_df, genome, width):
+    """One-hot windows for the regions whose full window is in bounds.
+
+    The per-region pyfaidx loop this used to run now lives in
+    chrombpnet.sequences as the fallback path; the mask semantics are
+    unchanged.
     """
-    Same as get_cts, but fetches sequence from a given genome.
-    """
-    vals = []
-    peaks_used = []
-    for i, r in peaks_df.iterrows():
-        start, end = window_bounds(r, width)
-        sequence = str(genome[r['chr']][start:end])
-        if len(sequence) == width:
-            vals.append(sequence)
-            peaks_used.append(True)
-        else:
-            peaks_used.append(False)
-    if not vals:
+    seqs, peaks_used = fetch_windows(peaks_df, genome, width)
+    if not peaks_used.any():
         raise ValueError("No regions have a complete in-bounds sequence window")
-    return one_hot.dna_to_one_hot(vals), np.array(peaks_used)
+    return seqs, peaks_used
 
 
 def get_regions(regions_file, seqlen, regions_used=None):
