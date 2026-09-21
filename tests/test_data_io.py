@@ -1,6 +1,7 @@
 import h5py
 import numpy as np
 import pyBigWig
+import pytest
 from types import SimpleNamespace
 
 from chrombpnet.evaluation.interpret.interpret import generate_shap_dict
@@ -169,3 +170,172 @@ def test_pred_bw_metrics_survive_an_edge_filtered_region(tmp_path):
     with h5py.File(tmp_path / "out_bias_predictions.h5") as handle:
         assert handle["predictions/profs"].shape == (2, outputlen)
     assert (tmp_path / "out_bias_metrics.json").is_file()
+
+
+def test_pred_bw_shares_inputs_across_models_without_over_sharing(tmp_path):
+    """The three model passes reuse one featurization -- unless geometry differs.
+
+    `main` used to re-parse the BED, re-open the FASTA, re-featurize and
+    re-read the observed bigwig once per model. Those are now cached per
+    invocation, keyed by what they actually depend on. The risk is a key that
+    is too coarse: a bias model with a different input length must not be
+    handed the accessibility model's sequences.
+    """
+    import pyBigWig
+    from types import SimpleNamespace
+
+    from chrombpnet.evaluation.make_bigwigs import bigwig_helper
+    from chrombpnet.evaluation.make_bigwigs.predict_to_bigwig import main
+    from chrombpnet.model import BiasModel, BPNet, ModelConfig, save_model
+
+    chrom_len, outputlen = 2000, 100
+    (tmp_path / "g.fa").write_text(">chr1\n" + "ACGT" * (chrom_len // 4) + "\n")
+    (tmp_path / "sizes.tsv").write_text(f"chr1\t{chrom_len}\n")
+    handle = pyBigWig.open(str(tmp_path / "obs.bw"), "w")
+    handle.addHeader([("chr1", chrom_len)])
+    handle.addEntries("chr1", 0, values=[1.0] * chrom_len, span=1, step=1)
+    handle.close()
+    with open(tmp_path / "regions.bed", "w") as bed:
+        for start in (600, 900, 1200):
+            bed.write("\t".join(str(v) for v in
+                                ("chr1", start, start + 200, ".", ".", ".",
+                                 ".", ".", ".", 100)) + "\n")
+
+    # Deliberately mismatched input lengths: 400 for the pair, 200 for bias.
+    save_model(BPNet(ModelConfig(400, outputlen, filters=2, n_dilation_layers=1)),
+               tmp_path / "nobias.pt")
+    save_model(BiasModel(ModelConfig(200, outputlen, filters=2, n_dilation_layers=1)),
+               tmp_path / "bias.pt")
+
+    widths = []
+    real_get_seq = bigwig_helper.get_seq
+
+    def recording_get_seq(peaks_df, genome, width):
+        widths.append(width)
+        return real_get_seq(peaks_df, genome, width)
+
+    bigwig_helper.get_seq = recording_get_seq
+    try:
+        main(SimpleNamespace(
+            bias_model=str(tmp_path / "bias.pt"), chrombpnet_model=None,
+            chrombpnet_model_nb=str(tmp_path / "nobias.pt"),
+            regions=str(tmp_path / "regions.bed"),
+            genome=str(tmp_path / "g.fa"),
+            chrom_sizes=str(tmp_path / "sizes.tsv"),
+            output_prefix=str(tmp_path / "out"), output_prefix_stats=None,
+            batch_size=4, tqdm=0, debug_chr=None,
+            bigwig=str(tmp_path / "obs.bw"), device="cpu"))
+    finally:
+        bigwig_helper.get_seq = real_get_seq
+
+    # One featurization per distinct input length -- not one per model, and
+    # not one shared across both geometries.
+    assert sorted(widths) == [200, 400], widths
+    for name in ("bias", "chrombpnet_nobias"):
+        assert (tmp_path / f"out_{name}.bw").is_file()
+        assert (tmp_path / f"out_{name}_metrics.json").is_file()
+
+
+def test_pred_bw_reuses_one_featurization_for_matching_models(tmp_path):
+    """Two models of the same geometry featurize once between them."""
+    import pyBigWig
+    from types import SimpleNamespace
+
+    from chrombpnet.evaluation.make_bigwigs import bigwig_helper
+    from chrombpnet.evaluation.make_bigwigs.predict_to_bigwig import main
+    from chrombpnet.model import BiasModel, BPNet, ModelConfig, save_model
+
+    chrom_len, inputlen, outputlen = 2000, 200, 100
+    (tmp_path / "g.fa").write_text(">chr1\n" + "ACGT" * (chrom_len // 4) + "\n")
+    (tmp_path / "sizes.tsv").write_text(f"chr1\t{chrom_len}\n")
+    with open(tmp_path / "regions.bed", "w") as bed:
+        for start in (600, 900, 1200):
+            bed.write("\t".join(str(v) for v in
+                                ("chr1", start, start + 200, ".", ".", ".",
+                                 ".", ".", ".", 100)) + "\n")
+    save_model(BPNet(ModelConfig(inputlen, outputlen, filters=2, n_dilation_layers=1)),
+               tmp_path / "nobias.pt")
+    save_model(BiasModel(ModelConfig(inputlen, outputlen, filters=2, n_dilation_layers=1)),
+               tmp_path / "bias.pt")
+
+    calls = []
+    real_get_seq = bigwig_helper.get_seq
+    bigwig_helper.get_seq = lambda df, g, w: (calls.append(w), real_get_seq(df, g, w))[1]
+    try:
+        main(SimpleNamespace(
+            bias_model=str(tmp_path / "bias.pt"), chrombpnet_model=None,
+            chrombpnet_model_nb=str(tmp_path / "nobias.pt"),
+            regions=str(tmp_path / "regions.bed"),
+            genome=str(tmp_path / "g.fa"),
+            chrom_sizes=str(tmp_path / "sizes.tsv"),
+            output_prefix=str(tmp_path / "out"), output_prefix_stats=None,
+            batch_size=4, tqdm=0, debug_chr=None, bigwig=None, device="cpu"))
+    finally:
+        bigwig_helper.get_seq = real_get_seq
+
+    assert calls == [inputlen], f"featurized {len(calls)} times, expected 1"
+
+
+def _write_bw(tmp_path, name, data, regions, gs, outstats_file=None):
+    from chrombpnet.evaluation.make_bigwigs.bigwig_helper import write_bigwig
+    path = str(tmp_path / name)
+    write_bigwig(data, regions, gs, path, outstats_file=outstats_file)
+    return path
+
+
+def test_write_bigwig_bytes_do_not_depend_on_the_stats_file(tmp_path):
+    """Skipping the signal accumulation must not touch the written bigwig."""
+    import hashlib
+
+    rng = np.random.default_rng(0)
+    gs = [("chr1", 1_000_000)]
+    regions = [["chr1", s, s + 100, s + 50] for s in range(1000, 41000, 400)]
+    data = rng.random((len(regions), 100)).astype(np.float32)
+
+    without = _write_bw(tmp_path, "a.bw", data, regions, gs, outstats_file=None)
+    with_stats = _write_bw(tmp_path, "b.bw", data, regions, gs,
+                           outstats_file=str(tmp_path / "stats.txt"))
+    digest = lambda p: hashlib.sha256(open(p, "rb").read()).hexdigest()
+    assert digest(without) == digest(with_stats)
+    assert (tmp_path / "stats.txt").is_file()
+
+
+def test_write_bigwig_numpy_and_list_argument_forms_agree(tmp_path):
+    """The numpy fast path and the list fallback must produce one file."""
+    import hashlib
+
+    from chrombpnet.evaluation.make_bigwigs import bigwig_helper
+
+    rng = np.random.default_rng(1)
+    gs = [("chr1", 1_000_000)]
+    regions = [["chr1", s, s + 100, s + 50] for s in range(1000, 21000, 400)]
+    data = rng.random((len(regions), 100)).astype(np.float32)
+
+    fast = _write_bw(tmp_path, "fast.bw", data, regions, gs)
+    original = bigwig_helper._PYBIGWIG_NUMPY
+    bigwig_helper._PYBIGWIG_NUMPY = False
+    try:
+        slow = _write_bw(tmp_path, "slow.bw", data, regions, gs)
+    finally:
+        bigwig_helper._PYBIGWIG_NUMPY = original
+
+    digest = lambda p: hashlib.sha256(open(p, "rb").read()).hexdigest()
+    assert digest(fast) == digest(slow)
+
+
+def test_write_bigwig_still_raises_when_every_region_is_filtered_out(tmp_path):
+    """The raise counts emitted regions, not written bases.
+
+    It used to test `if not all_entries`, which a region contributing an empty
+    slice would satisfy anyway; the replacement flag must keep that shape and
+    must fire whether or not stats were requested.
+    """
+    from chrombpnet.evaluation.make_bigwigs.bigwig_helper import write_bigwig
+
+    gs = [("chr1", 1_000_000)]
+    regions = [["chr1", 1000, 1100, 1050]]
+    data = np.zeros((1, 100), dtype=np.float32)
+    for outstats in (None, str(tmp_path / "s.txt")):
+        with pytest.raises(ValueError, match="No BigWig entries were written"):
+            write_bigwig(data, regions, gs, str(tmp_path / "x.bw"),
+                         debug_chr=["chrZ"], outstats_file=outstats)

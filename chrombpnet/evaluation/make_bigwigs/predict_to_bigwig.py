@@ -8,16 +8,23 @@ import chrombpnet.training.utils.data_utils as data_utils
 from chrombpnet.model import load_model_wrapper
 from chrombpnet.predictions import softmax, write_predictions_h5py
 from chrombpnet.regions import NARROWPEAK_SCHEMA
+import contextlib
 import h5py
 import json
 
 
-def compare_with_observed(bigwig, regions_df, regions, outputlen, pred_logits, pred_logcts, output_prefix):
+def read_observed_counts(bigwig, regions_df, outputlen):
+	"""Per-base observed counts for each region, from the observed bigwig."""
+	with contextlib.closing(pyBigWig.open(bigwig)) as obs_bw:
+		return data_utils.get_cts(regions_df, obs_bw, outputlen)
+
+
+def compare_with_observed(bigwig, regions_df, regions, outputlen, pred_logits, pred_logcts, output_prefix, obs_data=None):
 
 	import chrombpnet.training.metrics as metrics 
 	
-	obs_bw = pyBigWig.open(bigwig)
-	obs_data = data_utils.get_cts(regions_df,obs_bw,outputlen)
+	if obs_data is None:
+		obs_data = read_observed_counts(bigwig, regions_df, outputlen)
 	
 	true_counts = obs_data
 	true_counts_sum = np.log(np.sum(true_counts, axis=-1)+1)
@@ -79,7 +86,74 @@ def _stats_path(output_prefix_stats, model_name):
         return None
     return f"{output_prefix_stats}_{model_name}.txt"
 
-def _write_model_bigwig(args, model_path, name):
+class _SharedInputs:
+    """Everything the three model passes would otherwise recompute per model.
+
+    ``main`` runs ``_write_model_bigwig`` up to three times. Only the model
+    changes between passes -- the region file, the chromosome sizes, the
+    sequences and the observed counts are functions of the arguments and of
+    the model *geometry*, and for the standard bias/ChromBPNet pair the
+    geometry is identical too. Each entry is therefore keyed by exactly what
+    it depends on, so a bias model with a different input length still gets
+    its own sequences rather than silently borrowing the accessibility
+    model's.
+
+    The observed counts are handed out read-only: three passes now share one
+    array, and an in-place write by any of them would corrupt the other two.
+    """
+
+    def __init__(self, args, genome):
+        self._args = args
+        self._genome = genome
+        self._regions_df = None
+        self._chrom_sizes = None
+        self._sequences = {}
+        self._regions = {}
+        self._observed = {}
+
+    def regions_df(self):
+        if self._regions_df is None:
+            frame = pd.read_csv(self._args.regions, sep='\t', names=NARROWPEAK_SCHEMA)
+            if self._args.debug_chr is not None:
+                # Filter before extracting sequences, not after: comparing the
+                # list-valued --debug-chr to a single chromosome string is
+                # defect 2 in chrombpnet_bugs.md.
+                frame = frame[frame['chr'].isin(self._args.debug_chr)].copy()
+            if frame.empty:
+                raise ValueError("No prediction regions remain after chromosome filtering")
+            self._regions_df = frame
+        return self._regions_df
+
+    def chrom_sizes(self):
+        if self._chrom_sizes is None:
+            self._chrom_sizes = bigwig_helper.read_chrom_sizes(self._args.chrom_sizes)
+        return self._chrom_sizes
+
+    def sequences(self, inputlen):
+        if inputlen not in self._sequences:
+            self._sequences[inputlen] = bigwig_helper.get_seq(
+                self.regions_df(), self._genome, inputlen)
+        return self._sequences[inputlen]
+
+    def regions(self, inputlen, outputlen):
+        # regions_used comes from get_seq at inputlen, so both lengths key this.
+        key = (inputlen, outputlen)
+        if key not in self._regions:
+            _, regions_used = self.sequences(inputlen)
+            self._regions[key] = bigwig_helper.get_regions(
+                self.regions_df(), outputlen, regions_used)
+        return self._regions[key]
+
+    def observed_counts(self, used_regions_df, inputlen, outputlen):
+        key = (inputlen, outputlen)
+        if key not in self._observed:
+            counts = read_observed_counts(self._args.bigwig, used_regions_df, outputlen)
+            counts.flags.writeable = False
+            self._observed[key] = counts
+        return self._observed[key]
+
+
+def _write_model_bigwig(args, model_path, name, shared):
     """Predict over the regions BED with one model and write its bigwig.
 
     This was three ~40-line copies -- roughly 120 of the module's 256 lines --
@@ -99,21 +173,12 @@ def _write_model_bigwig(args, model_path, name):
     inputlen = int(model.input_shape[1])
     outputlen = int(model.output_shape[0][1])
 
-    regions_df = pd.read_csv(args.regions, sep='\t', names=NARROWPEAK_SCHEMA)
-    if args.debug_chr is not None:
-        # Filter before extracting sequences, not after: comparing the
-        # list-valued --debug-chr to a single chromosome string is defect 2 in
-        # chrombpnet_bugs.md.
-        regions_df = regions_df[regions_df['chr'].isin(args.debug_chr)].copy()
-    if regions_df.empty:
-        raise ValueError("No prediction regions remain after chromosome filtering")
+    regions_df = shared.regions_df()
     print(regions_df.head())
 
-    with pyfaidx.Fasta(args.genome) as genome:
-        seqs, regions_used = bigwig_helper.get_seq(regions_df, genome, inputlen)
-
-    gs = bigwig_helper.read_chrom_sizes(args.chrom_sizes)
-    regions = bigwig_helper.get_regions(regions_df, outputlen, regions_used)
+    seqs, regions_used = shared.sequences(inputlen)
+    gs = shared.chrom_sizes()
+    regions = shared.regions(inputlen, outputlen)
     # Everything downstream is indexed by the in-bounds regions only: get_seq
     # drops any region whose window runs off the chromosome, get_regions
     # applies the same mask, and the predictions follow from those sequences.
@@ -147,16 +212,21 @@ def _write_model_bigwig(args, model_path, name):
         # chromosome edge.
         compare_with_observed(args.bigwig, used_regions_df, regions, outputlen,
                               pred_logits, pred_logcts,
-                              f"{args.output_prefix}_{name}")
+                              f"{args.output_prefix}_{name}",
+                              obs_data=shared.observed_counts(
+                                  used_regions_df, inputlen, outputlen))
 
 
 def main(args):
-    # Order preserved from the original three inlined blocks.
-    for model_path, name in ((args.chrombpnet_model_nb, "chrombpnet_nobias"),
-                             (args.chrombpnet_model, "chrombpnet"),
-                             (args.bias_model, "bias")):
-        if model_path:
-            _write_model_bigwig(args, model_path, name)
+    # Order preserved from the original three inlined blocks. The FASTA is
+    # opened once for the whole invocation rather than once per model.
+    with pyfaidx.Fasta(args.genome) as genome:
+        shared = _SharedInputs(args, genome)
+        for model_path, name in ((args.chrombpnet_model_nb, "chrombpnet_nobias"),
+                                 (args.chrombpnet_model, "chrombpnet"),
+                                 (args.bias_model, "bias")):
+            if model_path:
+                _write_model_bigwig(args, model_path, name, shared)
 
 
 if __name__=="__main__":
