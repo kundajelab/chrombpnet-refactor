@@ -145,3 +145,51 @@ def test_benchmark_defaults_to_lite_when_the_flag_is_omitted():
     assert not benchmark_enables(parse(["--benchmark", "none"]), "keras_adam")
     for level in ("lite", "medium", "max"):
         assert benchmark_level(parse(["--benchmark", level])) == level
+
+
+def _one_hot_reference(seqs):
+    """The pre-LUT implementation, kept verbatim as the equivalence oracle.
+
+    `dna_to_one_hot` used to recover its base indices with
+    `np.unique(..., return_inverse=True)`, i.e. a sort over every one of the
+    N*L bytes. The replacement is a table lookup, so this reference is what
+    pins "same array, not merely same idea".
+    """
+    if len(seqs) == 0:
+        return np.empty((0, 0, 4), dtype=np.int8)
+    seq_len = len(seqs[0])
+    seq_concat = "".join(seqs).upper() + "ACGT"
+    one_hot_map = np.identity(5)[:, :-1].astype(np.int8)
+    base_vals = np.frombuffer(bytearray(seq_concat, "utf8"), dtype=np.int8)
+    base_vals[~np.isin(base_vals, np.array([65, 67, 71, 84]))] = 85
+    _, base_inds = np.unique(base_vals, return_inverse=True)
+    return one_hot_map[base_inds[:-4]].reshape((len(seqs), seq_len, 4))
+
+
+@pytest.mark.parametrize("seqs", [
+    ["ACGT"],
+    ["acgt"],
+    ["AcGt"],
+    ["NNNN"],
+    ["AAAA"],
+    ["ACGTN", "NTGCA", "aCgTn"],
+    ["ACGTRYKMSWBDHVN"],          # every IUPAC ambiguity code -> all zeros
+    ["".join("ACGTN"[i % 5] for i in range(37))],
+])
+def test_one_hot_matches_the_pre_lut_implementation(seqs):
+    produced = dna_to_one_hot(seqs)
+    expected = _one_hot_reference(seqs)
+    assert produced.dtype == expected.dtype
+    assert produced.shape == expected.shape
+    assert np.array_equal(produced, expected)
+
+
+def test_one_hot_matches_the_pre_lut_implementation_over_all_ascii():
+    """Every single-character input, so no byte is mapped by accident."""
+    seqs = [chr(code) for code in range(128)]
+    assert np.array_equal(dna_to_one_hot(seqs), _one_hot_reference(seqs))
+
+
+def test_one_hot_rejects_ragged_input():
+    with pytest.raises(ValueError, match="same length"):
+        dna_to_one_hot(["ACGT", "ACG"])
