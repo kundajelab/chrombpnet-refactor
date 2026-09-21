@@ -7,6 +7,7 @@ import chrombpnet.evaluation.make_bigwigs.bigwig_helper as bigwig_helper
 import chrombpnet.training.utils.data_utils as data_utils 
 from chrombpnet.model import load_model_wrapper
 from chrombpnet.predictions import softmax, write_predictions_h5py
+from chrombpnet import preimport
 from chrombpnet.regions import NARROWPEAK_SCHEMA
 import contextlib
 import h5py
@@ -218,6 +219,11 @@ def _write_model_bigwig(args, model_path, name, shared):
 
 
 def main(args):
+    if args.bigwig:
+        # The metrics stage imports scipy and matplotlib, ~6s that would
+        # otherwise be paid after the forward with the GPU idle. Start them
+        # now so they land under it.
+        preimport.start()
     # Order preserved from the original three inlined blocks. The FASTA is
     # opened once for the whole invocation rather than once per model.
     with pyfaidx.Fasta(args.genome) as genome:
