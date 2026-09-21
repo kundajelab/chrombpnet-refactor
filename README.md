@@ -281,6 +281,10 @@ python -m tests.regression.harness against --ref main
 # snapshot, plus the full --help text of every subcommand.
 pytest tests/test_cli_surface.py
 tests/dump_cli_help.sh > /tmp/help.txt
+
+# Cross-framework parity, opt-in: needs a second environment alongside this
+# one. Compares 13 arrays and a predictions HDF5 at atol=1e-6, rtol=1e-5.
+CHROMBPNET_TF_PARITY=1 pytest tests/test_tensorflow.py
 ```
 
 See [`tests/regression/README.md`](tests/regression/README.md) for what makes
