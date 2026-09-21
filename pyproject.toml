@@ -28,8 +28,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-reports = ["modisco @ git+https://github.com/kundajelab/tfmodisco@0791eaf5f00dcd37c344778871d5354e5945902c"]
-test = ["pytest>=8", "pytest-cov>=5"]
+reports = ["modisco @ git+https://github.com/kundajelab/tfmodisco.git"]
+test = ["pytest>=8", "pytest-cov>=5", "pillow>=10"]
 
 [project.scripts]
 chrombpnet = "chrombpnet.CHROMBPNET:main"

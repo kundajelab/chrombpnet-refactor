@@ -14,7 +14,9 @@ chrombpnet contribs_bw -g [genome_fasta] -c [chrom_sizes] -r [regions] \
 ## Example Usage
 
 ```
-chrombpnet_deepshap -g /path/to/genome.fasta -r /path/to/regions.bed -m /path/to/model.h5 -o /path/to/output_dir/output_prefix -p counts profiles
+chrombpnet contribs_bw -g /path/to/genome.fa -c /path/to/chrom.sizes \
+    -r /path/to/regions.bed -m /path/to/model.pt \
+    -op /path/to/output_dir/prefix -pc counts profile
 ```
 
 ## Input Format

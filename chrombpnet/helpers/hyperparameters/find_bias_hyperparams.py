@@ -5,7 +5,7 @@ import chrombpnet.helpers.hyperparameters.param_utils as param_utils
 from chrombpnet.helpers.hyperparameters import common
 
 def parse_data_args():
-    parser=argparse.ArgumentParser(description="find hyper-parameters for chrombpnet defined in src/training/models/chrombpnet_with_bias_model.py")
+    parser=argparse.ArgumentParser(description="find hyper-parameters for the architecture in chrombpnet/training/models/bpnet_model.py")
     parser.add_argument("-g", "--genome", type=str, required=True, help="Genome fasta")
     parser.add_argument("-i", "--bigwig", type=str, required=True, help="Bigwig of tn5 insertions. Ensure it is +4/-4 shifted")
     parser.add_argument("-p", "--peaks", type=str, required=True, help="10 column bed file of peaks. Sequences and labels will be extracted centered at start (2nd col) + summit (10th col).")
@@ -17,7 +17,7 @@ def parse_data_args():
     return parser
 
 def parse_model_args(parser):
-    # arguments here defined the following model - src/training/models/chrombpnet_with_bias_model.py
+    # arguments here define the model in chrombpnet/training/models/bpnet_model.py
     parser.add_argument("-il", "--inputlen", type=int, help="Sequence input length")
     parser.add_argument("-ol", "--outputlen", type=int, help="Prediction output length")
     parser.add_argument("-fil", "--filters", type=int, default=128, help="Number of filters to use in chrombpnet mode")

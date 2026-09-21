@@ -1,6 +1,7 @@
 # TF-MoDISco integration
 
-ChromBPNet uses the TF-MoDISco checkout pinned in `requirements.txt`. Note
+ChromBPNet installs TF-MoDISco from the checkout named in `requirements.txt`
+and in the `[reports]` extra of `pyproject.toml`. Note
 that the *distribution* is named `modisco` -- that is the name
 `importlib.metadata.version` answers to -- while the *import package* is still
 `modiscolite`, which is what `api.py` imports. The pinned version replaced the
