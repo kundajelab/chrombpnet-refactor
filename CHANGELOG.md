@@ -1,5 +1,18 @@
 # Changelog
 
+## PyTorch refactor - reports show four decimal places
+- Scores in `overall_report.html` and `overall_report.pdf` are now formatted to
+  four decimal places instead of two. Two was too coarse to compare runs: a
+  pearsonr of 0.9012 and one of 0.9049 both printed as `0.9`.
+- Values are formatted rather than merely rounded, so a score of 9 prints as
+  `9.0000` and lines up with its neighbours. The underlying `*_metrics.json`
+  is untouched and still carries full precision.
+- Controlled by `report_shell.REPORT_DECIMALS`.
+
+## Removed CITATION.cff
+- The citation now lives directly in `README.md` rather than in a separate
+  file that nothing pointed at except one line of prose.
+
 ## PyTorch refactor - the ChromBPNet report now rounds its metrics
 - `make_html` computed `pd.json_normalize(...).round(2)` and then immediately
   overwrote the result with the unrounded frame on the next line, in all four

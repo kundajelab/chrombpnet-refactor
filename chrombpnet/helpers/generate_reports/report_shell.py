@@ -79,23 +79,41 @@ def write_report(prefix: str, fpx: str, main_html: str, html_prefix: str) -> Non
     with open(html_path, 'w') as handle:
         handle.write(main_html.replace("./", html_prefix))
 
-def metrics_table(data, key, index_label, decimals=2):
+#: Decimal places used for every score shown in the HTML and PDF reports.
+#: Two was too coarse to compare runs -- a pearsonr of 0.9012 and 0.9049 both
+#: printed as 0.9. The underlying *_metrics.json keeps full precision.
+REPORT_DECIMALS = 4
+
+
+def metrics_table(data, key, index_label, decimals=REPORT_DECIMALS):
     """One metrics section of a *_metrics.json, as a display-ready DataFrame.
 
     Flattens the nested dict, labels the single row, and drops the columns the
     reports do not show: the combined peaks_and_nonpeaks figures and the
     Spearman correlations.
 
+    Values are formatted to exactly ``decimals`` places rather than merely
+    rounded, so a score of 9 prints as 9.0000 and lines up with its
+    neighbours. Non-finite entries are left as-is so a NaN still reads as NaN
+    rather than "nan".
+
     This idiom appeared six times across the two report generators, and four of
-    those copies computed ``.round(decimals)`` and then immediately overwrote
-    the result with the unrounded frame on the next line -- so the ChromBPNet
+    those copies computed ``.round(...)`` and then immediately overwrote the
+    result with the unrounded frame on the next line -- so the ChromBPNet
     report displayed full-precision numbers while the bias report, which had
-    only a single call, displayed rounded ones. Rounding happens once here.
+    only a single call, displayed rounded ones. Formatting happens once here.
     """
+    import numpy as np
     import pandas as pd
 
-    frame = pd.json_normalize(data[key]).round(decimals)
+    frame = pd.json_normalize(data[key])
     frame.index = [index_label]
     for pattern in ("peaks_and_nonpeaks", "spearmanr"):
         frame = frame[frame.columns.drop(list(frame.filter(regex=pattern)))]
-    return frame
+
+    def show(value):
+        if isinstance(value, (int, float, np.floating, np.integer)) and np.isfinite(value):
+            return f"{value:.{decimals}f}"
+        return value
+
+    return frame.map(show)

@@ -130,5 +130,12 @@ weights because framework random-number generators and GPU kernels differ.
 
 ## Citation and license
 
-See `CITATION.cff` for the ChromBPNet citation. This refactor retains the
-original MIT license.
+If you use this software, please cite the original ChromBPNet:
+
+> Pampari A, Shcherbina A, Nair S, Schreiber J, Patel A, Wang A, Kundu S,
+> Shrikumar A, Kundaje A. *Bias factorized, base-resolution deep learning
+> models of chromatin accessibility reveal cis-regulatory sequence syntax,
+> transcription factor footprints and regulatory variants.*
+> <https://github.com/kundajelab/chrombpnet>, doi:10.5281/zenodo.7567627
+
+This refactor retains the original MIT license.
