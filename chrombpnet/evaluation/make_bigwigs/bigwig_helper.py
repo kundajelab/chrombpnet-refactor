@@ -1,6 +1,8 @@
 import pyBigWig
 import numpy as np
 
+from chrombpnet import optimize
+
 #: pyBigWig can be built without numpy support, in which case addEntries only
 #: accepts Python lists.
 _PYBIGWIG_NUMPY = bool(getattr(pyBigWig, "numpy", 0))
@@ -74,7 +76,8 @@ def write_bigwig(data, regions, gs, bw_out, debug_chr=None, use_tqdm=False, outs
     # Only accumulate the written signal when the stats file will consume it.
     # For 20k regions x 1kb that is 80 MB held plus an 80 MB hstack copy, both
     # of which used to be paid even with outstats_file=None.
-    collect_entries = outstats_file is not None
+    opts = optimize.active()
+    collect_entries = outstats_file is not None or not opts.lazy_stats
     all_entries = []
     wrote_any = False
     cur_chr = ""
@@ -121,13 +124,22 @@ def write_bigwig(data, regions, gs, bw_out, debug_chr=None, use_tqdm=False, outs
         # pyBigWig's numpy branch only changes how the arguments are parsed
         # before the same bwAddIntervals call, so the file is byte-identical;
         # the list form is kept for builds compiled without numpy support.
-        starts = np.arange(cur_end, next_end, dtype=np.int64)
-        if _PYBIGWIG_NUMPY:
+        if opts.fixed_step_bigwig:
+            # One fixed-step block per region instead of one bedGraph
+            # interval per base. Same values on read-back, ~2.8x faster to
+            # write and ~1.5x smaller, but a different on-disk section type
+            # -- so the file bytes differ from the interval form.
+            if next_end > cur_end:
+                bw.addEntries(i_chr, int(cur_end), values=vals, span=1, step=1)
+        elif opts.numpy_writer_args and _PYBIGWIG_NUMPY:
+            starts = np.arange(cur_end, next_end, dtype=np.int64)
             bw.addEntries([i_chr] * (next_end - cur_end), starts,
                           ends=starts + 1, values=vals)
         else:
-            bw.addEntries([i_chr] * (next_end - cur_end), starts.tolist(),
-                          ends=(starts + 1).tolist(), values=vals.tolist())
+            starts = list(range(cur_end, next_end))
+            bw.addEntries([i_chr] * (next_end - cur_end), starts,
+                          ends=list(range(cur_end + 1, next_end + 1)),
+                          values=[float(x) for x in vals])
 
         wrote_any = True
         if collect_entries:
@@ -142,9 +154,13 @@ def write_bigwig(data, regions, gs, bw_out, debug_chr=None, use_tqdm=False, outs
     # test, because it appended a zero-length array.
     if not wrote_any:
         raise ValueError("No BigWig entries were written")
-    if not collect_entries:
+    # The baseline path hstacks unconditionally, as the original did, so that
+    # `--optimize none` pays exactly the cost phase 3 removes. Only the
+    # collected case can be stacked -- np.hstack([]) raises.
+    if collect_entries:
+        all_entries = np.hstack(all_entries)
+    if outstats_file is None:
         return
-    all_entries = np.hstack(all_entries)
     with open(outstats_file, 'w') as f:
         f.write("Min\t{:.6f}\n".format(np.min(all_entries)))
         f.write(".1%\t{:.6f}\n".format(np.quantile(all_entries, 0.001)))

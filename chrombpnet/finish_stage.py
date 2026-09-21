@@ -139,6 +139,10 @@ class FinishStage:
         return False
 
 
-def start(model_count):
-    """A FinishStage that uses a worker only when there is work to hide it behind."""
-    return FinishStage(enabled=model_count > 1)
+def start(model_count, enabled=True):
+    """A FinishStage that uses a worker only when there is work to hide behind.
+
+    ``enabled`` is the phase-1 switch; even when it is on, a single-model run
+    stays inline because there is no following forward to overlap with.
+    """
+    return FinishStage(enabled=enabled and model_count > 1)

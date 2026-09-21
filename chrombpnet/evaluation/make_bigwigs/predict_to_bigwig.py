@@ -7,7 +7,7 @@ import chrombpnet.evaluation.make_bigwigs.bigwig_helper as bigwig_helper
 import chrombpnet.training.utils.data_utils as data_utils 
 from chrombpnet.model import load_model_wrapper
 from chrombpnet.predictions import softmax, write_predictions_h5py
-from chrombpnet import finish_stage, preimport
+from chrombpnet import finish_stage, optimize, preimport
 from chrombpnet.regions import NARROWPEAK_SCHEMA
 import contextlib
 import h5py
@@ -223,28 +223,59 @@ def _write_model_bigwig(args, model_path, name, shared, finish):
     })
 
 
+def _expected_outputs(args, models):
+    """Every file this invocation promised to write.
+
+    `exit_fast` refuses to skip teardown unless all of these are present,
+    non-empty and synced, so the list has to be complete rather than
+    indicative -- a missed entry is a file that could be silently truncated.
+    """
+    paths = []
+    for _, name in models:
+        prefix = f"{args.output_prefix}_{name}"
+        paths.append(f"{prefix}.bw")
+        paths.append(f"{prefix}_preds.bed")
+        stats = _stats_path(args.output_prefix_stats, name)
+        if stats:
+            paths.append(stats)
+        if args.bigwig:
+            paths.append(f"{prefix}_predictions.h5")
+            paths.append(f"{prefix}_metrics.json")
+    return paths
+
+
 def main(args):
     # Order preserved from the original three inlined blocks.
     models = [(path, name) for path, name in
               ((args.chrombpnet_model_nb, "chrombpnet_nobias"),
                (args.chrombpnet_model, "chrombpnet"),
                (args.bias_model, "bias")) if path]
+    opts = optimize.active()
 
     # Fork the finish worker FIRST, before any model is loaded: forking a
     # process that has already initialized CUDA yields a child with unusable
     # CUDA state. The worker never touches the GPU, but it inherits whatever
     # the parent had at fork time.
-    with finish_stage.start(len(models)) as finish:
-        if args.bigwig:
+    with finish_stage.start(len(models), enabled=opts.overlapped_finish) as finish:
+        if args.bigwig and opts.preimport:
             # The metrics stage imports scipy and matplotlib, ~6s that would
             # otherwise be paid with the GPU idle. Start them now so they
             # land under the forward.
             preimport.start()
         # The FASTA is opened once for the whole invocation, not per model.
         with pyfaidx.Fasta(args.genome) as genome:
-            shared = _SharedInputs(args, genome)
+            # One cache across all models under phase 3; otherwise a fresh
+            # one per model, which recomputes everything as the original did.
+            persistent = _SharedInputs(args, genome) if opts.shared_inputs else None
             for model_path, name in models:
+                shared = persistent or _SharedInputs(args, genome)
                 _write_model_bigwig(args, model_path, name, shared, finish)
+
+    # Return, do not exit. `main` is called as a library function -- by the
+    # tests, and by anything embedding the package -- so terminating the
+    # process here would kill the caller. The CLI entry point owns that
+    # decision; see chrombpnet.CHROMBPNET.main.
+    return _expected_outputs(args, models)
 
 
 if __name__=="__main__":

@@ -1065,6 +1065,16 @@
     "required": false,
     "type": "int"
   },
+  "contribs_bw optimize": {
+    "choices": null,
+    "default": "'1,3'",
+    "nargs": "None",
+    "options": [
+      "--optimize"
+    ],
+    "required": false,
+    "type": "str"
+  },
   "contribs_bw output_prefix": {
     "choices": null,
     "default": "None",
@@ -1207,6 +1217,16 @@
       "-pwm_f"
     ],
     "required": true,
+    "type": "str"
+  },
+  "footprints optimize": {
+    "choices": null,
+    "default": "'1,3'",
+    "nargs": "None",
+    "options": [
+      "--optimize"
+    ],
+    "required": false,
     "type": "str"
   },
   "footprints output_prefix": {
@@ -1844,6 +1864,16 @@
     ],
     "required": false,
     "type": "None"
+  },
+  "pred_bw optimize": {
+    "choices": null,
+    "default": "'1,3'",
+    "nargs": "None",
+    "options": [
+      "--optimize"
+    ],
+    "required": false,
+    "type": "str"
   },
   "pred_bw output_prefix": {
     "choices": null,

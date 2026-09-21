@@ -1,4 +1,6 @@
 import numpy as np
+
+from chrombpnet import optimize
 from scipy.stats import spearmanr, pearsonr
 from scipy.spatial.distance import jensenshannon
 import matplotlib
@@ -71,10 +73,39 @@ def _min_max_normalize(values, minimum, maximum):
     return np.clip(out, 0.0, 1.0, out=out, where=usable)
 
 
+def _profile_metrics_looped(true_counts, pred_probs, seed):
+    """The pre-vectorization body, kept so `--optimize none` can run it."""
+    jsd_pw, jsd_norm, jsd_rnd, jsd_rnd_norm = [], [], [], []
+    rng = np.random.default_rng(seed)
+    for idx in range(true_counts.shape[0]):
+        observed_prob = normalize_profile(true_counts[idx, :])
+        predicted_prob = normalize_profile(pred_probs[idx, :])
+        if observed_prob is None or predicted_prob is None:
+            jsd_pw.append(np.nan)
+            jsd_norm.append(np.nan)
+            jsd_rnd.append(np.nan)
+            jsd_rnd_norm.append(np.nan)
+            continue
+        cur_jsd = jensenshannon(observed_prob, predicted_prob)
+        jsd_pw.append(cur_jsd)
+        min_jsd, max_jsd = jsd_min_max_bounds(true_counts[idx, :])
+        jsd_norm.append(get_min_max_normalized_value(cur_jsd, min_jsd, max_jsd))
+        shuffled_prob = normalize_profile(rng.permutation(true_counts[idx, :]))
+        cur_rnd = jensenshannon(observed_prob, shuffled_prob)
+        jsd_rnd.append(cur_rnd)
+        jsd_rnd_norm.append(get_min_max_normalized_value(cur_rnd, min_jsd, max_jsd))
+    empty = np.array([])
+    return (empty, empty, np.array(jsd_pw), np.array(jsd_norm),
+            np.array(jsd_rnd), np.array(jsd_rnd_norm), empty, empty)
+
+
 def profile_metrics(true_counts, pred_probs, pseudocount=0.001, seed=1234):
     '''
     Get profile metrics
     '''
+    if not optimize.active().vectorized_metrics:
+        return _profile_metrics_looped(true_counts, pred_probs, seed)
+
     # Vectorized over regions. This was a Python loop calling
     # scipy.spatial.distance.jensenshannon three times per region, which
     # profiled as the largest single cost of `pred_bw`'s finish stage.

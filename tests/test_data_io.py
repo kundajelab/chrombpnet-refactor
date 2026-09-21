@@ -172,7 +172,7 @@ def test_pred_bw_metrics_survive_an_edge_filtered_region(tmp_path):
     assert (tmp_path / "out_bias_metrics.json").is_file()
 
 
-def test_pred_bw_shares_inputs_across_models_without_over_sharing(tmp_path):
+def test_pred_bw_shares_inputs_across_models_without_over_sharing(tmp_path, phases):
     """The three model passes reuse one featurization -- unless geometry differs.
 
     `main` used to re-parse the BED, re-open the FASTA, re-featurize and
@@ -187,6 +187,8 @@ def test_pred_bw_shares_inputs_across_models_without_over_sharing(tmp_path):
     from chrombpnet.evaluation.make_bigwigs import bigwig_helper
     from chrombpnet.evaluation.make_bigwigs.predict_to_bigwig import main
     from chrombpnet.model import BiasModel, BPNet, ModelConfig, save_model
+
+    phases("3")          # the shared-input cache is a phase-3 optimization
 
     chrom_len, outputlen = 2000, 100
     (tmp_path / "g.fa").write_text(">chr1\n" + "ACGT" * (chrom_len // 4) + "\n")
@@ -236,7 +238,7 @@ def test_pred_bw_shares_inputs_across_models_without_over_sharing(tmp_path):
         assert (tmp_path / f"out_{name}_metrics.json").is_file()
 
 
-def test_pred_bw_reuses_one_featurization_for_matching_models(tmp_path):
+def test_pred_bw_reuses_one_featurization_for_matching_models(tmp_path, phases):
     """Two models of the same geometry featurize once between them."""
     import pyBigWig
     from types import SimpleNamespace
@@ -244,6 +246,8 @@ def test_pred_bw_reuses_one_featurization_for_matching_models(tmp_path):
     from chrombpnet.evaluation.make_bigwigs import bigwig_helper
     from chrombpnet.evaluation.make_bigwigs.predict_to_bigwig import main
     from chrombpnet.model import BiasModel, BPNet, ModelConfig, save_model
+
+    phases("3")          # the shared-input cache is a phase-3 optimization
 
     chrom_len, inputlen, outputlen = 2000, 200, 100
     (tmp_path / "g.fa").write_text(">chr1\n" + "ACGT" * (chrom_len // 4) + "\n")

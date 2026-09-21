@@ -6,6 +6,8 @@ https://gist.github.com/amtseng/010dd522daaabc92b014f075a34a0a0b
 
 import numpy as np
 
+from chrombpnet import optimize
+
 #: ASCII byte -> one-hot row. Everything that is not ACGT/acgt stays all-zero,
 #: which is what the docstring promises. Lowercase is mapped as well as
 #: uppercase so callers that already hold raw FASTA bytes can index this table
@@ -32,6 +34,9 @@ def dna_to_one_hot(seqs):
     if not np.all(np.array([len(s) for s in seqs]) == seq_len):
         raise ValueError("All DNA sequences must have the same length")
 
+    if not optimize.active().prefetch:
+        return _dna_to_one_hot_unoptimized(seqs, seq_len)
+
     # One gather through BASE_TO_ONE_HOT, in place of the original's
     # isin + unique(return_inverse=True). That pair sorted every one of the
     # N*L bytes to recover indices it could only ever assign one way: after
@@ -43,6 +48,22 @@ def dna_to_one_hot(seqs):
     encoded = "".join(seqs).upper().encode("utf8")
     base_vals = np.frombuffer(encoded, dtype=np.uint8)
     return BASE_TO_ONE_HOT[base_vals].reshape((len(seqs), seq_len, 4))
+
+
+def _dna_to_one_hot_unoptimized(seqs, seq_len):
+    """The pre-lookup-table encoder, kept so `--optimize none` can run it.
+
+    It recovers the base indices with `np.unique(..., return_inverse=True)`,
+    i.e. a sort over every one of the N*L bytes. Retained verbatim rather
+    than approximated: it is both the comparison baseline and the oracle the
+    table is tested against.
+    """
+    seq_concat = "".join(seqs).upper() + "ACGT"
+    one_hot_map = np.identity(5)[:, :-1].astype(np.int8)
+    base_vals = np.frombuffer(bytearray(seq_concat, "utf8"), dtype=np.int8)
+    base_vals[~np.isin(base_vals, np.array([65, 67, 71, 84]))] = 85
+    _, base_inds = np.unique(base_vals, return_inverse=True)
+    return one_hot_map[base_inds[:-4]].reshape((len(seqs), seq_len, 4))
 
 
 def one_hot_to_dna(one_hot):

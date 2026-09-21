@@ -26,6 +26,7 @@ import os
 import numpy as np
 import pandas as pd
 
+from chrombpnet import optimize
 from chrombpnet.regions import window_bounds
 from chrombpnet.training.utils.one_hot import BASE_TO_ONE_HOT, dna_to_one_hot
 
@@ -146,6 +147,6 @@ def fetch_windows(peaks_df, genome, width):
     cannot faithfully stand in for it; the two are asserted byte-identical by
     ``tests/test_sequences.py``.
     """
-    if _fast_path_blocker(genome, peaks_df) is None:
+    if optimize.active().prefetch and _fast_path_blocker(genome, peaks_df) is None:
         return _fetch_windows_mapped(peaks_df, genome, width)
     return _fetch_windows_pyfaidx(peaks_df, genome, width)

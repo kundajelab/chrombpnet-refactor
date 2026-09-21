@@ -1,4 +1,5 @@
 import chrombpnet.parsers as parsers
+from chrombpnet import exit_fast, optimize
 import os
 from chrombpnet.data import DefaultDataFile, get_default_data_path
 import chrombpnet.pipelines as pipelines
@@ -14,6 +15,9 @@ logging.getLogger('matplotlib.font_manager').disabled = True
 
 def main():
 	args = parsers.read_parser()
+	# Before any work starts: the phases are read by code several frames
+	# below this one, including modules shared with training.
+	optimize.configure_from_args(args)
 	
 	if args.cmd == "pipeline" or args.cmd == "train":
 		RunLayout.from_args(args).create_training_dirs()
@@ -41,7 +45,11 @@ def main():
 			raise ValueError("At least one input model must be provided")
 		import chrombpnet.evaluation.make_bigwigs.predict_to_bigwig as predict_to_bigwig
 
-		predict_to_bigwig.main(args)
+		outputs = predict_to_bigwig.main(args)
+		# Only the CLI may end the process early: main() is also called as a
+		# library function, where os._exit would kill the caller.
+		if outputs and optimize.active().exit_fast:
+			exit_fast.exit_now(outputs)
 
 	elif args.cmd == "contribs_bw":
 	

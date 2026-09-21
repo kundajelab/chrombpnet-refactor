@@ -70,8 +70,9 @@ def _inputs(case, regions=120, width=200):
 @pytest.mark.parametrize("case", ["clean", "zero_observed", "nan_predicted",
                                   "mixed_skips", "uniform_observed",
                                   "all_invalid"])
-def test_vectorized_profile_metrics_matches_the_loop(case):
+def test_vectorized_profile_metrics_matches_the_loop(case, phases):
     counts, probs = _inputs(case)
+    phases("1")                      # the vectorized path
     produced = profile_metrics(counts, probs)
     expected = _profile_metrics_loop(counts, probs)
     for name, got, want in zip(("jsd", "jsd_norm", "jsd_rnd", "jsd_rnd_norm"),
@@ -79,15 +80,17 @@ def test_vectorized_profile_metrics_matches_the_loop(case):
         assert np.array_equal(got, want, equal_nan=True), f"{name} differs"
 
 
-def test_the_skip_cases_actually_skip():
+def test_the_skip_cases_actually_skip(phases):
     """Guards the test: if nothing were skipped the RNG path is untested."""
     counts, probs = _inputs("mixed_skips")
+    phases("1")
     assert np.isnan(profile_metrics(counts, probs)[2]).sum() == 4
 
 
-def test_mnll_slots_are_still_empty_arrays():
+def test_mnll_slots_are_still_empty_arrays(phases):
     """Both call sites unpack eight values and discard the four mNLL ones."""
     counts, probs = _inputs("clean")
+    phases("1")
     result = profile_metrics(counts, probs)
     assert len(result) == 8
     for index in (0, 1, 6, 7):

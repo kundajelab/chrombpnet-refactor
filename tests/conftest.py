@@ -16,3 +16,30 @@ module.
 """
 
 import chrombpnet  # noqa: F401  (imported for its import-time side effect)
+
+
+import pytest
+
+from chrombpnet import optimize
+from chrombpnet.parsers import OPTIMIZE_DEFAULT
+
+
+@pytest.fixture(autouse=True)
+def _shipped_optimizations():
+    """Tests see what the CLI ships by default, unless they say otherwise.
+
+    `optimize` is process-global, so without this a test that switched
+    phases would leak its setting into every test that ran after it.
+    """
+    previous = optimize.active()
+    optimize.configure(OPTIMIZE_DEFAULT)
+    yield
+    optimize._ACTIVE = previous
+
+
+@pytest.fixture
+def phases():
+    """Set the optimization phases for one test: `phases("none")`."""
+    def _set(value):
+        return optimize.configure(value)
+    return _set

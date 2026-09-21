@@ -95,6 +95,27 @@ def _add_device(optional):
     optional.add_argument('--device', default=None, help="PyTorch device (default: CUDA when available)")
 
 
+#: Default optimization phases. 1 and 3 are on because they are what this
+#: package ships; 2 is off because its Triton forward needs a supported GPU
+#: and moves the profile head by ~2e-5. Pass --optimize none to run the
+#: unoptimized path for comparison.
+OPTIMIZE_DEFAULT = "1,3"
+
+
+def _add_optimize(optional):
+    optional.add_argument(
+        "--optimize", default=OPTIMIZE_DEFAULT, type=str, metavar="PHASES",
+        help="Which optimization phases to enable, as a comma-separated list, "
+             "or 'none' or 'all' (default: %(default)s). "
+             "1 = Anthropic-kit levers other than the Triton forward, "
+             "byte-identical. "
+             "2 = the kit's Triton forward; fp32-exact, so the profile head "
+             "moves by ~2e-5, and it needs an L40S, H100 or H200. "
+             "3 = optimizations not from the kit; fixed-step bigWigs store "
+             "the same values in a different on-disk section type. "
+             "Phases can be combined, e.g. --optimize 1,2.")
+
+
 def _add_architecture_options(optional, *, filters, dilations, jitter):
     optional.add_argument("-fil", "--filters", type=int, default=filters, help="Number of filters to use in chrombpnet mode")
     optional.add_argument("-dil", "--n-dilation-layers", type=int, default=dilations, help="Number of dilation layers to use in chrombpnet model")
@@ -238,6 +259,7 @@ def build_parser():
     optional_preds.add_argument("-d", "--debug-chr", nargs="+", type=str, default=None, help="Run for specific chromosomes only (e.g. chr1 chr2) for debugging")
     optional_preds.add_argument("-bw", "--bigwig", type=str, default=None, help="If provided .h5 with predictions are output along with calculated metrics considering bigwig as groundtruth.")
     _add_device(optional_preds)
+    _add_optimize(optional_preds)
 
     # Make contribution score bigwigs
     required_contribs, optional_contribs = _required_optional(contribs_parser)
@@ -252,6 +274,7 @@ def build_parser():
     optional_contribs.add_argument("-t", "--tqdm", type=int, default=1, help="Use tqdm. If yes then you need to have it installed.")
     optional_contribs.add_argument("-d", "--debug-chr", nargs="+", type=str, default=None, help="Run for specific chromosomes only (e.g. chr1 chr2) for debugging")
     _add_device(optional_contribs)
+    _add_optimize(optional_contribs)
     optional_contribs.add_argument('--batch-size', type=int, default=64)
     _add_interpret_batch_size(optional_contribs)
     optional_contribs.add_argument('--num-shuffles', type=int, default=20)
@@ -267,6 +290,7 @@ def build_parser():
     required_ftps.add_argument("-pwm_f", "--motifs-to-pwm", type=str, required=True, help="Path to a TSV file containing motifs in first column and motif string to use for footprinting in second column")
     optional_ftps.add_argument("-bs", "--batch-size", type=int, default=64, help="batch size to use for prediction")
     _add_device(optional_ftps)
+    _add_optimize(optional_ftps)
     optional_ftps.add_argument("--ylim", default=None, type=ylim_pair, required=False, help="lower and upper y-limits for plotting the motif footprint, in the form of a tuple i.e. \
         (0,0.8). If this is set to None, ylim will be autodetermined.")
 

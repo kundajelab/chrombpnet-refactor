@@ -14,6 +14,8 @@ import numpy as np
 import torch
 from torch import Tensor, nn
 
+from chrombpnet import optimize
+
 
 SOURCE_COMMIT = "09938fdb4397ec0006510e5251e48920a505d4de"
 CHECKPOINT_VERSION = 1
@@ -339,6 +341,14 @@ class PredictionAdapter:
         config = model.config
         self.input_shape = (None, config.input_length, 4)
         self.output_shape = [(None, config.output_length), (None, 1)]
+        # Optimization phase 2. Built after .to(device): the kernels snapshot
+        # and transpose the weights at construction, so the module has to be
+        # on its final device first. Refusals propagate -- the route is opt-in
+        # and silently falling back would hide that it did not engage.
+        self._forward = self.model
+        if optimize.active().triton_forward:
+            from chrombpnet import triton_forward
+            self._forward = triton_forward.build(self.model, self.device)
 
     def summary(self) -> None:
         print(self.model)
@@ -351,6 +361,8 @@ class PredictionAdapter:
     ) -> Tuple[np.ndarray, np.ndarray]:
         if isinstance(values, list):
             values = values[0]
+        if not optimize.active().batched_cast:
+            return self._predict_unoptimized(values, batch_size)
         if not isinstance(values, np.ndarray):
             values = np.asarray(values.detach().cpu() if torch.is_tensor(values) else values)
         if values.ndim != 3:
@@ -388,7 +400,7 @@ class PredictionAdapter:
                 if channel_last:
                     chunk = chunk.transpose(0, 2, 1)
                 chunk = np.ascontiguousarray(chunk, dtype=np.float32)
-                profile, counts = self.model(torch.from_numpy(chunk).to(self.device))
+                profile, counts = self._forward(torch.from_numpy(chunk).to(self.device))
                 if profiles is None:
                     profiles = np.empty((total,) + tuple(profile.shape[1:]), dtype=np.float32)
                     logcounts = np.empty((total,) + tuple(counts.shape[1:]), dtype=np.float32)
@@ -396,6 +408,31 @@ class PredictionAdapter:
                 profiles[start:stop] = profile.cpu().numpy()
                 logcounts[start:stop] = counts.cpu().numpy()
         return profiles, logcounts
+
+    def _predict_unoptimized(self, values, batch_size):
+        """The pre-batching predict, kept so `--optimize none` can run it.
+
+        It casts the whole input to one float32 CPU tensor up front and
+        slices a permuted, non-contiguous view.
+        """
+        if isinstance(values, np.ndarray) and any(stride < 0 for stride in values.strides):
+            values = np.ascontiguousarray(values)
+        array = torch.as_tensor(values, dtype=torch.float32)
+        if array.ndim != 3:
+            raise ValueError("Input must be three-dimensional")
+        if array.shape[-1] == 4:
+            array = array.permute(0, 2, 1)
+        elif array.shape[1] != 4:
+            raise ValueError("Input must be NLC or NCL with four sequence channels")
+        profiles, logcounts = [], []
+        self.model.eval()
+        with torch.no_grad():
+            for start in range(0, array.shape[0], int(batch_size)):
+                profile, counts = self._forward(
+                    array[start:start + int(batch_size)].to(self.device))
+                profiles.append(profile.cpu())
+                logcounts.append(counts.cpu())
+        return torch.cat(profiles).numpy(), torch.cat(logcounts).numpy()
 
     def predict_on_batch(self, values: Union[np.ndarray, Tensor, list]):
         size = len(values[0] if isinstance(values, list) else values)

@@ -176,7 +176,8 @@ def _one_hot_reference(seqs):
     ["ACGTRYKMSWBDHVN"],          # every IUPAC ambiguity code -> all zeros
     ["".join("ACGTN"[i % 5] for i in range(37))],
 ])
-def test_one_hot_matches_the_pre_lut_implementation(seqs):
+def test_one_hot_matches_the_pre_lut_implementation(seqs, phases):
+    phases("1")                      # the lookup-table path
     produced = dna_to_one_hot(seqs)
     expected = _one_hot_reference(seqs)
     assert produced.dtype == expected.dtype
@@ -184,10 +185,21 @@ def test_one_hot_matches_the_pre_lut_implementation(seqs):
     assert np.array_equal(produced, expected)
 
 
-def test_one_hot_matches_the_pre_lut_implementation_over_all_ascii():
+def test_one_hot_matches_the_pre_lut_implementation_over_all_ascii(phases):
     """Every single-character input, so no byte is mapped by accident."""
     seqs = [chr(code) for code in range(128)]
+    phases("1")
     assert np.array_equal(dna_to_one_hot(seqs), _one_hot_reference(seqs))
+
+
+def test_one_hot_phases_agree(phases):
+    """The two code paths `--optimize` selects between must not disagree."""
+    seqs = ["ACGTNacgtn" * 3, "NNNNNNNNNN" * 3, "ACGTACGTAC" * 3]
+    phases("none")
+    unoptimized = dna_to_one_hot(seqs)
+    phases("1")
+    optimized = dna_to_one_hot(seqs)
+    assert np.array_equal(unoptimized, optimized)
 
 
 def test_one_hot_rejects_ragged_input():
