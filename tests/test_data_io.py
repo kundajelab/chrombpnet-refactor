@@ -114,3 +114,58 @@ def test_single_region_debug_prediction_uses_expm1_and_unique_stats(tmp_path):
     sequence = dna_to_one_hot(["GTAC" * 32])
     _, logcounts = PredictionAdapter(model).predict(sequence)
     np.testing.assert_allclose(observed_sum, np.expm1(logcounts[0, 0]), rtol=1e-5)
+
+
+def test_pred_bw_metrics_survive_an_edge_filtered_region(tmp_path):
+    """--bigwig metrics must line up when a region is dropped at a chrom edge.
+
+    get_seq drops any region whose window runs off the chromosome and
+    get_regions applies the same mask, so predictions cover only the in-bounds
+    regions. compare_with_observed used to receive the *unfiltered* frame and
+    read one observed profile per input row, so the observed and predicted
+    arrays disagreed in length as soon as any region was edge-filtered -- which
+    the fixtures never triggered because none of their regions were.
+    """
+    import pyBigWig
+    from types import SimpleNamespace
+
+    from chrombpnet.evaluation.make_bigwigs.predict_to_bigwig import main
+    from chrombpnet.model import BiasModel, ModelConfig, save_model
+
+    chrom_len, inputlen, outputlen = 1000, 200, 100
+    (tmp_path / "g.fa").write_text(">chr1\n" + "ACGT" * (chrom_len // 4) + "\n")
+    (tmp_path / "sizes.tsv").write_text(f"chr1\t{chrom_len}\n")
+
+    handle = pyBigWig.open(str(tmp_path / "obs.bw"), "w")
+    handle.addHeader([("chr1", chrom_len)])
+    handle.addEntries("chr1", 0, values=[1.0] * chrom_len, span=1, step=1)
+    handle.close()
+
+    # Two regions well inside the chromosome, and one whose inputlen window
+    # runs off the right edge so get_seq drops it.
+    summit = inputlen // 2
+    rows = [(300, summit), (500, summit), (chrom_len - 20, summit)]
+    with open(tmp_path / "regions.bed", "w") as bed:
+        for start, s_off in rows:
+            bed.write("\t".join(str(v) for v in
+                                 ("chr1", start, start + 2 * s_off,
+                                  ".", ".", ".", ".", ".", ".", s_off)) + "\n")
+
+    model_path = tmp_path / "bias.pt"
+    save_model(BiasModel(ModelConfig(inputlen, outputlen, filters=2,
+                                     n_dilation_layers=1)), model_path)
+
+    main(SimpleNamespace(
+        bias_model=str(model_path), chrombpnet_model=None,
+        chrombpnet_model_nb=None, regions=str(tmp_path / "regions.bed"),
+        genome=str(tmp_path / "g.fa"), chrom_sizes=str(tmp_path / "sizes.tsv"),
+        output_prefix=str(tmp_path / "out"), output_prefix_stats=None,
+        batch_size=4, tqdm=0, debug_chr=None,
+        bigwig=str(tmp_path / "obs.bw"), device="cpu"))
+
+    # Two regions survive the edge filter, and the metrics are written for them.
+    kept = (tmp_path / "out_bias_preds.bed").read_text().splitlines()
+    assert len(kept) == 2, kept
+    with h5py.File(tmp_path / "out_bias_predictions.h5") as handle:
+        assert handle["predictions/profs"].shape == (2, outputlen)
+    assert (tmp_path / "out_bias_metrics.json").is_file()

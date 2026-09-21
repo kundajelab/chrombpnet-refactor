@@ -114,7 +114,11 @@ def _write_model_bigwig(args, model_path, name):
 
     gs = bigwig_helper.read_chrom_sizes(args.chrom_sizes)
     regions = bigwig_helper.get_regions(regions_df, outputlen, regions_used)
-    regions_df.loc[regions_used].to_csv(
+    # Everything downstream is indexed by the in-bounds regions only: get_seq
+    # drops any region whose window runs off the chromosome, get_regions
+    # applies the same mask, and the predictions follow from those sequences.
+    used_regions_df = regions_df.loc[regions_used]
+    used_regions_df.to_csv(
         f"{args.output_prefix}_{name}_preds.bed", sep="\t",
         header=False, index=False)
 
@@ -136,7 +140,12 @@ def _write_model_bigwig(args, model_path, name):
         use_tqdm=args.tqdm)
 
     if args.bigwig:
-        compare_with_observed(args.bigwig, regions_df, regions, outputlen,
+        # The filtered frame, not regions_df: compare_with_observed reads
+        # observed counts per row and lines them up against the predictions,
+        # which cover only the in-bounds regions. Passing the unfiltered frame
+        # made the two disagree in length whenever a region sat near a
+        # chromosome edge.
+        compare_with_observed(args.bigwig, used_regions_df, regions, outputlen,
                               pred_logits, pred_logcts,
                               f"{args.output_prefix}_{name}")
 

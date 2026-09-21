@@ -1,5 +1,18 @@
 # Changelog
 
+## PyTorch refactor - pred_bw metrics near chromosome edges
+- `pred_bw --bigwig` passed the *unfiltered* region frame to
+  `compare_with_observed`, while the predictions it was compared against
+  covered only the regions that survived edge filtering. `get_seq` drops any
+  region whose input window runs off the end of a chromosome, so as soon as
+  one region sat near an edge the observed counts and the predictions
+  disagreed in length. In practice this raised
+  `RuntimeError: Invalid interval bounds!` from the observed-bigwig read
+  rather than silently misaligning.
+- The filtered frame is now used for both the `_preds.bed` output and the
+  metrics comparison. Runs whose regions were all in bounds are unaffected;
+  runs that previously crashed now produce metrics.
+
 ## PyTorch refactor - reports show four decimal places
 - Scores in `overall_report.html` and `overall_report.pdf` are now formatted to
   four decimal places instead of two. Two was too coarse to compare runs: a
