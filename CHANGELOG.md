@@ -1,5 +1,19 @@
 # Changelog
 
+## Test suite - libstdc++ preload no longer depends on collection order
+
+- `chrombpnet/__init__.py` preloads the environment's `libstdc++.so.6` so that
+  SciPy's compiled extensions can resolve `CXXABI_1.3.15` on clusters whose
+  login shell puts an older system copy first. The preload only works if it
+  runs before `torch`, which binds the system library on import.
+- Nothing enforced that ordering, so it held only by luck of alphabetical
+  collection. `pytest tests/test_models.py tests/test_metrics.py` imported
+  torch first and died during collection with an `ImportError`. A new
+  `tests/conftest.py` imports the package up front, which pytest loads before
+  any test module.
+- `tests/test_tensorflow.py`'s torch worker had the same latent ordering bug
+  and is fixed the same way.
+
 ## PyTorch refactor - pred_bw metrics near chromosome edges
 - `pred_bw --bigwig` passed the *unfiltered* region frame to
   `compare_with_observed`, while the predictions it was compared against

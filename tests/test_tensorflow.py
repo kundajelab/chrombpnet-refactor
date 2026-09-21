@@ -18,6 +18,7 @@ from types import SimpleNamespace
 import numpy as np
 
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_ORIGINAL_REPO = "/path/to/workdir/software/chrombpnet"
 DEFAULT_ORIGINAL_PYTHON = (
     "/path/to/workdir/software/miniconda3/envs/chrombpnet/bin/python"
@@ -81,9 +82,9 @@ def _keras_set_weights(model, values, prefix, no_bias=False):
 
 
 def reference_worker(args):
-    script_dir = str(Path(__file__).resolve().parent)
+    excluded = str(REPO_ROOT)
     sys.path = [args.original_repo] + [
-        item for item in sys.path if item and str(Path(item).resolve()) != script_dir
+        item for item in sys.path if item and str(Path(item).resolve()) != excluded
     ]
     import tensorflow as tf
     from chrombpnet.training.models import bpnet_model
@@ -168,6 +169,10 @@ def _torch_assign(model, values, prefix):
 
 def torch_worker(args):
     sys.path.insert(0, args.refactor_repo)
+    # Import the package before torch: chrombpnet/__init__.py preloads this
+    # environment's libstdc++, which torch would otherwise pin to the system
+    # copy, breaking the SciPy extensions imported further down.
+    import chrombpnet  # noqa: F401
     import torch
     from chrombpnet.model import BPNet, BiasModel, ChromBPNet, ModelConfig
     from chrombpnet.training.utils.losses import chrombpnet_loss
@@ -242,7 +247,7 @@ def _compare_h5(left, right, atol, rtol):
 def main(args):
     original_python = Path(args.original_python)
     original_repo = Path(args.original_repo).resolve()
-    refactor_repo = Path(args.refactor_repo or Path(__file__).resolve().parent).resolve()
+    refactor_repo = Path(args.refactor_repo or REPO_ROOT).resolve()
     if not original_python.is_file():
         raise SystemExit("Original interpreter not found: {}".format(original_python))
     if not (original_repo / "chrombpnet").is_dir():
@@ -335,6 +340,32 @@ def parser():
     result.add_argument("--rtol", type=float, default=RTOL)
     result.add_argument("--keep-temp", action="store_true")
     return result
+
+
+PARITY_OPT_IN = "CHROMBPNET_TF_PARITY"
+
+
+def test_tensorflow_pytorch_parity():
+    """Opt-in cross-framework check; needs the TensorFlow env alongside this one.
+
+    Skipped by default: it shells out to a second interpreter and builds
+    TensorFlow graphs, which takes far longer than the rest of the suite.
+    Enable with ``CHROMBPNET_TF_PARITY=1 pytest tests/test_tensorflow.py``.
+    """
+    import pytest
+
+    if not os.environ.get(PARITY_OPT_IN):
+        pytest.skip(
+            "set {}=1 to run the cross-framework parity check "
+            "(needs the TensorFlow environment)".format(PARITY_OPT_IN))
+    arguments = parser().parse_args([])
+    if not Path(arguments.original_python).is_file():
+        pytest.skip("TensorFlow interpreter not found: {}".format(
+            arguments.original_python))
+    if not (Path(arguments.original_repo) / "chrombpnet").is_dir():
+        pytest.skip("TensorFlow repository not found: {}".format(
+            arguments.original_repo))
+    assert main(arguments) == 0, "cross-framework parity check reported failures"
 
 
 if __name__ == "__main__":
