@@ -204,6 +204,32 @@ chrombpnet footprints        marginal footprints for given motifs
 
 Run `chrombpnet <command> --help` for the full argument list.
 
+## Optimizations
+
+Every optimization is selectable, so a run can be compared against the
+unoptimized code in the same working tree:
+
+```bash
+chrombpnet pred_bw --optimize none    # original code paths
+chrombpnet pred_bw --optimize 1       # Anthropic-kit levers, minus the Triton forward
+chrombpnet pred_bw --optimize 2       # the kit's Triton forward
+chrombpnet pred_bw --optimize 3       # optimizations not from the kit
+chrombpnet pred_bw --optimize 1,3     # any union; 'all' is shorthand (default: 1,3)
+```
+
+Available on `pred_bw`, `contribs_bw` and `footprints`.
+
+| Phase | Contents | Output |
+|---|---|---|
+| `1` | Memory-mapped windows and a one-hot lookup table, the finish-stage pre-import, the vectorized profile JSD, the bigWig write and metrics in a worker process, and skipping teardown once outputs are durable. All ported from the [ChromBPNet optimization kit](https://github.com/anthropics/uplifting-biomolecular-modeling/tree/main/chrombpnet) (Apache-2.0). | Byte-identical |
+| `2` | The kit's `chrombpnet_k1` Triton forward, vendored byte-identical. Needs an L40S, H100 or H200; refuses by name elsewhere rather than falling back. | Moves ~1e-5. It is fp32-exact where the eager path uses TF32, so it is *more* accurate than the default. |
+| `3` | Sharing inputs across `pred_bw`'s models, numpy writer arguments, lazy stats accumulation, the batched cast, and fixed-step bigWigs. Not from the kit. | Byte-identical except the bigWigs, which hold the same values in a different section type |
+
+Measured on 5,000 hg38 regions with three models on an L40S: 55.7s at
+`none`, 42.8s at `1`, 38.2s at `3`, **29.6s at `1,3`**. Phase 2 is roughly
+neutral on that card -- the kit's own table routes L40S production traffic
+to the eager graph -- and is a win on H100/H200.
+
 ## Reproducibility
 
 `--benchmark` controls how much of the training run is held fixed. It defaults

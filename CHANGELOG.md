@@ -1,5 +1,37 @@
 # Changelog
 
+## Optimization phases, and fixed-step bigWigs by default
+
+- Every optimization in the package is now selectable with `--optimize`, on
+  `pred_bw`, `contribs_bw` and `footprints`. `none` runs the original code
+  paths; `1` is the levers ported from the ChromBPNet optimization kit other
+  than its Triton forward; `2` is that Triton forward; `3` is the
+  optimizations that are not from the kit. They compose: `--optimize 1,3`,
+  or `all`. The default is `1,3`.
+- **This changes bigWig bytes.** Phase 3 includes a fixed-step writer: the
+  same values in a different on-disk section type, 2.8x faster to write and
+  1.5x smaller. `pyBigWig`, `deeptools` and the UCSC tools read identical
+  values back; a byte-for-byte comparison against an older run will not
+  match. Use `--optimize 1` for the previous encoding.
+- Nothing else about the default output moves. Measured over 5,000 hg38
+  regions with three models: `--optimize 1` reproduces all 18 artifacts of
+  `--optimize none` exactly, and `--optimize 1,3` differs only in the three
+  bigWigs.
+- Phase 2 moves the numbers slightly, by design, and is off by default. Its
+  kernels are fp32-exact where the eager path runs TF32 convolutions, so it
+  is closer to an fp64 reference than the default is (1.0e-05 against
+  1.1e-03), but predictions, metrics and plots all shift accordingly.
+- `contribs_bw` records the setting: its `<prefix>.interpret.args.json`
+  dumps `vars(args)`, so it gains an `optimize` key. That is the only change
+  to that file, and it is worth having -- the record of a run should say
+  which optimizations produced it.
+- The regression harness takes `--optimize` too, so the whole scenario sweep
+  can be replayed per phase: `python -m tests.regression.harness against
+  --ref main --optimize none`.
+- Wall clock on an L40S for that workload: 55.7s at `none`, 42.8s at `1`,
+  38.2s at `3`, 29.6s at `1,3`. Phase 2 is 53.0s warm and pays a one-time
+  JIT per machine on its first run.
+
 ## Test suite - libstdc++ preload no longer depends on collection order
 
 - `chrombpnet/__init__.py` preloads the environment's `libstdc++.so.6` so that

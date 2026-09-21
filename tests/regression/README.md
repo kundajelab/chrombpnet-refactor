@@ -135,3 +135,27 @@ branch of `crop_revcomp_data` and never reaches the subsample. That is also why
 
 Once this is fixed, drop the `nondeterministic=` marker from both scenarios in
 `scenarios.py` and they become byte-comparable like the rest.
+
+
+## Comparing optimization phases
+
+`--optimize` reaches `pred_bw`, `contribs_bw` and `footprints`, so the whole
+sweep can be replayed per phase:
+
+```bash
+python -m tests.regression.harness capture --out /tmp/base --optimize none
+python -m tests.regression.harness compare --baseline /tmp/base --optimize 1
+```
+
+Capture one phase, compare the other **against the same tree**. Do not reach
+for `against --ref` here: it passes the flag to the ref's CLI as well, so any
+ref older than the flag fails outright.
+
+Phase 1 reproduces `--optimize none` across all ten scenarios, with one
+expected exception: `08_contribs_bw/contrib.interpret.args.json` dumps
+`vars(args)` and therefore records the flag's own value.
+
+Phase 2 cannot be exercised here at all. The fixture is `-fil 4`, and the
+Triton route refuses any width outside `{128, 512}` by design -- the counts
+kernel would otherwise produce zeros silently. `tests/test_triton_route.py`
+carries that route's verification instead.
