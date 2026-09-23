@@ -99,3 +99,36 @@ def test_the_flag_reaches_the_commands_that_have_optimized_paths(command):
     }[command]
     args = read_parser([command, *base, "--optimize", "1,2"])
     assert optimize.parse(args.optimize).active == ("1", "2")
+
+
+def test_the_environment_supplies_phases_to_commands_without_the_flag(monkeypatch, phases):
+    """`chrombpnet pipeline` has no --optimize, so a whole-pipeline run can
+    only be placed under a phase setting through the environment."""
+    from types import SimpleNamespace
+    monkeypatch.setenv(optimize.ENVIRONMENT_VARIABLE, "1,3")
+    assert optimize.configure_from_args(SimpleNamespace()).active == ("1", "3")
+
+
+def test_the_command_line_beats_the_environment(monkeypatch):
+    """A subcommand that declares --optimize always has a value, so it must
+    never fall through -- otherwise `--optimize none` could be overridden by
+    a stale export."""
+    from types import SimpleNamespace
+    monkeypatch.setenv(optimize.ENVIRONMENT_VARIABLE, "1,2,3")
+    assert optimize.configure_from_args(SimpleNamespace(optimize="none")).active == ()
+    assert optimize.configure_from_args(SimpleNamespace(optimize="2")).active == ("2",)
+
+
+def test_an_unset_environment_changes_nothing(monkeypatch):
+    from types import SimpleNamespace
+    monkeypatch.delenv(optimize.ENVIRONMENT_VARIABLE, raising=False)
+    assert optimize.configure_from_args(SimpleNamespace()).active == ()
+
+
+def test_a_bad_environment_value_is_rejected_loudly(monkeypatch):
+    """Silently ignoring it would mean a measured run used phases nobody
+    asked for."""
+    from types import SimpleNamespace
+    monkeypatch.setenv(optimize.ENVIRONMENT_VARIABLE, "4")
+    with pytest.raises(ValueError):
+        optimize.configure_from_args(SimpleNamespace())

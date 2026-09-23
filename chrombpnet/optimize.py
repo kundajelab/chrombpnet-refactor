@@ -34,6 +34,17 @@ mean changing a dozen signatures that have nothing else to do with it.
 
 from __future__ import annotations
 
+import os
+
+#: Read when a subcommand has no ``--optimize`` of its own. The flag is only
+#: on ``pred_bw``, ``contribs_bw`` and ``footprints``; the pipeline commands
+#: do not carry it, because ``train.py`` dumps ``vars(args)`` into
+#: ``<prefix>.args.json`` and a new flag would change that recorded artifact.
+#: This lets a whole ``chrombpnet pipeline`` run be measured under a phase
+#: setting without altering any command's argument surface. An explicit
+#: ``--optimize`` always wins over it.
+ENVIRONMENT_VARIABLE = "CHROMBPNET_OPTIMIZE"
+
 #: Phase identifiers as they appear on the command line.
 PHASES = ("1", "2", "3")
 
@@ -166,9 +177,23 @@ def active():
 
 
 def configure_from_args(args):
-    """Apply ``args.optimize`` if the subcommand declares it.
+    """Apply ``args.optimize``, else ``$CHROMBPNET_OPTIMIZE``, else nothing.
 
-    Subcommands without the flag leave the default in place, so adding the
-    flag to a parser is the only thing needed to make a command switchable.
+    The command line wins: a subcommand that declares ``--optimize`` has a
+    default, so it never falls through to the environment. Commands that do
+    not declare it -- the pipelines, ``train``, ``qc``, ``prep`` -- can still
+    be placed under a phase setting this way, which is what makes a
+    whole-pipeline runtime measurement possible.
+
+    A setting that arrives from the environment is announced, because
+    invisible state that changes numerics is worse than none.
     """
-    return configure(getattr(args, "optimize", None))
+    value = getattr(args, "optimize", None)
+    if value is not None:
+        return configure(value)
+    value = os.environ.get(ENVIRONMENT_VARIABLE)
+    active = configure(value)
+    if active.active:
+        print(f"[chrombpnet] optimizations {','.join(active.active)} "
+              f"(from ${ENVIRONMENT_VARIABLE})", flush=True)
+    return active
