@@ -1,6 +1,5 @@
 import numpy as np
 
-from chrombpnet import optimize
 from scipy.stats import spearmanr, pearsonr
 from scipy.spatial.distance import jensenshannon
 import matplotlib
@@ -74,7 +73,7 @@ def _min_max_normalize(values, minimum, maximum):
 
 
 def _profile_metrics_looped(true_counts, pred_probs, seed):
-    """The pre-vectorization body, kept so `--optimize none` can run it."""
+    """Legacy: the pre-vectorization body. Unreachable in normal operation."""
     jsd_pw, jsd_norm, jsd_rnd, jsd_rnd_norm = [], [], [], []
     rng = np.random.default_rng(seed)
     for idx in range(true_counts.shape[0]):
@@ -103,9 +102,6 @@ def profile_metrics(true_counts, pred_probs, pseudocount=0.001, seed=1234):
     '''
     Get profile metrics
     '''
-    if not optimize.active().vectorized_metrics:
-        return _profile_metrics_looped(true_counts, pred_probs, seed)
-
     # Vectorized over regions. This was a Python loop calling
     # scipy.spatial.distance.jensenshannon three times per region, which
     # profiled as the largest single cost of `pred_bw`'s finish stage.

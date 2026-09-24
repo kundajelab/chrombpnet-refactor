@@ -14,7 +14,7 @@ import numpy as np
 import torch
 from torch import Tensor, nn
 
-from chrombpnet import optimize
+from chrombpnet import fused_kernels
 
 
 SOURCE_COMMIT = "09938fdb4397ec0006510e5251e48920a505d4de"
@@ -341,12 +341,12 @@ class PredictionAdapter:
         config = model.config
         self.input_shape = (None, config.input_length, 4)
         self.output_shape = [(None, config.output_length), (None, 1)]
-        # Optimization phase 2. Built after .to(device): the kernels snapshot
-        # and transpose the weights at construction, so the module has to be
-        # on its final device first. Refusals propagate -- the route is opt-in
+        # --predict-fk. Built after .to(device): the kernels snapshot and
+        # transpose the weights at construction, so the module has to be on
+        # its final device first. Refusals propagate -- the route is opt-in
         # and silently falling back would hide that it did not engage.
         self._forward = self.model
-        if optimize.active().triton_forward:
+        if fused_kernels.enabled():
             from chrombpnet import triton_forward
             self._forward = triton_forward.build(self.model, self.device)
 
@@ -361,8 +361,6 @@ class PredictionAdapter:
     ) -> Tuple[np.ndarray, np.ndarray]:
         if isinstance(values, list):
             values = values[0]
-        if not optimize.active().batched_cast:
-            return self._predict_unoptimized(values, batch_size)
         if not isinstance(values, np.ndarray):
             values = np.asarray(values.detach().cpu() if torch.is_tensor(values) else values)
         if values.ndim != 3:
@@ -409,8 +407,8 @@ class PredictionAdapter:
                 logcounts[start:stop] = counts.cpu().numpy()
         return profiles, logcounts
 
-    def _predict_unoptimized(self, values, batch_size):
-        """The pre-batching predict, kept so `--optimize none` can run it.
+    def _predict_legacy(self, values, batch_size):
+        """Legacy: the pre-batching predict. Unreachable in normal operation.
 
         It casts the whole input to one float32 CPU tensor up front and
         slices a permuted, non-contiguous view.

@@ -1,5 +1,36 @@
 # Changelog
 
+## `--optimize` removed; the fused-kernel forward becomes `--predict-fk`
+
+- **`--optimize` is gone.** It existed so each optimization phase could be
+  attributed during measurement; that measurement is finished and recorded
+  below, so phases 1 and 3 are now simply how the package runs. The defaults
+  do not change -- `--optimize 1,3` was already the default, so an ordinary
+  run produces exactly the same bytes it did before.
+- **`--predict-fk`** ("prediction using fused kernels") replaces
+  `--optimize 2`, on `pred_bw`, `footprints`, `qc` and `bias qc`. It is the
+  only optimization that was ever off by default, because it is the only one
+  that changes the numbers: the Triton kernels are fp32-exact where the eager
+  path runs TF32, so predictions move by ~1e-5. Not offered on `contribs_bw`,
+  where DeepLIFT needs autograd and hooks that a fused kernel cannot provide.
+- `chrombpnet/optimize.py` is replaced by `chrombpnet/fused_kernels.py`, which
+  carries the single remaining choice. `$CHROMBPNET_OPTIMIZE` goes with it.
+- The regression harness loses its `--optimize` passthrough.
+- **The pre-optimization implementations are kept**, marked `Legacy:` and
+  unreachable in normal operation: `one_hot._dna_to_one_hot_legacy`,
+  `metrics._profile_metrics_looped`, and
+  `model.PredictionAdapter._predict_legacy`. Each is pinned by a test
+  asserting it still agrees with the shipping path, so "kept for reference"
+  cannot quietly become "kept, and wrong".
+- CLI surface: three `optimize` actions removed, four `predict_fk` added. No
+  other action changes.
+- **One recorded artifact moves**, and it is the flag's own record:
+  `contribs_bw` dumps `vars(args)` into `<prefix>.interpret.args.json`, which
+  gained an `optimize` key when the flag arrived and now loses it. Across the
+  regression sweep that is the only difference -- 77 of 78 artifacts are
+  byte-identical, which is the point: the removed switch's default was
+  already what shipped.
+
 ## `--benchmark`: TensorFlow parity is the default, and `lite` is gone
 
 - **Omitting `--benchmark` now means TensorFlow parity everywhere**, including

@@ -139,10 +139,10 @@ class FinishStage:
         return False
 
 
-def start(model_count, enabled=True):
+def start(model_count):
     """A FinishStage that uses a worker only when there is work to hide behind.
 
-    ``enabled`` is the phase-1 switch; even when it is on, a single-model run
-    stays inline because there is no following forward to overlap with.
+    A single-model run stays inline: there is no following forward to overlap
+    the write and the metrics with, so a worker would only add a fork.
     """
-    return FinishStage(enabled=enabled and model_count > 1)
+    return FinishStage(enabled=model_count > 1)

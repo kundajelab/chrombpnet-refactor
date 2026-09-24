@@ -83,7 +83,7 @@ def _placeholders(workspace: Path, paths: dict, scenario: Scenario) -> dict[str,
 
 
 def run_scenarios(workspace: Path, names: list[str] | None = None,
-                  benchmark: str | None = None, optimize: str | None = None,
+                  benchmark: str | None = None,
                   verbose: bool = True) -> dict[str, dict[str, str]]:
     """Execute the scenarios and return ``{scenario: {artifact: digest}}``."""
     workspace = Path(workspace)
@@ -131,8 +131,6 @@ def run_scenarios(workspace: Path, names: list[str] | None = None,
         argv = [part.format(**values) for part in scenario.argv]
         if benchmark is not None and _accepts_benchmark(argv):
             argv += ["--benchmark", benchmark]
-        if optimize is not None and _accepts_optimize(argv):
-            argv += ["--optimize", optimize]
 
         started = time.monotonic()
         completed = subprocess.run(
@@ -183,12 +181,6 @@ def _verify_package_root(env: dict[str, str], cwd: Path) -> None:
             "checkout of that revision instead of using 'against --ref'.")
 
 
-def _accepts_optimize(argv: list[str]) -> bool:
-    """--optimize exists on the three commands with optimized code paths."""
-    head = [part for part in argv[:2] if not part.startswith("-")]
-    return head[:1] in (["pred_bw"], ["contribs_bw"], ["footprints"])
-
-
 def _accepts_benchmark(argv: list[str]) -> bool:
     """--benchmark only exists on the four training parsers."""
     head = [part for part in argv[:2] if not part.startswith("-")]
@@ -196,12 +188,10 @@ def _accepts_benchmark(argv: list[str]) -> bool:
                         ["bias", "train"])
 
 
-def capture(out: Path, benchmark: str | None, names: list[str] | None,
-            optimize: str | None = None) -> Path:
+def capture(out: Path, benchmark: str | None, names: list[str] | None) -> Path:
     """Run the scenarios in RUN_DIR and archive the result under ``out``."""
     out = Path(out)
-    manifests = run_scenarios(RUN_DIR, names=names, benchmark=benchmark,
-                              optimize=optimize)
+    manifests = run_scenarios(RUN_DIR, names=names, benchmark=benchmark)
     manifest_path = out / "manifest.json"
     artifacts.write_manifest(manifest_path, manifests)
 
@@ -218,7 +208,7 @@ def capture(out: Path, benchmark: str | None, names: list[str] | None,
     return manifest_path
 
 
-def compare(baseline_dir: Path, benchmark: str | None, optimize: str | None,
+def compare(baseline_dir: Path, benchmark: str | None,
             names: list[str] | None) -> int:
     """Re-run the scenarios and diff against a captured baseline."""
     baseline_dir = Path(baseline_dir)
@@ -226,8 +216,7 @@ def compare(baseline_dir: Path, benchmark: str | None, optimize: str | None,
     baseline_workspace = baseline_dir / "workspace"
 
     current_workspace = RUN_DIR
-    current = run_scenarios(current_workspace, names=names, benchmark=benchmark,
-                            optimize=optimize)
+    current = run_scenarios(current_workspace, names=names, benchmark=benchmark)
 
     problems: list[str] = []
     for name in sorted(set(baseline) | set(current)):
@@ -259,8 +248,8 @@ def compare(baseline_dir: Path, benchmark: str | None, optimize: str | None,
     return 0
 
 
-def against_ref(ref: str, benchmark: str | None, names: list[str] | None,
-                optimize: str | None = None) -> int:
+def against_ref(ref: str, benchmark: str | None,
+                names: list[str] | None) -> int:
     """Capture a baseline from ``ref`` in a temporary worktree, then compare.
 
     Only the *package under test* comes from ``ref``; the harness itself always
@@ -307,8 +296,6 @@ def against_ref(ref: str, benchmark: str | None, names: list[str] | None,
                 "--out", str(baseline)]
         if benchmark:
             argv += ["--benchmark", benchmark]
-        if optimize is not None:
-            argv += ["--optimize", optimize]
         for name in names or []:
             argv += ["--scenario", name]
         subprocess.run(argv, cwd=neutral_cwd, env=env, check=True)
@@ -317,7 +304,7 @@ def against_ref(ref: str, benchmark: str | None, names: list[str] | None,
                         str(worktree)], check=False, capture_output=True)
 
     print(f"\n--- comparing working tree against {ref} ---")
-    return compare(baseline, benchmark, optimize, names)
+    return compare(baseline, benchmark, names)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -326,17 +313,6 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     for name in ("capture", "compare", "against"):
         child = sub.add_parser(name)
-        child.add_argument("--optimize", default=None, metavar="PHASES",
-                           help="optimization phases to pass to pred_bw, "
-                                "contribs_bw and footprints, e.g. 'none', '1', "
-                                "'1,3'. Unset leaves each command's own "
-                                "default, which is what a normal run uses. "
-                                "Pass the SAME value to the baseline and the "
-                                "comparison unless the point is to diff two "
-                                "phase settings. Note that `against --ref` "
-                                "passes it to the ref's CLI too, so a ref "
-                                "older than the flag will fail; to compare "
-                                "phases, capture one and compare the other.")
         child.add_argument("--benchmark", default=None,
                            help="benchmark level to pass to training commands "
                                 "(omit for the CLI default, 'tensorflow')")
@@ -351,12 +327,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "capture":
-        capture(args.out, args.benchmark, args.scenarios, args.optimize)
+        capture(args.out, args.benchmark, args.scenarios)
         return 0
     if args.command == "compare":
-        return compare(args.baseline, args.benchmark, args.optimize,
-                       args.scenarios)
-    return against_ref(args.ref, args.benchmark, args.scenarios, args.optimize)
+        return compare(args.baseline, args.benchmark, args.scenarios)
+    return against_ref(args.ref, args.benchmark, args.scenarios)
 
 
 if __name__ == "__main__":

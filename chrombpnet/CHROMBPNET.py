@@ -1,5 +1,5 @@
 import chrombpnet.parsers as parsers
-from chrombpnet import exit_fast, optimize
+from chrombpnet import exit_fast, fused_kernels
 import os
 from chrombpnet.data import DefaultDataFile, get_default_data_path
 import chrombpnet.pipelines as pipelines
@@ -15,9 +15,9 @@ logging.getLogger('matplotlib.font_manager').disabled = True
 
 def main():
 	args = parsers.read_parser()
-	# Before any work starts: the phases are read by code several frames
-	# below this one, including modules shared with training.
-	optimize.configure_from_args(args)
+	# Before any work starts: PredictionAdapter reads this several frames
+	# below, in code shared with training.
+	fused_kernels.configure_from_args(args)
 	
 	if args.cmd == "pipeline" or args.cmd == "train":
 		RunLayout.from_args(args).create_training_dirs()
@@ -48,7 +48,7 @@ def main():
 		outputs = predict_to_bigwig.main(args)
 		# Only the CLI may end the process early: main() is also called as a
 		# library function, where os._exit would kill the caller.
-		if outputs and optimize.active().exit_fast:
+		if outputs:
 			exit_fast.exit_now(outputs)
 
 	elif args.cmd == "contribs_bw":

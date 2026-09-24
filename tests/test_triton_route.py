@@ -12,7 +12,7 @@ import sys
 import pytest
 import torch
 
-from chrombpnet import optimize, triton_forward
+from chrombpnet import fused_kernels, triton_forward
 from chrombpnet.model import BiasModel, BPNet, ChromBPNet, ModelConfig
 
 VENDOR = pathlib.Path(triton_forward.__file__).parent / "_vendor" / "chrombpnet_k1"
@@ -201,10 +201,10 @@ def test_it_agrees_with_the_eager_forward(route_and_model):
 
 
 @gpu
-def test_the_adapter_uses_the_route_only_under_phase_2(phases):
+def test_the_adapter_uses_the_route_only_under_predict_fk(predict_fk):
     from chrombpnet.model import PredictionAdapter
     model = _production().cuda().eval()
-    phases("none")
+    predict_fk(False)
     assert PredictionAdapter(model, device="cuda")._forward is model
-    phases("2")
+    predict_fk(True)
     assert PredictionAdapter(model, device="cuda")._forward is not model

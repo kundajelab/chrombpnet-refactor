@@ -20,26 +20,23 @@ import chrombpnet  # noqa: F401  (imported for its import-time side effect)
 
 import pytest
 
-from chrombpnet import optimize
-from chrombpnet.parsers import OPTIMIZE_DEFAULT
+from chrombpnet import fused_kernels
 
 
 @pytest.fixture(autouse=True)
-def _shipped_optimizations():
-    """Tests see what the CLI ships by default, unless they say otherwise.
+def _fused_kernels_off():
+    """Tests see the shipped default, unless they say otherwise.
 
-    `optimize` is process-global, so without this a test that switched
-    phases would leak its setting into every test that ran after it.
+    The setting is process-global, so without this a test that turned the
+    fused kernels on would leak that into every test that ran after it.
     """
-    previous = optimize.active()
-    optimize.configure(OPTIMIZE_DEFAULT)
+    previous = fused_kernels.enabled()
+    fused_kernels.configure(False)
     yield
-    optimize._ACTIVE = previous
+    fused_kernels.configure(previous)
 
 
 @pytest.fixture
-def phases():
-    """Set the optimization phases for one test: `phases("none")`."""
-    def _set(value):
-        return optimize.configure(value)
-    return _set
+def predict_fk():
+    """Turn the fused-kernel route on for one test: `predict_fk(True)`."""
+    return fused_kernels.configure

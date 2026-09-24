@@ -573,6 +573,16 @@
     "required": true,
     "type": "str"
   },
+  "bias qc predict_fk": {
+    "choices": null,
+    "default": "False",
+    "nargs": "0",
+    "options": [
+      "--predict-fk"
+    ],
+    "required": false,
+    "type": "None"
+  },
   "bias train ATAC_ref_path": {
     "choices": null,
     "default": "None",
@@ -1065,16 +1075,6 @@
     "required": false,
     "type": "int"
   },
-  "contribs_bw optimize": {
-    "choices": null,
-    "default": "'1,3'",
-    "nargs": "None",
-    "options": [
-      "--optimize"
-    ],
-    "required": false,
-    "type": "str"
-  },
   "contribs_bw output_prefix": {
     "choices": null,
     "default": "None",
@@ -1219,16 +1219,6 @@
     "required": true,
     "type": "str"
   },
-  "footprints optimize": {
-    "choices": null,
-    "default": "'1,3'",
-    "nargs": "None",
-    "options": [
-      "--optimize"
-    ],
-    "required": false,
-    "type": "str"
-  },
   "footprints output_prefix": {
     "choices": null,
     "default": "None",
@@ -1239,6 +1229,16 @@
     ],
     "required": true,
     "type": "str"
+  },
+  "footprints predict_fk": {
+    "choices": null,
+    "default": "False",
+    "nargs": "0",
+    "options": [
+      "--predict-fk"
+    ],
+    "required": false,
+    "type": "None"
   },
   "footprints regions": {
     "choices": null,
@@ -1865,16 +1865,6 @@
     "required": false,
     "type": "None"
   },
-  "pred_bw optimize": {
-    "choices": null,
-    "default": "'1,3'",
-    "nargs": "None",
-    "options": [
-      "--optimize"
-    ],
-    "required": false,
-    "type": "str"
-  },
   "pred_bw output_prefix": {
     "choices": null,
     "default": "None",
@@ -1896,6 +1886,16 @@
     ],
     "required": false,
     "type": "str"
+  },
+  "pred_bw predict_fk": {
+    "choices": null,
+    "default": "False",
+    "nargs": "0",
+    "options": [
+      "--predict-fk"
+    ],
+    "required": false,
+    "type": "None"
   },
   "pred_bw regions": {
     "choices": null,
@@ -2283,6 +2283,16 @@
     ],
     "required": true,
     "type": "str"
+  },
+  "qc predict_fk": {
+    "choices": null,
+    "default": "False",
+    "nargs": "0",
+    "options": [
+      "--predict-fk"
+    ],
+    "required": false,
+    "type": "None"
   },
   "train ATAC_ref_path": {
     "choices": null,

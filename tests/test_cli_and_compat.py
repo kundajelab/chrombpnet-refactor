@@ -179,8 +179,7 @@ def _one_hot_reference(seqs):
     ["ACGTRYKMSWBDHVN"],          # every IUPAC ambiguity code -> all zeros
     ["".join("ACGTN"[i % 5] for i in range(37))],
 ])
-def test_one_hot_matches_the_pre_lut_implementation(seqs, phases):
-    phases("1")                      # the lookup-table path
+def test_one_hot_matches_the_pre_lut_implementation(seqs):
     produced = dna_to_one_hot(seqs)
     expected = _one_hot_reference(seqs)
     assert produced.dtype == expected.dtype
@@ -188,21 +187,20 @@ def test_one_hot_matches_the_pre_lut_implementation(seqs, phases):
     assert np.array_equal(produced, expected)
 
 
-def test_one_hot_matches_the_pre_lut_implementation_over_all_ascii(phases):
+def test_one_hot_matches_the_pre_lut_implementation_over_all_ascii():
     """Every single-character input, so no byte is mapped by accident."""
     seqs = [chr(code) for code in range(128)]
-    phases("1")
     assert np.array_equal(dna_to_one_hot(seqs), _one_hot_reference(seqs))
 
 
-def test_one_hot_phases_agree(phases):
-    """The two code paths `--optimize` selects between must not disagree."""
+def test_the_legacy_encoder_still_agrees_with_the_shipping_one():
+    """`_dna_to_one_hot_legacy` is unreachable in normal operation, so only a
+    test keeps it from rotting into documentation that lies."""
+    from chrombpnet.training.utils.one_hot import _dna_to_one_hot_legacy
+
     seqs = ["ACGTNacgtn" * 3, "NNNNNNNNNN" * 3, "ACGTACGTAC" * 3]
-    phases("none")
-    unoptimized = dna_to_one_hot(seqs)
-    phases("1")
-    optimized = dna_to_one_hot(seqs)
-    assert np.array_equal(unoptimized, optimized)
+    assert np.array_equal(dna_to_one_hot(seqs),
+                          _dna_to_one_hot_legacy(seqs, len(seqs[0])))
 
 
 def test_one_hot_rejects_ragged_input():

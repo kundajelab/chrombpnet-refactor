@@ -206,29 +206,34 @@ Run `chrombpnet <command> --help` for the full argument list.
 
 ## Optimizations
 
-Every optimization is selectable, so a run can be compared against the
-unoptimized code in the same working tree:
+`pred_bw` runs about **47 % faster** than the code this package started from,
+on 5,000 hg38 regions with three models on an L40S (55.7s -> 29.6s). Those
+optimizations are always on and byte-identical to what they replaced, with one
+exception: bigWigs are written as fixed-step blocks, which stores the same
+values in a different on-disk section type (2.8x faster to write, ~1.5x
+smaller). They came in two groups -- levers ported from the
+[ChromBPNet optimization kit](https://github.com/anthropics/uplifting-biomolecular-modeling/tree/main/chrombpnet)
+(Apache-2.0), and optimizations written here -- and the CHANGELOG records what
+each was worth.
+
+The one optimization that is **not** on by default is the fused Triton
+forward, because it changes the numbers:
 
 ```bash
-chrombpnet pred_bw --optimize none    # original code paths
-chrombpnet pred_bw --optimize 1       # Anthropic-kit levers, minus the Triton forward
-chrombpnet pred_bw --optimize 2       # the kit's Triton forward
-chrombpnet pred_bw --optimize 3       # optimizations not from the kit
-chrombpnet pred_bw --optimize 1,3     # any union; 'all' is shorthand (default: 1,3)
+chrombpnet pred_bw --predict-fk      # prediction using fused kernels
 ```
 
-Available on `pred_bw`, `contribs_bw` and `footprints`.
+Available on `pred_bw`, `footprints`, `qc` and `bias qc`. Not on
+`contribs_bw`: DeepLIFT needs autograd and hooks on the `nn.ReLU` modules,
+which a fused kernel cannot provide.
 
-| Phase | Contents | Output |
-|---|---|---|
-| `1` | Memory-mapped windows and a one-hot lookup table, the finish-stage pre-import, the vectorized profile JSD, the bigWig write and metrics in a worker process, and skipping teardown once outputs are durable. All ported from the [ChromBPNet optimization kit](https://github.com/anthropics/uplifting-biomolecular-modeling/tree/main/chrombpnet) (Apache-2.0). | Byte-identical |
-| `2` | The kit's `chrombpnet_k1` Triton forward, vendored byte-identical. Needs an L40S, H100 or H200; refuses by name elsewhere rather than falling back. | Moves ~1e-5. It is fp32-exact where the eager path uses TF32, so it is *more* accurate than the default. |
-| `3` | Sharing inputs across `pred_bw`'s models, numpy writer arguments, lazy stats accumulation, the batched cast, and fixed-step bigWigs. Not from the kit. | Byte-identical except the bigWigs, which hold the same values in a different section type |
-
-Measured on 5,000 hg38 regions with three models on an L40S: 55.7s at
-`none`, 42.8s at `1`, 38.2s at `3`, **29.6s at `1,3`**. Phase 2 is roughly
-neutral on that card -- the kit's own table routes L40S production traffic
-to the eager graph -- and is a win on H100/H200.
+It runs the forward on the kit's vendored `chrombpnet_k1` kernels, which are
+fp32-exact where the eager path runs TF32 convolutions. Against an fp64
+reference it errs 1.0e-05 where the default errs 1.1e-03 -- so it is *more*
+accurate than the shipped path, while still moving the profile head by ~1e-5.
+That is why it is opt-in. It needs an H100 or H200 and refuses by name on
+anything else rather than falling back silently; on an L40S it buys accuracy
+rather than speed.
 
 ## Reproducibility
 
