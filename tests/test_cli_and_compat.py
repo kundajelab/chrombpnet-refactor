@@ -38,9 +38,10 @@ def test_training_cli_exposes_benchmark_mode():
         )
         assert "--benchmark" in completed.stdout
         # Three levels plus an opt-out, with a bare --benchmark still accepted.
-        # Matched without the opening brace so this holds for the TensorFlow
-        # help too, which offers no "none".
-        assert "lite,medium,max}" in completed.stdout.replace("\n", "")
+        assert "{pytorch,tensorflow,medium,max}" in completed.stdout.replace("\n", "")
+        # "lite" is gone from the command line; argparse must reject it and
+        # say what is valid, rather than silently accepting a stale script.
+        assert "lite" not in completed.stdout
 
 
 def test_nonpeak_oversampling_is_bounded_by_available_rows():
@@ -111,7 +112,7 @@ def test_interpret_batch_size_is_exposed_wherever_interpret_runs():
         assert "--interpret-batch-size" in completed.stdout, command
 
 
-def test_benchmark_defaults_to_lite_when_the_flag_is_omitted():
+def test_benchmark_defaults_to_tensorflow_parity_when_the_flag_is_omitted():
     import chrombpnet.parsers as parsers
     from chrombpnet.training.utils.benchmark_utils import (
         BENCHMARK_DEFAULT_LEVEL,
@@ -131,19 +132,21 @@ def test_benchmark_defaults_to_lite_when_the_flag_is_omitted():
         finally:
             sys.argv = original
 
-    assert BENCHMARK_IMPLICIT_LEVEL == "lite"
-    # Omitting the flag now selects lite, so the refactor matches the
-    # TensorFlow implementation's settings out of the box.
-    assert benchmark_level(parse([])) == "lite"
+    assert BENCHMARK_IMPLICIT_LEVEL == "tensorflow"
+    # Omitting the flag selects TensorFlow parity, so this package matches the
+    # implementation it is a port of out of the box. The parser records None,
+    # not the level name, so args.json says what was actually typed.
+    assert parse([]).benchmark is None
+    assert benchmark_level(parse([])) == "tensorflow"
     assert benchmark_enables(parse([]), "keras_adam")
     assert benchmark_enables(parse([]), "keras_initializers")
     assert not benchmark_enables(parse([]), "fixed_example_order")
     # A bare flag still means max, as it did before the default changed.
     assert benchmark_level(parse(["--benchmark"])) == BENCHMARK_DEFAULT_LEVEL == "max"
-    # "none" is the escape hatch back to PyTorch's native defaults.
-    assert benchmark_level(parse(["--benchmark", "none"])) is None
-    assert not benchmark_enables(parse(["--benchmark", "none"]), "keras_adam")
-    for level in ("lite", "medium", "max"):
+    # "pytorch" is the escape hatch to PyTorch's native defaults.
+    assert benchmark_level(parse(["--benchmark", "pytorch"])) is None
+    assert not benchmark_enables(parse(["--benchmark", "pytorch"]), "keras_adam")
+    for level in ("tensorflow", "medium", "max"):
         assert benchmark_level(parse(["--benchmark", level])) == level
 
 

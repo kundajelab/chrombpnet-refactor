@@ -1,8 +1,15 @@
 """Framework-neutral fixtures for controlled TensorFlow/PyTorch benchmarks.
 
-``--benchmark`` accepts three increasingly strict levels:
+This package is a port of the TensorFlow ChromBPNet, so matching that
+implementation's *settings* is the ordinary case, not a special mode. It is
+therefore what you get when ``--benchmark`` is omitted. The flag exists to
+hold progressively more constant than that, or to opt out of it entirely.
 
-``lite``
+``pytorch``
+    No parity controls at all: PyTorch's own native initializations, Adam
+    defaults and loss aggregation. Not a level, an opt-out.
+
+``tensorflow`` (**the default** -- what you get with no ``--benchmark``)
     Make the PyTorch training *settings* equivalent to the TensorFlow/Keras
     ones, while leaving normal training stochasticity in place. Conv1D/Dense
     weights use Glorot/Xavier-uniform initialization with zero biases, Adam
@@ -13,8 +20,8 @@
     per-epoch negative subsampling, and within-epoch shuffling still vary.
 
 ``medium``
-    ``lite`` plus a frozen example schedule. All generator randomness is drawn
-    from a dedicated, framework-independent NumPy stream seeded from
+    ``tensorflow`` plus a frozen example schedule. All generator randomness is
+    drawn from a dedicated, framework-independent NumPy stream seeded from
     ``--seed``, so both frameworks realize the same jitter, reverse
     complements, and negative subsamples; epoch-start shuffling and the Keras
     batch-order shuffle are disabled; validation generators are immutable; and
@@ -29,6 +36,11 @@
     off.
 
 A bare ``--benchmark`` with no value means ``max``.
+
+This level was once called ``lite`` and was reachable only as the argparse
+default, so a caller that built an argument namespace by hand -- ``qc`` does,
+and so does every library user -- silently got no controls instead. The
+default and the library fallback are now the same thing.
 """
 
 from __future__ import annotations
@@ -37,39 +49,47 @@ from __future__ import annotations
 import numpy as np
 
 
-BENCHMARK_LEVELS = ("lite", "medium", "max")
+BENCHMARK_LEVELS = ("tensorflow", "medium", "max")
 
 # Level used for a bare ``--benchmark`` with no value.
 BENCHMARK_DEFAULT_LEVEL = "max"
 
-# Level used when ``--benchmark`` is not given at all. ``lite`` only changes
-# settings that bring the refactor in line with the TensorFlow implementation
-# it is a port of - Glorot/Xavier initialization, Adam epsilon 1e-7, Keras loss
-# aggregation and batch order, and a seeded count-threshold draw - so it is the
-# right default for ordinary runs. Pass ``--benchmark none`` for PyTorch's own
-# native defaults.
-BENCHMARK_IMPLICIT_LEVEL = "lite"
+# Level used when ``--benchmark`` is absent - from the command line, and
+# equally from a namespace that never had the attribute. ``tensorflow`` only
+# changes settings that bring this package in line with the TensorFlow
+# implementation it is a port of, so it is the right default for ordinary runs.
+BENCHMARK_IMPLICIT_LEVEL = "tensorflow"
 
-# "none" is accepted on the command line but is not a level, so it is kept out
-# of BENCHMARK_LEVELS and the rank table.
-BENCHMARK_CHOICES = ("none",) + BENCHMARK_LEVELS
+# Opting out of parity altogether. Accepted on the command line but not a
+# level, so it is kept out of BENCHMARK_LEVELS and the rank table.
+BENCHMARK_NATIVE = "pytorch"
+
+BENCHMARK_CHOICES = (BENCHMARK_NATIVE,) + BENCHMARK_LEVELS
+
+# ``tensorflow`` was called ``lite`` until the default was inverted. The name
+# is gone from the command line - argparse rejects it and lists the valid ones
+# - but checkpoints record the normalized level in their provenance, so the
+# normalizer still reads it. Dropping it here would make old .pt files
+# unloadable for a renaming.
+_DEPRECATED_LEVEL_ALIASES = {"lite": "tensorflow"}
 
 _LEVEL_RANK = {name: rank for rank, name in enumerate(BENCHMARK_LEVELS, start=1)}
 
-# Minimum level at which each individual control becomes active. Both
-# repositories keep identical copies of this table so a level name means the
-# same thing on either side of the comparison.
+# Minimum level at which each individual control becomes active. A
+# TensorFlow-side fork carrying the same table must rename `lite` to
+# `tensorflow` with it, or a level name stops meaning the same thing on both
+# sides of the comparison.
 BENCHMARK_CONTROLS = {
-    # lite: settings parity between the frameworks
-    "keras_initializers": "lite",
-    "keras_adam": "lite",
-    "keras_loss_aggregation": "lite",
-    "keras_batch_order_shuffle": "lite",
-    "seeded_threshold_draw": "lite",
+    # tensorflow: settings parity between the frameworks
+    "keras_initializers": "tensorflow",
+    "keras_adam": "tensorflow",
+    "keras_loss_aggregation": "tensorflow",
+    "keras_batch_order_shuffle": "tensorflow",
+    "seeded_threshold_draw": "tensorflow",
     # Restoring the best-validation checkpoint is what save_best_only and
     # restore_best_weights already intend; without it a TensorFlow run that
     # exhausts max_epochs saves its last epoch while PyTorch saves its best.
-    "restore_best_checkpoint": "lite",
+    "restore_best_checkpoint": "tensorflow",
     # medium: the example schedule is pinned and shared
     "generator_rng": "medium",
     "fixed_example_order": "medium",
@@ -86,20 +106,28 @@ _MODE_OFFSETS = {"train": 0, "valid": 1, "test": 2}
 
 
 def normalize_benchmark_level(value):
-    """Map a raw ``--benchmark`` value onto ``None``/``lite``/``medium``/``max``."""
-    if value is None or value is False:
+    """Map a raw ``--benchmark`` value onto a level, or ``None`` for no controls.
+
+    ``None`` means *absent*, not *off*, and resolves to
+    :data:`BENCHMARK_IMPLICIT_LEVEL`. Only ``pytorch`` (or an explicit
+    ``False``) selects no controls at all.
+    """
+    if value is None:
+        return BENCHMARK_IMPLICIT_LEVEL
+    if value is False:
         return None
     if value is True:
         return BENCHMARK_DEFAULT_LEVEL
     text = str(value).strip().lower()
     if text in ("", "true"):
         return BENCHMARK_DEFAULT_LEVEL
-    if text in ("false", "none", "off"):
+    if text in ("false", BENCHMARK_NATIVE):
         return None
+    text = _DEPRECATED_LEVEL_ALIASES.get(text, text)
     if text not in _LEVEL_RANK:
         raise ValueError(
             "Unknown benchmark level {!r}; expected one of {}".format(
-                value, ", ".join(BENCHMARK_LEVELS)
+                value, ", ".join(BENCHMARK_CHOICES)
             )
         )
     return text
@@ -108,7 +136,9 @@ def normalize_benchmark_level(value):
 def benchmark_level(source):
     """Read a benchmark level from an argument namespace or a raw value.
 
-    Namespaces that predate ``--benchmark`` simply report no benchmark mode.
+    A namespace without a ``benchmark`` attribute is treated exactly like an
+    omitted flag, so ``qc`` and library callers get the same parity settings a
+    training run gets.
     """
     if source is None or isinstance(source, (str, bool)):
         return normalize_benchmark_level(source)
@@ -128,29 +158,33 @@ def benchmark_enables(source, control):
 
 
 BENCHMARK_HELP = (
-    "Controlled TensorFlow/PyTorch benchmark settings (default: lite). "
-    "lite: match the TensorFlow model/optimizer settings (Glorot/Xavier Conv1D "
-    "initialization, Adam epsilon 1e-7, Keras loss aggregation and batch order) "
-    "while normal shuffling and augmentation stay random. "
-    "medium: lite plus a pinned, framework-shared example schedule. "
+    "How much to hold constant for a controlled TensorFlow/PyTorch comparison. "
+    "Omit the flag for the default, 'tensorflow': match the TensorFlow "
+    "model/optimizer settings (Glorot/Xavier Conv1D initialization, Adam "
+    "epsilon 1e-7, Keras loss aggregation and batch order) while normal "
+    "shuffling and augmentation stay random. "
+    "medium: tensorflow plus a pinned, framework-shared example schedule. "
     "max: hold as much constant as possible, including identical initial weight "
     "arrays and deterministic kernels. "
-    "none: PyTorch's own native defaults, with no TensorFlow parity. "
+    "pytorch: PyTorch's own native defaults, with no TensorFlow parity. "
     "A bare --benchmark means max."
 )
 
 
 def add_benchmark_argument(parser):
-    """Register ``--benchmark [none|lite|medium|max]`` on an argparse parser.
+    """Register ``--benchmark [pytorch|tensorflow|medium|max]`` on a parser.
 
-    Omitting the flag selects :data:`BENCHMARK_IMPLICIT_LEVEL`; a bare
-    ``--benchmark`` selects :data:`BENCHMARK_DEFAULT_LEVEL`.
+    The default is ``None``, meaning *absent*, which
+    :func:`normalize_benchmark_level` resolves to
+    :data:`BENCHMARK_IMPLICIT_LEVEL`. Recording ``None`` rather than the level
+    name keeps ``<prefix>.args.json`` a faithful record of what was typed.
+    A bare ``--benchmark`` selects :data:`BENCHMARK_DEFAULT_LEVEL`.
     """
     return parser.add_argument(
         "--benchmark",
         nargs="?",
         const=BENCHMARK_DEFAULT_LEVEL,
-        default=BENCHMARK_IMPLICIT_LEVEL,
+        default=None,
         choices=BENCHMARK_CHOICES,
         help=BENCHMARK_HELP,
     )

@@ -232,17 +232,20 @@ to the eager graph -- and is a win on H100/H200.
 
 ## Reproducibility
 
-`--benchmark` controls how much of the training run is held fixed. It defaults
-to `lite`.
+`--benchmark` controls how much of the training run is held fixed. **Omit it**
+for the default, `tensorflow`.
 
 | Level | Effect |
 |---|---|
-| `none` | PyTorch's own defaults: Kaiming initialization, Adam epsilon 1e-8, per-batch loss averaging, sequential batch order |
-| `lite` | Glorot/Xavier initialization with zero biases, Adam epsilon 1e-7, sample-weighted epoch losses, shuffled batch visit order, a seeded count-threshold draw, and restoration of the best-validation checkpoint |
-| `medium` | `lite` plus a pinned example schedule: jitter, reverse complements and negative subsamples come from a seeded per-epoch stream instead of the global RNG (`generator_rng`), epoch-start shuffling is off (`fixed_example_order`), and the validation set stops being re-cropped each epoch (`frozen_validation`) |
+| `pytorch` | PyTorch's own defaults: Kaiming initialization, Adam epsilon 1e-8, per-batch loss averaging, sequential batch order |
+| *(omitted)* = `tensorflow` | Glorot/Xavier initialization with zero biases, Adam epsilon 1e-7, sample-weighted epoch losses, shuffled batch visit order, a seeded count-threshold draw, and restoration of the best-validation checkpoint |
+| `medium` | `tensorflow` plus a pinned example schedule: jitter, reverse complements and negative subsamples come from a seeded per-epoch stream instead of the global RNG (`generator_rng`), epoch-start shuffling is off (`fixed_example_order`), and the validation set stops being re-cropped each epoch (`frozen_validation`) |
 | `max` | `medium` plus fixed initial weight arrays, a replayable augmentation schedule, deterministic kernels, TF32 disabled and scalar Adam dispatch |
 
 A bare `--benchmark` with no value means `max`.
+
+The default is `tensorflow` because this package is a port: matching the
+implementation it was ported from is the ordinary case, not a special mode.
 
 Two runs at the same level with the same `--seed` produce identical
 checkpoints, logs and metrics. This holds on GPU as well as CPU: the data

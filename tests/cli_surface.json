@@ -54,12 +54,12 @@
   },
   "bias pipeline benchmark": {
     "choices": [
-      "lite",
       "max",
       "medium",
-      "none"
+      "pytorch",
+      "tensorflow"
     ],
-    "default": "'lite'",
+    "default": "None",
     "nargs": "'?'",
     "options": [
       "--benchmark"
@@ -617,12 +617,12 @@
   },
   "bias train benchmark": {
     "choices": [
-      "lite",
       "max",
       "medium",
-      "none"
+      "pytorch",
+      "tensorflow"
     ],
-    "default": "'lite'",
+    "default": "None",
     "nargs": "'?'",
     "options": [
       "--benchmark"
@@ -1393,12 +1393,12 @@
   },
   "pipeline benchmark": {
     "choices": [
-      "lite",
       "max",
       "medium",
-      "none"
+      "pytorch",
+      "tensorflow"
     ],
-    "default": "'lite'",
+    "default": "None",
     "nargs": "'?'",
     "options": [
       "--benchmark"
@@ -2328,12 +2328,12 @@
   },
   "train benchmark": {
     "choices": [
-      "lite",
       "max",
       "medium",
-      "none"
+      "pytorch",
+      "tensorflow"
     ],
-    "default": "'lite'",
+    "default": "None",
     "nargs": "'?'",
     "options": [
       "--benchmark"

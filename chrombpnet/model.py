@@ -194,8 +194,8 @@ def initialize_keras_default(model: BPNet, seed: int) -> None:
 def initialize_for_benchmark(model: BPNet, args) -> Optional[str]:
     """Apply the initializer implied by ``args.benchmark``, if any.
 
-    ``max`` shares the exact arrays with TensorFlow; ``lite`` and ``medium``
-    only match Keras's default initializer family.
+    ``max`` shares the exact arrays with TensorFlow; ``tensorflow`` and
+    ``medium`` only match Keras's default initializer family.
     """
     from chrombpnet.training.utils.benchmark_utils import benchmark_enables
 

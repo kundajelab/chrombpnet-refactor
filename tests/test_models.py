@@ -177,11 +177,17 @@ def test_benchmark_initializer_uses_canonical_glorot_arrays():
 
 
 def test_benchmark_levels_are_ordered_and_default_to_max():
-    assert BENCHMARK_LEVELS == ("lite", "medium", "max")
+    assert BENCHMARK_LEVELS == ("tensorflow", "medium", "max")
     assert normalize_benchmark_level(True) == "max"
-    assert normalize_benchmark_level(None) is None
+    # Absent means TensorFlow parity, for a raw None and for a namespace that
+    # never had the attribute alike. Only "pytorch" opts out.
+    assert normalize_benchmark_level(None) == "tensorflow"
+    assert benchmark_level(SimpleNamespace(seed=1)) == "tensorflow"
+    assert normalize_benchmark_level("pytorch") is None
     assert normalize_benchmark_level(False) is None
-    assert benchmark_level(SimpleNamespace(seed=1)) is None
+    # "lite" is off the command line but still readable, so a checkpoint whose
+    # provenance records it keeps loading.
+    assert normalize_benchmark_level("lite") == "tensorflow"
     with pytest.raises(ValueError, match="Unknown benchmark level"):
         normalize_benchmark_level("huge")
     # Every control is monotone: once active it stays active at stricter levels.
@@ -191,11 +197,13 @@ def test_benchmark_levels_are_ordered_and_default_to_max():
 
 
 def test_benchmark_level_selects_the_expected_controls():
-    assert benchmark_enables("lite", "keras_adam")
-    assert benchmark_enables("lite", "seeded_threshold_draw")
-    assert benchmark_enables("lite", "restore_best_checkpoint")
-    assert not benchmark_enables("lite", "fixed_example_order")
-    assert not benchmark_enables("lite", "generator_rng")
+    assert benchmark_enables("tensorflow", "keras_adam")
+    assert benchmark_enables("tensorflow", "seeded_threshold_draw")
+    assert benchmark_enables("tensorflow", "restore_best_checkpoint")
+    assert not benchmark_enables("tensorflow", "fixed_example_order")
+    assert not benchmark_enables("tensorflow", "generator_rng")
+    # Opting out reaches none of them.
+    assert not benchmark_enables("pytorch", "keras_adam")
     assert benchmark_enables("medium", "fixed_example_order")
     assert benchmark_enables("medium", "generator_rng")
     assert not benchmark_enables("medium", "shared_initial_weights")
@@ -203,9 +211,11 @@ def test_benchmark_level_selects_the_expected_controls():
     assert benchmark_enables("max", "shared_initial_weights")
     assert benchmark_enables("max", "replayable_augmentation")
     # Keras shuffles batch indices by default; medium and above pin the order.
-    assert use_keras_batch_order_shuffle("lite")
+    assert use_keras_batch_order_shuffle("tensorflow")
     assert not use_keras_batch_order_shuffle("medium")
-    assert not use_keras_batch_order_shuffle(None)
+    # None is absent, so it behaves as the default level, not as an opt-out.
+    assert use_keras_batch_order_shuffle(None)
+    assert not use_keras_batch_order_shuffle("pytorch")
 
 
 def test_lite_initializer_is_glorot_but_not_the_shared_arrays():
@@ -233,9 +243,13 @@ def test_lite_initializer_is_glorot_but_not_the_shared_arrays():
 
 
 def test_initialize_for_benchmark_dispatches_on_level():
-    assert initialize_for_benchmark(BPNet(SMALL), SimpleNamespace(seed=3)) is None
+    assert initialize_for_benchmark(
+        BPNet(SMALL), SimpleNamespace(seed=3, benchmark="pytorch")) is None
+    # A namespace with no benchmark attribute now gets the parity initializer.
+    assert initialize_for_benchmark(
+        BPNet(SMALL), SimpleNamespace(seed=3)) == "keras_default_glorot"
     for level, expected in (
-        ("lite", "keras_default_glorot"),
+        ("tensorflow", "keras_default_glorot"),
         ("medium", "keras_default_glorot"),
         ("max", "shared_canonical_arrays"),
     ):
@@ -259,20 +273,26 @@ def test_benchmark_adam_matches_keras_epsilon():
     assert optimizer.defaults["fused"] is False
 
 
-def test_lite_adam_matches_keras_epsilon_without_pinning_dispatch():
+def test_tensorflow_adam_matches_keras_epsilon_without_pinning_dispatch():
     model = BPNet(SMALL)
-    lite = _build_optimizer(model, SimpleNamespace(learning_rate=0.001, benchmark="lite"))
-    assert lite.defaults["eps"] == 1e-7
-    assert lite.defaults["betas"] == (0.9, 0.999)
-    assert lite.defaults["amsgrad"] is False
-    assert lite.defaults["foreach"] is None
-    assert lite.defaults["fused"] is None
-    plain = _build_optimizer(model, SimpleNamespace(learning_rate=0.001))
-    assert plain.defaults["eps"] == 1e-8
+    args = SimpleNamespace(learning_rate=0.001, benchmark="tensorflow")
+    parity = _build_optimizer(model, args)
+    assert parity.defaults["eps"] == 1e-7
+    assert parity.defaults["betas"] == (0.9, 0.999)
+    assert parity.defaults["amsgrad"] is False
+    assert parity.defaults["foreach"] is None
+    assert parity.defaults["fused"] is None
+    # Omitting the flag is the same thing, which is the point of the default.
+    implicit = _build_optimizer(model, SimpleNamespace(learning_rate=0.001))
+    assert implicit.defaults["eps"] == 1e-7
+    # Only "pytorch" gets torch's own epsilon back.
+    native = _build_optimizer(
+        model, SimpleNamespace(learning_rate=0.001, benchmark="pytorch"))
+    assert native.defaults["eps"] == 1e-8
 
 
 def test_generator_rng_is_dedicated_from_medium_and_replayable_at_max():
-    assert make_generator_rng("lite", 1234, "train") is np.random
+    assert make_generator_rng("tensorflow", 1234, "train") is np.random
     assert make_generator_rng(None, 1234, "train") is np.random
     stream = make_generator_rng("medium", 1234, "train")
     assert isinstance(stream, np.random.RandomState)

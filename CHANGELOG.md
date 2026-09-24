@@ -1,5 +1,31 @@
 # Changelog
 
+## `--benchmark`: TensorFlow parity is the default, and `lite` is gone
+
+- **Omitting `--benchmark` now means TensorFlow parity everywhere**, including
+  from library callers. The level it selects was called `lite`; it is now
+  called `tensorflow`, and `lite` is no longer accepted on the command line.
+  Argparse rejects it and lists the valid names, so a stale script fails
+  loudly rather than drifting.
+- **`--benchmark none` is now `--benchmark pytorch`** -- PyTorch's own native
+  initializations, Adam epsilon and loss aggregation, with no parity controls.
+- `medium`, `max`, and the bare `--benchmark` (still `max`) are unchanged.
+- **The one behavioural change** is for callers that reach the library with no
+  `benchmark` attribute at all. That used to mean *no controls*, while the
+  argparse default meant `lite` -- so `chrombpnet qc`, and any code building a
+  namespace by hand, silently got PyTorch's native settings where a training
+  run got parity ones. Absent and default are now the same thing. For `qc`
+  this changes nothing observable: every generator-side control is `medium` or
+  above, and `keras_batch_order_shuffle` is only read by `train.py`.
+- **Two recorded artifacts move.** `<prefix>.args.json` dumps `vars(args)`, so
+  an unflagged run now records `"benchmark": null` instead of `"benchmark":
+  "lite"` -- the parser default is `None`, so the record says what was
+  actually typed. Checkpoint provenance records the *normalized* level, so it
+  reads `tensorflow` where it read `lite`. Nothing else about any output
+  changes.
+- Existing `.pt` files keep loading: the normalizer still reads `lite` as a
+  deprecated alias for `tensorflow`, so old provenance is not a load error.
+
 ## Optimization phases, and fixed-step bigWigs by default
 
 - Every optimization in the package is now selectable with `--optimize`, on

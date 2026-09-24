@@ -339,7 +339,7 @@ def main(argv: list[str] | None = None) -> int:
                                 "phases, capture one and compare the other.")
         child.add_argument("--benchmark", default=None,
                            help="benchmark level to pass to training commands "
-                                "(omit for the CLI default, 'lite')")
+                                "(omit for the CLI default, 'tensorflow')")
         child.add_argument("--scenario", action="append", dest="scenarios",
                            help="run only this scenario (repeatable)")
         if name == "capture":

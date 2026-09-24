@@ -25,7 +25,7 @@ python -m tests.regression.harness against --ref main
 
 Useful flags: `--scenario 04_train` (repeatable) to narrow the sweep, and
 `--benchmark max` to run the deterministic-kernel level. Omitting `--benchmark`
-uses the CLI default, `lite`.
+uses the CLI default, `tensorflow`.
 
 A successful compare prints `all N artifacts identical`. A failure names each
 changed artifact and explains it in format-aware terms — which state-dict tensor
@@ -55,15 +55,15 @@ That holds only because three things are pinned:
   compare that reads it.
 - **CPU, single-threaded.** `--device cpu` throughout, with `OMP_NUM_THREADS=1`
   and friends, because threaded CPU reductions do not have a fixed summation
-  order. At `lite` no deterministic-kernel constraint is applied at all, so GPU
-  runs are not reproducible.
+  order. At `tensorflow` no deterministic-kernel constraint is applied at all,
+  so GPU runs are not reproducible.
 - **`MPLBACKEND=Agg`**, so plot rendering does not depend on the display or the
   font cache.
 
 ## Both benchmark levels matter
 
-Assert at `--benchmark max` *and* at the default `lite`. `max` catches numeric
-changes. `lite` is the stricter test: it is the only level at which the
+Assert at `--benchmark max` *and* at the default `tensorflow`. `max` catches
+numeric changes. `tensorflow` is the stricter test: it is the only level at which the
 augmentation RNG is the *global* `np.random` stream that `train.py` also draws
 its batch-order permutation from, so a change in the **number** of global draws
 is observable in the trained weights there and invisible at `max`.
