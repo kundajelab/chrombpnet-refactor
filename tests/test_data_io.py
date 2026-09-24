@@ -77,6 +77,9 @@ def _nonpeaks_only_generator(seqs, cts, coords, add_revcomp=True):
     gen.benchmark_seed = None
     gen.epoch = 0
     gen.rng = None
+    gen.rc_shift = 0
+    gen.rc_frac = 0.5
+    gen.label_pad = (0, 0)
     return gen
 
 

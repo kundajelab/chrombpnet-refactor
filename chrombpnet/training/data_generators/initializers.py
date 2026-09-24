@@ -1,18 +1,19 @@
 import chrombpnet.training.data_generators.batchgen_generator as batchgen_generator
+from chrombpnet import conventions
 from chrombpnet.training.utils.benchmark_utils import benchmark_enables
 import pandas as pd
 import json
 
 from chrombpnet.regions import NARROWPEAK_SCHEMA, is_disabled
 
-def fetch_data_and_model_params_based_on_mode(mode, args, parameters, nonpeak_regions, peak_regions):
+def fetch_data_and_model_params_based_on_mode(mode, args, parameters, nonpeak_regions, peak_regions, convention):
 
     if mode=="train": 
         inputlen=int(parameters["inputlen"])
         outputlen=int(parameters["outputlen"])
         negative_sampling_ratio=float(parameters["negative_sampling_ratio"])
         max_jitter=int(parameters["max_jitter"])
-        add_revcomp=True
+        add_revcomp=convention.reverse_complements(mode)
         shuffle_at_epoch_start=not benchmark_enables(args, "fixed_example_order")
         
 
@@ -28,8 +29,9 @@ def fetch_data_and_model_params_based_on_mode(mode, args, parameters, nonpeak_re
         negative_sampling_ratio=1.0 # already subsampled
         # do not jitter at valid time - we are testing only at summits
         max_jitter=0
-        # no reverse complementation at valid time
-        add_revcomp=False
+        # normally no reverse complementation at valid time; the rc-only arm
+        # deliberately flips every split, which is the whole point of it
+        add_revcomp=convention.reverse_complements(mode)
         # no need to shuffle
         shuffle_at_epoch_start=False
 
@@ -41,8 +43,8 @@ def fetch_data_and_model_params_based_on_mode(mode, args, parameters, nonpeak_re
         negative_sampling_ratio=1.0
         # no jitter at valid time - we are testing only at summits
         max_jitter=0
-        # no reverse complementation at test time
-        add_revcomp=False    
+        # normally no reverse complementation at test time; see "valid" above
+        add_revcomp=convention.reverse_complements(mode)    
         # no need to shuffle
         shuffle_at_epoch_start=False
         
@@ -63,6 +65,11 @@ def get_bed_regions_for_fold_split(bed_regions, mode, splits_dict):
 
 def initialize_generators(args, mode, parameters, return_coords):
 
+    # Resolved once, here, so preprocessing and training cannot disagree about
+    # what an arm means, and so an arm undefined for the assay raises before
+    # any data is read rather than quietly doing nothing.
+    convention = conventions.resolve(args.data_type, getattr(args, "data_aug", None))
+
     # defaults
     peak_regions=None
     nonpeak_regions=None
@@ -82,7 +89,7 @@ def initialize_generators(args, mode, parameters, return_coords):
 
     inputlen, outputlen, \
     nonpeak_regions, negative_sampling_ratio, \
-    max_jitter, add_revcomp, shuffle_at_epoch_start  =  fetch_data_and_model_params_based_on_mode(mode, args, parameters, nonpeak_regions, peak_regions)
+    max_jitter, add_revcomp, shuffle_at_epoch_start  =  fetch_data_and_model_params_based_on_mode(mode, args, parameters, nonpeak_regions, peak_regions, convention)
     generator=batchgen_generator.ChromBPNetBatchGenerator(
                                     peak_regions=peak_regions,
                                     nonpeak_regions=nonpeak_regions,
@@ -98,7 +105,9 @@ def initialize_generators(args, mode, parameters, return_coords):
                                     shuffle_at_epoch_start=shuffle_at_epoch_start,
                                     mode=mode,
                                     benchmark=getattr(args, "benchmark", None),
-                                    benchmark_seed=getattr(args, "seed", None)
+                                    benchmark_seed=getattr(args, "seed", None),
+                                    rc_shift=convention.rc_shift,
+                                    rc_frac=convention.rc_frac
                                     )
 
     return generator

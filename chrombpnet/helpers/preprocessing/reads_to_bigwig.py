@@ -3,6 +3,7 @@ import subprocess
 import tempfile
 import os
 import chrombpnet.helpers.preprocessing.auto_shift_detect as auto_shift_detect
+from chrombpnet import conventions
 from chrombpnet.data import DefaultDataFile, get_default_data_path
 
 def parse_args():
@@ -23,12 +24,43 @@ def parse_args():
     parser.add_argument('--ATAC-ref-path', type=str, default=None, help="Path to ATAC reference motifs (chrombpnet/data/ATAC.ref.motifs.txt used by default)")
     parser.add_argument('--DNASE-ref-path', type=str, default=None, help="Path to DNASE reference motifs (chrombpnet/data/DNASE.ref.motifs.txt used by default)")
     parser.add_argument('--num-samples', type=int, default=10000, help="Number of reads to sample from BAM/fragment/tagAlign file for shift estimation")
+    parser.add_argument('--data-aug', type=str, default=conventions.DATA_AUG_DEFAULT,
+                        choices=list(conventions.DATA_AUG_CHOICES),
+                        help="Where a cut is recorded; see chrombpnet.conventions")
     args = parser.parse_args()
 
     return args
 
 
-def generate_bigwig(input_bam_file, input_fragment_file, input_tagalign_file, output_prefix, genome_fasta_file, bsort, tmpdir, no_st, chrom_sizes_file, plus_shift_delta, minus_shift_delta):
+def _awk_program(n_deposits):
+    """awk emitting one record per deposit.
+
+    ``bedtools genomecov -bg -5`` reports one position per record, so a
+    convention that puts a cut on both bases flanking the bond needs two of
+    them. The single-deposit program is kept verbatim, so every convention
+    with only one deposit -- all of them but ``both-half`` and ``both-full``
+    -- feeds genomecov byte-identical input to what this package always did.
+
+    The multi-deposit form needs two guards the single one never did: the
+    left-hand deposit of a plus read can fall before the chromosome start,
+    and the left-hand deposit of a minus read can collapse onto the record's
+    own start for a 1 bp read on already-shifted input. bedtools rejects
+    either.
+    """
+    if n_deposits == 1:
+        return ('BEGIN {OFS="\\t"} '
+                '{if ($6=="+") print $1,$2+plus0,$3,$4,$5,$6; '
+                'else if ($6=="-") print $1,$2,$3+minus0,$4,$5,$6}')
+    plus = " ".join(f'if ($2+plus{i} >= 0) print $1,$2+plus{i},$3,$4,$5,$6;'
+                    for i in range(n_deposits))
+    minus = " ".join(f'if ($3+minus{i} > $2) print $1,$2,$3+minus{i},$4,$5,$6;'
+                     for i in range(n_deposits))
+    return ('BEGIN {OFS="\\t"} '
+            '{if ($6=="+") {' + plus + '} '
+            'else if ($6=="-") {' + minus + '}}')
+
+
+def generate_bigwig(input_bam_file, input_fragment_file, input_tagalign_file, output_prefix, genome_fasta_file, bsort, tmpdir, no_st, chrom_sizes_file, delta_pairs, scale=1.0):
     if sum(value is not None for value in (input_bam_file, input_fragment_file, input_tagalign_file)) != 1:
         raise ValueError("Exactly one input file must be provided")
 
@@ -44,13 +76,12 @@ def generate_bigwig(input_bam_file, input_fragment_file, input_tagalign_file, ou
     sort_args = ["sort"] + (["-T", tmpdir] if tmpdir else []) + ["-k1,1"]
     final_sort = (["bedtools", "sort", "-i", "stdin"] if bsort else
                   ["sort"] + (["-T", tmpdir] if tmpdir else []) + ["-k1,1", "-k2,2n"])
-    awk_program = (
-        'BEGIN {OFS="\\t"} '
-        '{if ($6=="+") print $1,$2+plus,$3,$4,$5,$6; '
-        'else if ($6=="-") print $1,$2,$3+minus,$4,$5,$6}'
-    )
-    awk_cmd = ["awk", "-v", f"plus={plus_shift_delta}", "-v",
-               f"minus={minus_shift_delta}", awk_program]
+    awk_program = _awk_program(len(delta_pairs))
+    awk_cmd = ["awk"]
+    for index, (plus_delta, minus_delta) in enumerate(delta_pairs):
+        awk_cmd += ["-v", f"plus{index}={plus_delta}",
+                    "-v", f"minus{index}={minus_delta}"]
+    awk_cmd.append(awk_program)
 
     tmp_bedgraph = tempfile.NamedTemporaryFile()
     with open(tmp_bedgraph.name, "w") as output:
@@ -60,8 +91,15 @@ def generate_bigwig(input_bam_file, input_fragment_file, input_tagalign_file, ou
             p1.stdout.close()
         p_sort = subprocess.Popen(sort_args, stdin=p_awk.stdout, stdout=subprocess.PIPE)
         p_awk.stdout.close()
-        p_cov = subprocess.Popen(["bedtools", "genomecov", "-bg", "-5", "-i", "stdin",
-                                  "-g", chrom_sizes_file], stdin=p_sort.stdout,
+        genomecov_cmd = ["bedtools", "genomecov", "-bg", "-5", "-i", "stdin",
+                         "-g", chrom_sizes_file]
+        if scale != 1.0:
+            # Half a count on each of the two bases flanking a cut, so the
+            # track total matches the single-deposit conventions exactly.
+            # bigWig values are float32 and 0.5 is binary-exact, so this is
+            # lossless, and genomecov still omits zero intervals under -scale.
+            genomecov_cmd += ["-scale", repr(float(scale))]
+        p_cov = subprocess.Popen(genomecov_cmd, stdin=p_sort.stdout,
                                  stdout=subprocess.PIPE)
         p_sort.stdout.close()
         env = os.environ.copy()
@@ -115,11 +153,9 @@ def main(args):
     else:
         print("The specified shift is: {:+}/{:+}".format(plus_shift, minus_shift))
 
-    # computing additional shifting to apply
-    if args.data_type=="ATAC":
-        plus_shift_delta, minus_shift_delta = 4-plus_shift, -4-minus_shift
-    elif args.data_type=="DNASE":
-        plus_shift_delta, minus_shift_delta = -plus_shift, 1-minus_shift
+    # Where each cut is recorded, and on how many bases.
+    convention = conventions.resolve(args.data_type, getattr(args, "data_aug", None))
+    delta_pairs = conventions.shift_delta_pairs(convention, plus_shift, minus_shift)
 
     generate_bigwig(args.input_bam_file,
             args.input_fragment_file,
@@ -130,8 +166,8 @@ def main(args):
             args.tmpdir,
             args.no_st,
             args.chrom_sizes,
-            plus_shift_delta,
-            minus_shift_delta)
+            delta_pairs,
+            convention.scale)
 
 if __name__=="__main__":
     args = parse_args()

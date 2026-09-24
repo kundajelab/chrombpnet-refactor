@@ -39,6 +39,20 @@ def main():
 		else:
 			print("Command not found")
 
+	elif args.cmd == "predict":
+
+		import chrombpnet.training.predict as predict
+		from chrombpnet.model import load_model_wrapper
+
+		# Geometry off the checkpoint, as qc does; predict.main reads
+		# model_h5 rather than model.
+		model = load_model_wrapper(args.model, getattr(args, "device", None),
+		                           announce=False)
+		args.inputlen = int(model.input_shape[1])
+		args.outputlen = int(model.output_shape[0][1])
+		args.model_h5 = args.model
+		predict.main(args)
+
 	elif args.cmd == "pred_bw":
 	
 		if not any((args.bias_model, args.chrombpnet_model, args.chrombpnet_model_nb)):

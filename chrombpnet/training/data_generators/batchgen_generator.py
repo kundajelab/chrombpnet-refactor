@@ -35,7 +35,7 @@ class ChromBPNetBatchGenerator:
     every epoch, and calls bias model on it, whose outputs (bias profile logits 
     and bias logcounts) are fed as input to the chrombpnet model.
     """
-    def __init__(self, peak_regions, nonpeak_regions, genome_fasta, batch_size, inputlen, outputlen, max_jitter, negative_sampling_ratio, cts_bw_file, add_revcomp, return_coords, shuffle_at_epoch_start, mode=None, benchmark=None, benchmark_seed=None):
+    def __init__(self, peak_regions, nonpeak_regions, genome_fasta, batch_size, inputlen, outputlen, max_jitter, negative_sampling_ratio, cts_bw_file, add_revcomp, return_coords, shuffle_at_epoch_start, mode=None, benchmark=None, benchmark_seed=None, rc_shift=0, rc_frac=0.5):
         """
         seqs: B x L' x 4
         cts: B x M'
@@ -46,9 +46,18 @@ class ChromBPNetBatchGenerator:
         level onwards all augmentation is drawn from a dedicated NumPy stream
         derived from (benchmark_seed, mode, epoch) so both frameworks realize
         the same schedule regardless of what else consumes the global RNG.
+        rc_shift/rc_frac: how reverse complementation re-registers the profile
+        and how much of the split it touches, from `conventions.resolve`. A
+        non-zero shift makes every label one column wider all the way from the
+        bigwig read to `crop_revcomp_augment`, which trims it back; the extra
+        base is what keeps the shifted slot from being a fabricated zero.
         """
 
-        peak_seqs, peak_cts, peak_coords, nonpeak_seqs, nonpeak_cts, nonpeak_coords, = data_utils.load_data(peak_regions, nonpeak_regions, genome_fasta, cts_bw_file, inputlen, outputlen, max_jitter)
+        self.rc_shift = int(rc_shift)
+        self.rc_frac = float(rc_frac)
+        self.label_pad = augment.rc_padding(self.rc_shift)
+
+        peak_seqs, peak_cts, peak_coords, nonpeak_seqs, nonpeak_cts, nonpeak_coords, = data_utils.load_data(peak_regions, nonpeak_regions, genome_fasta, cts_bw_file, inputlen, outputlen, max_jitter, label_pad=self.label_pad)
         self.peak_seqs, self.nonpeak_seqs = peak_seqs, nonpeak_seqs
         self.peak_cts, self.nonpeak_cts = peak_cts, nonpeak_cts
         self.peak_coords, self.nonpeak_coords = peak_coords, nonpeak_coords
@@ -101,7 +110,7 @@ class ChromBPNetBatchGenerator:
         #Sample a fraction of the negative samples according to the specified ratio
         if (self.peak_seqs is not None) and (self.nonpeak_seqs is not None):
             # crop peak data before stacking
-            cropped_peaks, cropped_cnts, cropped_coords = augment.random_crop(self.peak_seqs, self.peak_cts, self.inputlen, self.outputlen, self.peak_coords, rng=self.rng)
+            cropped_peaks, cropped_cnts, cropped_coords = augment.random_crop(self.peak_seqs, self.peak_cts, self.inputlen, self.outputlen + sum(self.label_pad), self.peak_coords, rng=self.rng)
             requested_nonpeaks = int(self.negative_sampling_ratio * len(self.peak_seqs))
             if requested_nonpeaks < len(self.nonpeak_seqs):
                 self.sampled_nonpeak_seqs, self.sampled_nonpeak_cts, self.sampled_nonpeak_coords = subsample_nonpeak_data(self.nonpeak_seqs, self.nonpeak_cts, self.nonpeak_coords, len(self.peak_seqs), self.negative_sampling_ratio, rng=self.rng)
@@ -115,7 +124,7 @@ class ChromBPNetBatchGenerator:
 
         elif self.peak_seqs is not None:
             # crop peak data before stacking
-            cropped_peaks, cropped_cnts, cropped_coords = augment.random_crop(self.peak_seqs, self.peak_cts, self.inputlen, self.outputlen, self.peak_coords, rng=self.rng)
+            cropped_peaks, cropped_cnts, cropped_coords = augment.random_crop(self.peak_seqs, self.peak_cts, self.inputlen, self.outputlen + sum(self.label_pad), self.peak_coords, rng=self.rng)
 
             self.seqs = cropped_peaks
             self.cts = cropped_cnts
@@ -143,8 +152,9 @@ class ChromBPNetBatchGenerator:
 
         self.cur_seqs, self.cur_cts, self.cur_coords = augment.crop_revcomp_augment(
                                             self.seqs, self.cts, self.coords, self.inputlen, self.outputlen, 
-                                            self.add_revcomp, shuffle=self.shuffle_at_epoch_start,
-                                            rng=self.rng
+                                            self.add_revcomp, rc_frac=self.rc_frac,
+                                            shuffle=self.shuffle_at_epoch_start,
+                                            rng=self.rng, rc_shift=self.rc_shift
                                           )
 
     def __getitem__(self, idx):

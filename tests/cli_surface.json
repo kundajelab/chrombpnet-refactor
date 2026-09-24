@@ -110,6 +110,24 @@
     "required": true,
     "type": "str"
   },
+  "bias pipeline data_aug": {
+    "choices": [
+      "both-full",
+      "both-half",
+      "fr-only",
+      "left",
+      "rc-only",
+      "right",
+      "standard"
+    ],
+    "default": "'standard'",
+    "nargs": "None",
+    "options": [
+      "--data-aug"
+    ],
+    "required": false,
+    "type": "str"
+  },
   "bias pipeline data_type": {
     "choices": [
       "ATAC",
@@ -461,6 +479,24 @@
     "required": true,
     "type": "str"
   },
+  "bias qc data_aug": {
+    "choices": [
+      "both-full",
+      "both-half",
+      "fr-only",
+      "left",
+      "rc-only",
+      "right",
+      "standard"
+    ],
+    "default": "'standard'",
+    "nargs": "None",
+    "options": [
+      "--data-aug"
+    ],
+    "required": false,
+    "type": "str"
+  },
   "bias qc data_type": {
     "choices": [
       "ATAC",
@@ -681,6 +717,24 @@
       "-c"
     ],
     "required": true,
+    "type": "str"
+  },
+  "bias train data_aug": {
+    "choices": [
+      "both-full",
+      "both-half",
+      "fr-only",
+      "left",
+      "rc-only",
+      "right",
+      "standard"
+    ],
+    "default": "'standard'",
+    "nargs": "None",
+    "options": [
+      "--data-aug"
+    ],
+    "required": false,
     "type": "str"
   },
   "bias train data_type": {
@@ -1449,6 +1503,24 @@
     "required": true,
     "type": "str"
   },
+  "pipeline data_aug": {
+    "choices": [
+      "both-full",
+      "both-half",
+      "fr-only",
+      "left",
+      "rc-only",
+      "right",
+      "standard"
+    ],
+    "default": "'standard'",
+    "nargs": "None",
+    "options": [
+      "--data-aug"
+    ],
+    "required": false,
+    "type": "str"
+  },
   "pipeline data_type": {
     "choices": [
       "ATAC",
@@ -1919,6 +1991,194 @@
     "required": false,
     "type": "int"
   },
+  "predict batch_size": {
+    "choices": null,
+    "default": "64",
+    "nargs": "None",
+    "options": [
+      "--batch-size",
+      "-bs"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "predict benchmark": {
+    "choices": [
+      "max",
+      "medium",
+      "pytorch",
+      "tensorflow"
+    ],
+    "default": "None",
+    "nargs": "'?'",
+    "options": [
+      "--benchmark"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "predict bigwig": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--bigwig",
+      "-bw"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "predict chr_fold_path": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--chr-fold-path",
+      "-fl"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "predict chrom_sizes": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--chrom-sizes",
+      "-c"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "predict data_aug": {
+    "choices": [
+      "both-full",
+      "both-half",
+      "fr-only",
+      "left",
+      "rc-only",
+      "right",
+      "standard"
+    ],
+    "default": "'standard'",
+    "nargs": "None",
+    "options": [
+      "--data-aug"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "predict data_type": {
+    "choices": [
+      "ATAC",
+      "DNASE"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--data-type",
+      "-d"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "predict device": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--device"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "predict genome": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--genome",
+      "-g"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "predict help": {
+    "choices": null,
+    "default": "'==SUPPRESS=='",
+    "nargs": "0",
+    "options": [
+      "--help",
+      "-h"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "predict model": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--model",
+      "-m"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "predict nonpeaks": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--nonpeaks",
+      "-n"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "predict output_prefix": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--output-prefix",
+      "-op"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "predict peaks": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--peaks",
+      "-r"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "predict predict_fk": {
+    "choices": null,
+    "default": "False",
+    "nargs": "0",
+    "options": [
+      "--predict-fk"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "predict seed": {
+    "choices": null,
+    "default": "1234",
+    "nargs": "None",
+    "options": [
+      "--seed",
+      "-s"
+    ],
+    "required": false,
+    "type": "int"
+  },
   "prep help": {
     "choices": null,
     "default": "'==SUPPRESS=='",
@@ -2172,6 +2432,24 @@
     "required": true,
     "type": "str"
   },
+  "qc data_aug": {
+    "choices": [
+      "both-full",
+      "both-half",
+      "fr-only",
+      "left",
+      "rc-only",
+      "right",
+      "standard"
+    ],
+    "default": "'standard'",
+    "nargs": "None",
+    "options": [
+      "--data-aug"
+    ],
+    "required": false,
+    "type": "str"
+  },
   "qc data_type": {
     "choices": [
       "ATAC",
@@ -2392,6 +2670,24 @@
       "-c"
     ],
     "required": true,
+    "type": "str"
+  },
+  "train data_aug": {
+    "choices": [
+      "both-full",
+      "both-half",
+      "fr-only",
+      "left",
+      "rc-only",
+      "right",
+      "standard"
+    ],
+    "default": "'standard'",
+    "nargs": "None",
+    "options": [
+      "--data-aug"
+    ],
+    "required": false,
     "type": "str"
   },
   "train data_type": {

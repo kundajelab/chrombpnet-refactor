@@ -1,0 +1,136 @@
+"""What each --data-aug arm actually writes into the bigwig.
+
+`test_conventions.py` covers the augmentation algebra. This covers the other
+half: that `reads_to_bigwig` deposits where the convention says it should.
+
+The fixture is two reads that report the *same* nick from opposite strands,
+which is the case the 0/+1 convention exists to make agree:
+
+    plus  read [100, 140)   5' base 100   nick between 99 and 100
+    minus read [ 60, 100)   5' base  99   nick between 99 and 100
+
+So every arm has one exact expected answer, and the plus/minus convergence is
+asserted rather than assumed.
+"""
+
+import gzip
+import shutil
+from types import SimpleNamespace
+
+import numpy as np
+import pytest
+
+pyBigWig = pytest.importorskip("pyBigWig")
+
+CHROM_LEN = 400
+TOOLS = ("bedtools", "bedGraphToBigWig", "awk", "sort")
+
+
+def _require_tools():
+    missing = [t for t in TOOLS if shutil.which(t) is None]
+    if missing:
+        pytest.skip(f"preprocessing needs {', '.join(missing)} on PATH")
+
+
+@pytest.fixture
+def workspace(tmp_path):
+    _require_tools()
+    # Non-palindromic, so a mis-registered PWM could not look symmetric by
+    # accident if this fixture is reused for a motif check.
+    seq = ("ACGGTTACAG" * (CHROM_LEN // 10))[:CHROM_LEN]
+    (tmp_path / "genome.fa").write_text(f">chr1\n{seq}\n")
+    (tmp_path / "sizes.tsv").write_text(f"chr1\t{CHROM_LEN}\n")
+
+    reads = ["chr1\t100\t140\tN\t1000\t+", "chr1\t60\t100\tN\t1000\t-"]
+    with gzip.open(tmp_path / "reads.tagAlign.gz", "wt") as handle:
+        handle.write("\n".join(reads) + "\n")
+    return tmp_path
+
+
+def _run(workspace, data_type, data_aug):
+    import chrombpnet.helpers.preprocessing.reads_to_bigwig as reads_to_bigwig
+
+    prefix = str(workspace / f"out_{data_aug}")
+    reads_to_bigwig.main(SimpleNamespace(
+        genome=str(workspace / "genome.fa"),
+        input_bam_file=None,
+        input_fragment_file=None,
+        input_tagalign_file=str(workspace / "reads.tagAlign.gz"),
+        chrom_sizes=str(workspace / "sizes.tsv"),
+        output_prefix=prefix,
+        data_type=data_type,
+        bsort=False,
+        no_st=False,
+        tmpdir=None,
+        plus_shift=0,          # given, so no estimation from two reads
+        minus_shift=0,
+        ATAC_ref_path=None,
+        DNASE_ref_path=None,
+        num_samples=10,
+        data_aug=data_aug,
+    ))
+    with pyBigWig.open(prefix + "_unstranded.bw") as bw:
+        values = np.nan_to_num(np.array(bw.values("chr1", 0, CHROM_LEN)))
+    return {int(i): float(v) for i, v in enumerate(values) if v != 0}
+
+
+@pytest.mark.parametrize("data_aug,expected", [
+    # Both reads name the bond (99, 100) by its right-hand base.
+    ("standard",  {100: 2.0}),
+    ("fr-only",   {100: 2.0}),
+    ("rc-only",   {100: 2.0}),
+    ("right",     {100: 2.0}),
+    # ...and by its left-hand base.
+    ("left",      {99: 2.0}),
+    # ...and on both, which is what makes plain reversal correct.
+    ("both-full", {99: 2.0, 100: 2.0}),
+    ("both-half", {99: 1.0, 100: 1.0}),
+])
+def test_each_arm_deposits_where_its_convention_says(workspace, data_aug, expected):
+    assert _run(workspace, "DNASE", data_aug) == expected
+
+
+def test_both_half_conserves_the_track_total(workspace):
+    """The gate that makes `both-half` comparable to the other arms.
+
+    Spreading a cut over two bases must not change how much signal there is,
+    or the counts head is being trained against a different target scale for
+    reasons that have nothing to do with the bond.
+    """
+    standard = sum(_run(workspace, "DNASE", "standard").values())
+    half = sum(_run(workspace, "DNASE", "both-half").values())
+    full = sum(_run(workspace, "DNASE", "both-full").values())
+    assert half == pytest.approx(standard)
+    assert full == pytest.approx(2 * standard)
+
+
+def test_half_counts_survive_the_bigwig_round_trip(workspace):
+    """0.5 is binary-exact in float32, so `-scale 0.5` is lossless."""
+    assert set(_run(workspace, "DNASE", "both-half").values()) == {1.0}
+    # ...and genomecov still omits zero intervals under -scale.
+    assert 0.0 not in _run(workspace, "DNASE", "both-half").values()
+
+
+def test_atac_is_unchanged_and_refuses_the_bond_arms(workspace):
+    """+4/-4: plus 5' + 4, minus 5' - 4. Not a Tn5 pair here, so two bases."""
+    assert _run(workspace, "ATAC", "standard") == {95: 1.0, 104: 1.0}
+    for arm in ("right", "left", "both-half", "both-full"):
+        with pytest.raises(ValueError, match="defined only for DNASE"):
+            _run(workspace, "ATAC", arm)
+
+
+def test_the_single_deposit_awk_is_unchanged(workspace):
+    """`standard` must feed genomecov exactly what it always did.
+
+    The multi-deposit form adds guards and renames the awk variables; the
+    single-deposit form is kept verbatim so no existing convention's bedGraph
+    input changes.
+    """
+    from chrombpnet.helpers.preprocessing.reads_to_bigwig import _awk_program
+
+    assert _awk_program(1) == (
+        'BEGIN {OFS="\\t"} '
+        '{if ($6=="+") print $1,$2+plus0,$3,$4,$5,$6; '
+        'else if ($6=="-") print $1,$2,$3+minus0,$4,$5,$6}')
+    two = _awk_program(2)
+    assert "$2+plus0 >= 0" in two and "$3+minus0 > $2" in two

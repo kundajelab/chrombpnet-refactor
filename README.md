@@ -235,6 +235,59 @@ That is why it is opt-in. It needs an H100 or H200 and refuses by name on
 anything else rather than falling back silently; on an L40S it buys accuracy
 rather than speed.
 
+## Cut conventions and reverse complementation
+
+`--data-aug` selects how a cut is recorded and what reverse-complement
+augmentation does about it. **Omit it** for `standard`, which is the
+behaviour this package has always had.
+
+It exists because the two assays record different things. DNase I is a
+nuclease: it cuts the backbone *between* two bases, so the 0/+1 shift records
+the event at a **bond**, named by that bond's right-hand base — the `+1` on
+minus reads is exactly what makes both strands name the same bond the same
+way. Tn5 leaves a 9 bp stagger, and 9 being odd, ATAC records a **base**.
+
+Reversing a profile maps a base to its mirror correctly. It does *not* do the
+same for a bond: the bond lands in the right place but is left named by the
+wrong base, so a reverse-complemented DNase profile is misregistered by one.
+The correction is to reverse and then shift one position — `i → W-i` rather
+than `i → W-1-i`.
+
+| value | preprocessing | RC shift | splits flipped |
+|---|---|---|---|
+| *(omitted)* = `standard` | DNase 0/+1, ATAC +4/−4 | 0 | train, 50 % |
+| `fr-only` | unchanged | — | none |
+| `rc-only` | unchanged | 0 | train, valid and test, 100 % |
+| `right` | unchanged | **+1** | train, 50 % |
+| `left` | DNase −1/0 | **−1** | train, 50 % |
+| `both-half` | 0.5 on both bases flanking the cut | 0 | train, 50 % |
+| `both-full` | 1.0 on both bases flanking the cut | 0 | train, 50 % |
+
+`standard`, `fr-only` and `rc-only` apply to either assay. `right`, `left`
+and `both-*` reshape a bond, which ATAC has not got, so they raise for ATAC
+rather than silently doing nothing.
+
+Available on `pipeline`, `train`, `qc`, their `bias` counterparts, `predict`,
+and `reads_to_bigwig`.
+
+The geometry is measured, not just derived: the plus- and minus-strand cut
+PWMs in `chrombpnet/data/{DNASE,ATAC}.ref.motifs.txt` align with each other's
+reverse complement at lag 0 for DNase and lag −1 for ATAC, and the required
+label shift is `lag + 1` in both cases. `tests/test_conventions.py` asserts
+it, so changing the shift deltas without changing the correction fails.
+
+## Scoring one model on one split
+
+```bash
+chrombpnet predict -m model.pt -d DNASE -g hg38.fa -c hg38.chrom.sizes \
+    -r peaks.bed -n None -fl fold_0.json -bw observed.bw -op out
+```
+
+Writes `out_predictions.h5` and `out_metrics.json`. This is the stage `qc`
+runs first, without the attribution and MoDISco that follow it — useful when
+what you want is a metric for a model against a given test split. Geometry is
+read off the checkpoint.
+
 ## Reproducibility
 
 `--benchmark` controls how much of the training run is held fixed. **Omit it**

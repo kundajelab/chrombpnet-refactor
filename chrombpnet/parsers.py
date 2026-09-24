@@ -1,4 +1,6 @@
 import argparse
+
+from chrombpnet import conventions
 from chrombpnet.training.utils.benchmark_utils import add_benchmark_argument
 from argparse import RawTextHelpFormatter
 
@@ -88,7 +90,33 @@ def _add_training_options(optional):
     optional.add_argument('--bsort', required=False, default=False, action='store_true', help="In prpeprocess, by deafult we sort bam using unix sort but sometimes LC collate can cause issues, so this can be set to use betools sort which works well but is memory intensive..")
     optional.add_argument('--tmpdir', required=False, default=None, type=str, help="temp dir for unix sort")
     optional.add_argument('--no-st', required=False, default=False, action='store_true', help="Dont do streaming  and filtering in preprocessing (short chromosome contrigs not in reference fasta are not removed)")
+    _add_data_aug(optional)
     _add_device(optional)
+
+
+def _add_data_aug(optional):
+    """Register ``--data-aug`` on a command that preprocesses or trains.
+
+    DNase records a cut as the *bond* between two bases and ATAC records it
+    as a base, so reverse-complement augmentation owes them different things.
+    See :mod:`chrombpnet.conventions` for the geometry; the default
+    reproduces the behaviour this package has always had.
+    """
+    optional.add_argument(
+        "--data-aug", type=str, default=conventions.DATA_AUG_DEFAULT,
+        choices=list(conventions.DATA_AUG_CHOICES),
+        help="How cuts are recorded and how reverse complementation handles "
+             "them (default: %(default)s). "
+             "standard: today's behaviour -- DNase 0/+1, reverse complement "
+             "half of training, no re-registration. "
+             "fr-only / rc-only: never / always reverse complement, in every "
+             "split; the only two arms that also apply to ATAC. "
+             "right: DNase 0/+1 with the +1 post-reversal shift that puts the "
+             "bond back on its mirrored base. "
+             "left: the -1/0 mirror of it. "
+             "both-half / both-full: deposit 0.5 / 1.0 on both bases flanking "
+             "the cut, which is symmetric about the bond and so needs no "
+             "shift. right/left/both-* are DNASE-only and raise for ATAC.")
 
 
 def _add_device(optional):
@@ -142,6 +170,7 @@ def _add_qc_arguments(parser, model_arguments):
     optional.add_argument("-fp", "--file-prefix", type=str, required=False, default=None, help="File prefix for output to use. All the files will be prefixed with this string if provided.")
     _add_batch_sizes(optional)
     optional.add_argument('-hp', '--html-prefix', required=False, default="./", help="The html prefix to use for the html file output.")
+    _add_data_aug(optional)
     _add_device(optional)
     _add_predict_fk(optional)
 
@@ -202,6 +231,7 @@ def build_parser():
     contribs_parser = subparsers.add_parser("contribs_bw", help="Get contribution score bigwigs")
     motifs_parser = subparsers.add_parser("modisco_motifs", help="Discover motifs from contribution scores with TF-MoDISco 2.6")
     footprints_parser = subparsers.add_parser("footprints", help="Get marginal footprinting for given model and given motifs")
+    predict_parser = subparsers.add_parser("predict", help="Score one model on a fold's test split and write metrics")
 
     # Generate non-peak regions from peak-regions
     required_nonpeaks_parser, optional_nonpeaks_parser = _required_optional(nonpeaks_parser)
@@ -239,6 +269,8 @@ def build_parser():
     _add_qc_arguments(bias_parser_qc, [
         (("-bm", "--bias-model"), "Path to bias model .pt checkpoint"),
     ])
+
+    _add_predict_arguments(predict_parser)
 
     # Make prediction bigwigs
     required_preds, optional_preds = _required_optional(preds_parser)
@@ -299,6 +331,35 @@ def build_parser():
     optional_tfm.add_argument("-v", "--verbose", action="store_true", default=False)
 
     return parser
+
+
+def _add_predict_arguments(parser):
+    """Just the prediction-and-metrics stage that `qc` runs first.
+
+    `qc` also runs attribution and MoDISco, hours of work for numbers that
+    are already written once predictions exist. Scoring a model against a
+    given test split -- which is what comparing two augmentation arms needs
+    -- wants only this part, and `training/predict.py` had no CLI of its own.
+
+    Geometry is read off the checkpoint, exactly as `qc` does, so there are
+    no --inputlen/--outputlen to get wrong.
+    """
+    required, optional = _required_optional(parser)
+    required.add_argument("-m", "--model", type=str, required=True, help="Path to the .pt checkpoint to score")
+    required.add_argument("-g", "--genome", type=str, required=True, help="Genome fasta")
+    required.add_argument("-c", "--chrom-sizes", type=str, required=True, help="Chromosome sizes 2 column tab-separated file")
+    required.add_argument("-bw", "--bigwig", type=str, required=True, help="Observed bigwig to score against")
+    required.add_argument("-r", "--peaks", type=str, required=True, help="10 column bed file of peaks, or 'None' to score nonpeaks only")
+    required.add_argument("-n", "--nonpeaks", type=str, required=True, help="10 column bed file of non-peak regions, or 'None' to score peaks only")
+    required.add_argument("-fl", "--chr-fold-path", type=str, required=True, help="Fold information - dictionary with test,valid and train keys and values with corresponding chromosomes")
+    required.add_argument("-op", "--output-prefix", type=str, required=True, help="Output prefix; _predictions.h5 and _metrics.json are appended")
+    required.add_argument("-d", "--data-type", required=True, type=str, choices=['ATAC', 'DNASE'], help="assay type")
+    optional.add_argument("-bs", "--batch-size", type=int, default=64, help="batch size to use for prediction")
+    optional.add_argument("-s", "--seed", type=int, default=1234, help="seed for the profile-metrics shuffled draw")
+    add_benchmark_argument(optional)
+    _add_data_aug(optional)
+    _add_device(optional)
+    _add_predict_fk(optional)
 
 
 def read_parser(argv=None):

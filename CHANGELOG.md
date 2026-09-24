@@ -1,5 +1,49 @@
 # Changelog
 
+## `--data-aug`: the DNase reverse-complement convention, and `chrombpnet predict`
+
+- **New `--data-aug`**, on `pipeline`, `train`, `qc`, their `bias`
+  counterparts, `predict`, and `reads_to_bigwig`. The default, `standard`, is
+  exactly today's behaviour and is byte-identical across the regression sweep.
+- **The problem it exists to test.** DNase I cuts *between* two bases, so the
+  0/+1 shift records a cut at the **bond**, indexed by the bond's right-hand
+  base. Reverse-complement augmentation reverses the profile with no
+  compensating offset, which carries the bond to the right place but leaves
+  it named by the wrong base -- every reverse-complemented DNase training
+  example is misregistered by one. ATAC's +4/-4 gives an odd-width footprint
+  centred *on* a base and is unaffected.
+- The geometry is not only derived (`chrombpnet/conventions.py`) but measured:
+  the plus- and minus-strand cut PWMs shipped in
+  `chrombpnet/data/{DNASE,ATAC}.ref.motifs.txt` align with each other's
+  reverse complement at lag 0 for DNase and lag -1 for ATAC, across all nine
+  references, and the required label shift is `lag + 1` in both cases. A test
+  asserts it, so changing the deltas in `reads_to_bigwig` without changing
+  the shift now fails loudly.
+- The arms: `fr-only` / `rc-only` never / always reverse complement, in every
+  split (validation and test previously never did); `right` adds the +1
+  re-registration; `left` is its -1/0 mirror; `both-half` / `both-full`
+  deposit on both flanking bases, which is symmetric about the bond and so
+  needs no shift at all. `right`, `left` and `both-*` **raise** for ATAC
+  rather than silently doing nothing -- a no-op there would return several
+  identical numbers with nothing to say why.
+- A shifted arm reads one extra base beyond the window so the leading slot
+  holds real signal instead of a fabricated zero. Only `right` and `left` pay
+  that; every other arm stays on the original `get_cts` code path.
+- `both-half` conserves the track total exactly (`genomecov -scale 0.5`;
+  bigWig values are float32 and 0.5 is binary-exact), and `both-full` doubles
+  it. A test pins both.
+- **New `chrombpnet predict`**: the prediction-and-metrics stage that `qc`
+  runs first, without the attribution and MoDISco that follow it. Scoring a
+  model against a given test split is what comparing two augmentation arms
+  needs, and `training/predict.py` had no CLI of its own. Geometry is read
+  off the checkpoint, as `qc` does.
+- **The default is byte-identical.** Across the regression sweep 76 of 78
+  artifacts are unchanged; the two that move are the `vars(args)` dumps
+  gaining a `data_aug` key. Trained weights, bigWigs, predictions,
+  contribution scores and footprints all reproduce exactly -- so the awk
+  rewrite, the reallocation in `random_rev_comp`, the padded `get_cts` and
+  the generator threading are all inert at `standard`.
+
 ## Bias models no longer reverse-complement their cached data in place
 
 - **This changes trained bias models, and everything downstream of them.**

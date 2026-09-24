@@ -45,32 +45,74 @@ def random_crop(seqs, labels, seq_crop_width, label_crop_width, coords, rng=None
 
     return take_per_row(seqs, starts, seq_crop_width), take_per_row(labels, starts, label_crop_width), new_coords
 
-def random_rev_comp(seqs, labels, coords, frac=0.5, rng=None):
+def rc_padding(rc_shift):
+    """``(pad_left, pad_right)``: which side the extra label column sits on.
+
+    A shifted flip reads one base beyond the window on the side it shifts
+    towards. Fetching that base is what keeps the leading slot from being a
+    fabricated zero in every reverse-complemented example.
     """
-    Data augmentation: applies reverse complement randomly to a fraction of 
+    return (1 if rc_shift < 0 else 0), (1 if rc_shift > 0 else 0)
+
+
+def random_rev_comp(seqs, labels, coords, frac=0.5, rng=None, rc_shift=0,
+                    output_width=None):
+    """
+    Data augmentation: applies reverse complement randomly to a fraction of
     sequences and labels.
 
     Assumes seqs are arranged in ACGT. Then ::-1 gives TGCA which is revcomp.
 
-    NOTE: Performs in-place modification.
+    ``rc_shift`` re-registers the profile after reversal, which DNase needs
+    and ATAC does not. DNase's 0/+1 convention stores a cut at the *bond*
+    between two bases, named by that bond's right-hand base. Reversal carries
+    the bond to the right place but leaves it named by the wrong base, so the
+    whole profile has to move one position: ``+1`` is that correction, ``-1``
+    is the mirror for a -1/0 convention, and ``0`` leaves plain reversal
+    alone -- correct for ATAC, whose 9 bp stagger centres the event on a
+    base, and for the arms that deposit on both bases flanking the bond,
+    which are already symmetric about it. See :mod:`chrombpnet.conventions`.
+
+    ``labels`` is one column wider than ``output_width`` when ``rc_shift`` is
+    non-zero (see :func:`rc_padding`). The flipped rows read from the shifted
+    offset and the forward rows from the unshifted one, so both describe the
+    same genomic window and the shifted slot holds real signal.
+
+    NOTE: modifies ``seqs`` and ``coords`` in place, and returns a **new**
+    label array -- it has to, because the width changes.
     """
-    
-    pos_to_rc = _stream(rng).choice(range(seqs.shape[0]), 
+
+    pos_to_rc = _stream(rng).choice(range(seqs.shape[0]),
             size=int(seqs.shape[0]*frac),
             replace=False)
 
-    seqs[pos_to_rc] = seqs[pos_to_rc, ::-1, ::-1]
-    labels[pos_to_rc] = labels[pos_to_rc, ::-1]
-    coords[pos_to_rc,2] =  "r"
-	
-    return seqs, labels, coords
+    width = labels.shape[1] if output_width is None else int(output_width)
+    pad_left, pad_right = rc_padding(rc_shift)
+    if labels.shape[1] != width + pad_left + pad_right:
+        raise ValueError(
+            f"labels are {labels.shape[1]} wide; a shift of {rc_shift:+d} "
+            f"needs {width + pad_left + pad_right} to return {width}")
 
-def crop_revcomp_augment(seqs, labels, coords, seq_crop_width, label_crop_width, add_revcomp, rc_frac=0.5, shuffle=False, rng=None):
+    seqs[pos_to_rc] = seqs[pos_to_rc, ::-1, ::-1]
+
+    out_labels = labels[:, pad_left:pad_left + width].copy()
+    flipped = labels[:, pad_right:pad_right + width][:, ::-1]
+    out_labels[pos_to_rc] = flipped[pos_to_rc]
+
+    coords[pos_to_rc,2] =  "r"
+
+    return seqs, out_labels, coords
+
+
+def crop_revcomp_augment(seqs, labels, coords, seq_crop_width, label_crop_width, add_revcomp, rc_frac=0.5, shuffle=False, rng=None, rc_shift=0):
     """
     seqs: B x IL x 4
-    labels: B x OL
+    labels: B x OL, or B x (OL+1) when rc_shift is non-zero
 
-    Applies random crop to seqs and labels and reverse complements rc_frac. 
+    Applies random crop to seqs and labels and reverse complements rc_frac.
+    Always returns labels ``label_crop_width`` wide: the extra column that a
+    shifting convention fetches is trimmed here, on both branches, because
+    every split fetches it -- including the ones that never flip.
     """
 
     if seqs.shape[0] != labels.shape[0]:
@@ -80,9 +122,12 @@ def crop_revcomp_augment(seqs, labels, coords, seq_crop_width, label_crop_width,
     #mod_seqs, mod_labels, mod_coords = random_crop(seqs, labels, seq_crop_width, label_crop_width, coords)
     mod_seqs, mod_labels, mod_coords = seqs, labels, coords
 
-    # this modifies mod_seqs, mod_labels in-place
+    # this modifies mod_seqs in place and returns a fresh label array
     if add_revcomp:
-        mod_seqs, mod_labels, mod_coords = random_rev_comp(mod_seqs, mod_labels, mod_coords, frac=rc_frac, rng=rng)
+        mod_seqs, mod_labels, mod_coords = random_rev_comp(mod_seqs, mod_labels, mod_coords, frac=rc_frac, rng=rng, rc_shift=rc_shift, output_width=label_crop_width)
+    else:
+        pad_left, _ = rc_padding(rc_shift)
+        mod_labels = mod_labels[:, pad_left:pad_left + label_crop_width]
 
 
     if shuffle:
