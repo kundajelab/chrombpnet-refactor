@@ -53,6 +53,61 @@ def test_crop_and_reverse_complement_semantics():
     assert set(rc_coords[:, 2]) == {"r"}
 
 
+def _nonpeaks_only_generator(seqs, cts, coords, add_revcomp=True):
+    """A generator positioned on the nonpeaks-only branch, without I/O.
+
+    `__init__` reads a FASTA and a bigWig; this test is about what
+    `crop_revcomp_data` does to arrays it already holds, so it builds the
+    object directly.
+    """
+    from chrombpnet.training.data_generators.batchgen_generator import (
+        ChromBPNetBatchGenerator)
+
+    gen = object.__new__(ChromBPNetBatchGenerator)
+    gen.peak_seqs = gen.peak_cts = gen.peak_coords = None
+    gen.nonpeak_seqs, gen.nonpeak_cts, gen.nonpeak_coords = seqs, cts, coords
+    gen.negative_sampling_ratio = 1.0
+    gen.inputlen, gen.outputlen = seqs.shape[1], cts.shape[1]
+    gen.batch_size = 2
+    gen.add_revcomp = add_revcomp
+    gen.return_coords = False
+    gen.shuffle_at_epoch_start = False
+    gen.mode = "train"
+    gen.benchmark = None
+    gen.benchmark_seed = None
+    gen.epoch = 0
+    gen.rng = None
+    return gen
+
+
+def test_the_bias_path_does_not_reverse_complement_its_cache_in_place():
+    """Every bias model takes the nonpeaks-only branch.
+
+    `crop_revcomp_augment` has its internal crop commented out, so it passes
+    the caller's own arrays to `random_rev_comp`, which flips them in place.
+    While that branch aliased the cached arrays, each epoch reverse
+    complemented a fresh random half of an already partly reverse
+    complemented cache -- a random walk, not a 50/50 split -- and `coords`
+    accumulated "r" and never came back to "f".
+    """
+    seqs = dna_to_one_hot(["AACCGGTT", "ACGTACGT", "TTTTAAAA", "GGCCGGCC"])
+    cts = np.arange(4 * 6, dtype=float).reshape(4, 6)
+    coords = np.array([["chr1", str(10 * i), "f", "0"] for i in range(4)])
+
+    pristine_seqs, pristine_cts = seqs.copy(), cts.copy()
+    gen = _nonpeaks_only_generator(seqs, cts, coords)
+
+    np.random.seed(0)
+    for _ in range(5):
+        gen.crop_revcomp_data()
+        # The cache the next epoch will start from must be untouched.
+        assert np.array_equal(gen.nonpeak_seqs, pristine_seqs)
+        assert np.array_equal(gen.nonpeak_cts, pristine_cts)
+        assert set(gen.nonpeak_coords[:, 2]) == {"f"}
+        # ...and each epoch must flip exactly half, not a drifting fraction.
+        assert sum(gen.cur_coords[:, 2] == "r") == 2
+
+
 def test_prediction_hdf5_schema(tmp_path):
     prefix = str(tmp_path / "fixture")
     profile = np.full((2, 4), 0.25)

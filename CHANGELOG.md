@@ -1,5 +1,28 @@
 # Changelog
 
+## Bias models no longer reverse-complement their cached data in place
+
+- **This changes trained bias models, and everything downstream of them.**
+  `crop_revcomp_data`'s nonpeaks-only branch aliased the cached arrays rather
+  than copying them, and the augmenter flips in place. That branch is the one
+  every bias model takes, so each epoch reverse-complemented a fresh random
+  half of an array that was *already* partly reverse-complemented. The
+  intended 50/50 split became a random walk, and the `coords` strand column
+  filled up with "r" and never returned to "f".
+- Epoch 0 was always correct -- the cache is pristine the first time through
+  -- so the divergence starts at epoch 1. The regression sweep shows exactly
+  that: epoch 0's losses are identical, epoch 1's differ, and 46 of 78
+  artifacts move, all of them downstream of the bias model. The two scenarios
+  that do not depend on training (`prep splits`, `prep nonpeaks`) are
+  untouched.
+- It was survivable because plain reversal is an involution, so a
+  double-flipped example is still valid data. That stops being true with the
+  DNase reverse-complement shift, where a round trip destroys one bin, which
+  is why this is fixed first and on its own.
+- Retrain bias models to get the intended schedule. Existing ones are not
+  invalid -- they saw real sequence throughout -- but their augmentation was
+  not what the code claimed.
+
 ## `--optimize` removed; the fused-kernel forward becomes `--predict-fk`
 
 - **`--optimize` is gone.** It existed so each optimization phase could be

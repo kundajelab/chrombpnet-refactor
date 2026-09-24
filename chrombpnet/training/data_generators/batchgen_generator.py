@@ -122,9 +122,20 @@ class ChromBPNetBatchGenerator:
             self.coords = cropped_coords
 
         elif self.nonpeak_seqs is not None:
-            self.seqs = self.nonpeak_seqs
-            self.cts = self.nonpeak_cts
-            self.coords = self.nonpeak_coords
+            # Copies, not aliases. `crop_revcomp_augment` has its internal
+            # crop commented out, so it hands the caller's own arrays to
+            # `random_rev_comp`, which reverse-complements IN PLACE. The other
+            # branches are safe because `random_crop` and `np.vstack`
+            # allocate; this one is not, and it is the branch every bias model
+            # takes (`pipelines.py` sets peaks="None" for bias training).
+            # Aliasing meant the cached nonpeak arrays were permanently
+            # modified: each epoch reverse-complemented a fresh random half of
+            # an already partly reverse-complemented array, so after k epochs
+            # the split was a random walk rather than 50/50, and `coords[:,2]`
+            # accumulated "r" and never returned to "f".
+            self.seqs = self.nonpeak_seqs.copy()
+            self.cts = self.nonpeak_cts.copy()
+            self.coords = self.nonpeak_coords.copy()
         else:
             raise ValueError(
                 "Both the peak and non-peak arrays are empty; at least one "
