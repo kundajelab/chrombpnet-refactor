@@ -119,18 +119,30 @@ def test_atac_is_unchanged_and_refuses_the_bond_arms(workspace):
             _run(workspace, "ATAC", arm)
 
 
-def test_the_single_deposit_awk_is_unchanged(workspace):
-    """`standard` must feed genomecov exactly what it always did.
-
-    The multi-deposit form adds guards and renames the awk variables; the
-    single-deposit form is kept verbatim so no existing convention's bedGraph
-    input changes.
-    """
+@pytest.mark.parametrize("n_deposits", [1, 2])
+def test_every_deposit_is_guarded(n_deposits):
+    """bedtools aborts the run on a record it cannot parse, so each emitted
+    deposit is bounds-checked -- including the single-deposit form, because
+    `left` shifts plus reads to `start - 1`."""
     from chrombpnet.helpers.preprocessing.reads_to_bigwig import _awk_program
 
-    assert _awk_program(1) == (
-        'BEGIN {OFS="\\t"} '
-        '{if ($6=="+") print $1,$2+plus0,$3,$4,$5,$6; '
-        'else if ($6=="-") print $1,$2,$3+minus0,$4,$5,$6}')
-    two = _awk_program(2)
-    assert "$2+plus0 >= 0" in two and "$3+minus0 > $2" in two
+    program = _awk_program(n_deposits)
+    for i in range(n_deposits):
+        assert f"$2+plus{i} >= 0" in program
+        # >= and not >: bedtools accepts a zero-width record and emits a
+        # position for it, so a strict test would silently drop real signal.
+        assert f"$3+minus{i} >= $2" in program
+
+
+def test_a_read_at_coordinate_zero_survives_the_left_arm(workspace):
+    """`left` deposits a plus read at `start - 1`. Without the guard the
+    negative coordinate makes bedtools exit 1 and the whole run dies."""
+    import gzip
+
+    reads = ["chr1\t0\t40\tN\t1000\t+",          # would become -1
+             "chr1\t100\t140\tN\t1000\t+"]
+    with gzip.open(workspace / "reads.tagAlign.gz", "wt") as handle:
+        handle.write("\n".join(reads) + "\n")
+
+    # The out-of-bounds deposit is dropped; the in-bounds one survives.
+    assert _run(workspace, "DNASE", "left") == {99: 1.0}

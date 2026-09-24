@@ -33,27 +33,28 @@ def parse_args():
 
 
 def _awk_program(n_deposits):
-    """awk emitting one record per deposit.
+    """awk emitting one record per deposit, each guarded against bedtools.
 
     ``bedtools genomecov -bg -5`` reports one position per record, so a
     convention that puts a cut on both bases flanking the bond needs two of
-    them. The single-deposit program is kept verbatim, so every convention
-    with only one deposit -- all of them but ``both-half`` and ``both-full``
-    -- feeds genomecov byte-identical input to what this package always did.
+    them -- which is the only reason this is generated rather than a literal.
 
-    The multi-deposit form needs two guards the single one never did: the
-    left-hand deposit of a plus read can fall before the chromosome start,
-    and the left-hand deposit of a minus read can collapse onto the record's
-    own start for a 1 bp read on already-shifted input. bedtools rejects
-    either.
+    Both guards exist because bedtools **aborts the whole run** on a record
+    it cannot parse, and a shifted convention can produce one. Measured on
+    v2.31.1: ``start < 0`` and ``end < start`` each exit 1 and kill the
+    pipeline; ``end == start`` is accepted. Hence ``>=`` on both, not ``>``
+    -- a strict comparison would discard zero-width records that bedtools
+    handles today.
+
+    `left` makes this reachable rather than theoretical: its plus delta is
+    -1, so any read aligned at coordinate 0 goes negative, and 171 of the 456
+    contigs in a standard hg38 chrom.sizes start with a real base -- chrM
+    among them. Guarding can only suppress records that would otherwise abort
+    the run, so no run that previously succeeded produces different output.
     """
-    if n_deposits == 1:
-        return ('BEGIN {OFS="\\t"} '
-                '{if ($6=="+") print $1,$2+plus0,$3,$4,$5,$6; '
-                'else if ($6=="-") print $1,$2,$3+minus0,$4,$5,$6}')
     plus = " ".join(f'if ($2+plus{i} >= 0) print $1,$2+plus{i},$3,$4,$5,$6;'
                     for i in range(n_deposits))
-    minus = " ".join(f'if ($3+minus{i} > $2) print $1,$2,$3+minus{i},$4,$5,$6;'
+    minus = " ".join(f'if ($3+minus{i} >= $2) print $1,$2,$3+minus{i},$4,$5,$6;'
                      for i in range(n_deposits))
     return ('BEGIN {OFS="\\t"} '
             '{if ($6=="+") {' + plus + '} '
