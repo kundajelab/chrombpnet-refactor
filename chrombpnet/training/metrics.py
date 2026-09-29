@@ -55,6 +55,31 @@ def _normalize_rows(profiles):
     return normalized, valid
 
 
+def profile_pearsonr(true_counts, pred_probs):
+    """Pearson R across bases for each region's observed/predicted profile.
+
+    Correlate profile shape using probabilities, without smoothing or log
+    transforms. Positive rescaling of either profile leaves R unchanged.
+    Constant, zero-count, or non-finite profiles have undefined R (NaN).
+    """
+    observed, observed_ok = _normalize_rows(true_counts)
+    predicted, predicted_ok = _normalize_rows(pred_probs)
+    if observed.shape != predicted.shape:
+        raise ValueError("Observed and predicted profiles must have the same shape")
+    result = np.full(observed.shape[0], np.nan)
+    if observed.shape[1] < 2:
+        return result
+    variable = (np.ptp(observed, axis=1) > 0) & (np.ptp(predicted, axis=1) > 0)
+    observed -= observed.mean(axis=1, keepdims=True)
+    predicted -= predicted.mean(axis=1, keepdims=True)
+    denominator = (np.linalg.norm(observed, axis=1)
+                   * np.linalg.norm(predicted, axis=1))
+    valid = observed_ok & predicted_ok & variable & (denominator > 0)
+    np.divide(np.sum(observed * predicted, axis=1), denominator,
+              out=result, where=valid)
+    return np.clip(result, -1.0, 1.0)
+
+
 def _min_max_normalize(values, minimum, maximum):
     """Row-wise `get_min_max_normalized_value`, clipped to [0, 1].
 
@@ -172,5 +197,3 @@ def plot_histogram(region_jsd, shuffled_labels_jsd, output_prefix, title):
     plt.title("JSD Dist: "+title)
     plt.legend(loc='best')
     plt.savefig(output_prefix+".profile_jsd.png",format='png',dpi=300)
-
-

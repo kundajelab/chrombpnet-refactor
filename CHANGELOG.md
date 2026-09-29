@@ -1,5 +1,31 @@
 # Changelog
 
+## Profile Pearson R in the evaluation JSON, always computed
+
+- **New `metrics.profile_pearsonr`**: Pearson R across bases between the
+  observed and predicted profile of each region. Computed unconditionally --
+  there is no flag to enable it -- and recorded as `median_pearsonr` beside
+  the existing JSD figures, for every subset, by both `predict` and
+  `pred_bw`.
+- It complements JSD rather than duplicating it. Both compare profile
+  *shape*, but JSD is a divergence on normalized profiles while R is scale
+  invariant and signed, so it distinguishes "wrong shape" from
+  "anticorrelated shape". A constant, empty or non-finite profile has no
+  defined R and reports `null` rather than 0.
+- **The HTML and PDF tables are unchanged**, by design: the reports already
+  carry counts Pearson R, and a test asserts that injecting
+  `median_pearsonr` leaves all three rendered reports byte-identical. The
+  figure is in the JSON for programmatic collation.
+- Also pins the behaviour `--data-aug both-half` depends on: its 0.5-per-base
+  deposits make counts non-integral, and the multinomial NLL's coefficient
+  term is the only place integrality could matter. That term does not depend
+  on the logits, so it shifts the reported loss without touching gradients,
+  and the data term is linear in the counts -- `grad(half)` is exactly
+  `0.5 * grad(full)`, same direction. `both-half` and `both-full` therefore
+  optimize the same objective, which is what makes them each other's
+  control. A test asserts the gradient identity and that every profile
+  metric is scale invariant.
+
 ## `--data-aug`: the DNase reverse-complement convention, and `chrombpnet predict`
 
 - **New `--data-aug`**, on `pipeline`, `train`, `qc`, their `bias`

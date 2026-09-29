@@ -52,6 +52,10 @@ def compare_with_observed(bigwig, regions_df, regions, outputlen, pred_logits, p
 	metrics_dictionary["profile_metrics"]["regions"] = {}
 	metrics_dictionary["profile_metrics"]["regions"]["median_jsd"] = np.nanmedian(jsd_pw)
 	metrics_dictionary["profile_metrics"]["regions"]["median_norm_jsd"] = np.nanmedian(jsd_norm)
+	profile_cor = metrics.profile_pearsonr(true_counts, profile_probs_predictions)
+	valid_cor = profile_cor[np.isfinite(profile_cor)]
+	metrics_dictionary["profile_metrics"]["regions"]["median_pearsonr"] = (
+		float(np.median(valid_cor)) if valid_cor.size else None)
 	
 	metrics.plot_histogram(jsd_pw, jsd_rnd, output_prefix, "All regions provided")
 	

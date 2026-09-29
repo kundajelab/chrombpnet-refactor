@@ -90,7 +90,7 @@ def metrics_table(data, key, index_label, decimals=REPORT_DECIMALS):
 
     Flattens the nested dict, labels the single row, and drops the columns the
     reports do not show: the combined peaks_and_nonpeaks figures and the
-    Spearman correlations.
+    Spearman correlations. Profile Pearson R is reported only in JSON.
 
     Values are formatted to exactly ``decimals`` places rather than merely
     rounded, so a score of 9 prints as 9.0000 and lines up with its
@@ -110,6 +110,9 @@ def metrics_table(data, key, index_label, decimals=REPORT_DECIMALS):
     frame.index = [index_label]
     for pattern in ("peaks_and_nonpeaks", "spearmanr"):
         frame = frame[frame.columns.drop(list(frame.filter(regex=pattern)))]
+    if key == "profile_metrics":
+        frame = frame.drop(columns=[c for c in frame.columns
+                                    if c.endswith(".median_pearsonr")])
 
     def show(value):
         if isinstance(value, (int, float, np.floating, np.integer)) and np.isfinite(value):

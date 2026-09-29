@@ -307,3 +307,70 @@ def test_an_unshifted_arm_fetches_exactly_the_old_window(tmp_path):
         rc_shift=0, rc_frac=0.5)
     assert generator.label_pad == (0, 0)
     assert generator.peak_cts.shape == (1, 20)
+
+
+# -- Half-integer counts, which the both-half arm produces ------------------
+
+def test_half_integer_counts_train_on_the_same_objective():
+    """`both-half` deposits 0.5 per base, so counts stop being integers.
+
+    The multinomial NLL's coefficient term `lgamma(S+1) - sum lgamma(c+1)` is
+    the only place integrality could matter, and it does not depend on the
+    logits -- so it is a constant offset that shifts the *reported* loss
+    without touching gradients. The data term is linear in the counts, so
+    halving them halves the gradient and leaves its direction identical.
+
+    That is why `both-half` and `both-full` converge to the same place: they
+    optimize the same objective, and Adam normalizes per parameter, so the
+    factor of two is largely absorbed. If this ever stops holding, the two
+    arms stop being each other's control.
+    """
+    import torch
+
+    from chrombpnet.training.utils.losses import multinomial_nll
+
+    torch.manual_seed(1)
+    logits = torch.randn(3, 24)
+    full = torch.poisson(torch.full((3, 24), 4.0))      # integers
+    half = full / 2                                     # half-integers
+
+    grads = []
+    for counts in (full, half):
+        leaf = logits.clone().requires_grad_(True)
+        loss = multinomial_nll(counts, leaf)
+        assert torch.isfinite(loss), "half-integer counts must not produce NaN"
+        loss.backward()
+        grads.append(leaf.grad.clone())
+
+    assert torch.isfinite(grads[1]).all()
+    torch.testing.assert_close(grads[1], 0.5 * grads[0], atol=1e-6, rtol=0)
+
+
+def test_half_integer_counts_give_defined_profile_metrics():
+    """The metrics normalize to probabilities, so 0.5 counts are not special.
+
+    Guards against a future change that reintroduces an integer assumption
+    (a cast, or `np.random.multinomial`, which requires an integer n).
+    """
+    import numpy as np
+
+    from chrombpnet.training.metrics import profile_metrics, profile_pearsonr
+
+    rng = np.random.default_rng(3)
+    integer = rng.poisson(6, size=(12, 40)).astype(float)
+    halved = integer / 2
+
+    probabilities = rng.dirichlet(np.ones(40), size=12)
+
+    # Scaling a profile leaves its shape, hence every shape metric, unchanged.
+    for index in (2, 3, 4, 5):
+        np.testing.assert_allclose(
+            profile_metrics(halved, probabilities)[index],
+            profile_metrics(integer, probabilities)[index],
+            atol=1e-12, equal_nan=True)
+    np.testing.assert_allclose(profile_pearsonr(halved, probabilities),
+                               profile_pearsonr(integer, probabilities),
+                               atol=1e-12, equal_nan=True)
+
+    # And the counts target differs only by the log of that scale factor.
+    assert np.all(np.isfinite(np.log1p(halved.sum(axis=1))))

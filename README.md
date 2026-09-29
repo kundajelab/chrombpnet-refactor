@@ -70,6 +70,28 @@ chrombpnet pipeline \
 Use `chrombpnet train` instead of `pipeline` to stop after training and its
 report, skipping evaluation, contribution scoring and motif discovery.
 
+The main `pipeline` evaluation also writes
+`profile_metrics.peaks.median_pearsonr` in
+`evaluation/chrombpnet_metrics.json` (with the optional filename prefix).
+This is the median Pearson R across test peaks, calculated across bases within
+each peak using observed counts and predicted profile probabilities, without
+smoothing or log transforms. Constant or non-finite profiles have undefined R
+and are excluded; the value is `null` if no peaks have a defined correlation.
+The same metric is included under each evaluated subset in the JSON outputs of
+standalone `qc` and `predict`, bias evaluation (including the input bias check),
+and `pred_bw` with ground truth. The outputs are:
+
+- ChromBPNet `pipeline`/`qc`: `evaluation/[prefix_]chrombpnet_metrics.json`.
+- Bias `pipeline`/`qc`: `evaluation/[prefix_]bias_metrics.json`; the main
+  pipeline's input bias check uses unprefixed `evaluation/bias_metrics.json`.
+- Standalone `predict`: `<output-prefix>_metrics.json`.
+- `pred_bw` with `--bigwig`: `<output-prefix>_<model>_metrics.json`, where
+  `<model>` is `chrombpnet`, `chrombpnet_nobias`, or `bias`, for supplied models.
+  This uses `profile_metrics.regions.median_pearsonr` across evaluated regions.
+
+HTML/PDF reports continue to show their existing metrics without profile
+Pearson R.
+
 #### Input format
 
 - `-ibam` / `-ifrag` / `-itag`: filtered reads, as BAM, fragment file or

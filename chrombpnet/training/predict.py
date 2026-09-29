@@ -54,7 +54,8 @@ def predict_on_batch_wrapper(model,test_generator):
 
 def _record_subset_metrics(metrics_dictionary, name, suffix, label, mask,
                            true_counts_sum, counts_sum_predictions,
-                           jsd_pw, jsd_norm, jsd_rnd, output_prefix):
+                           jsd_pw, jsd_norm, jsd_rnd, output_prefix,
+                           profile_cor):
     """Score one subset of the test set and add it to the metrics dictionary.
 
     Replaces three copies of the same twelve lines, which differed only in the
@@ -74,6 +75,10 @@ def _record_subset_metrics(metrics_dictionary, name, suffix, label, mask,
         "median_jsd": np.nanmedian(jsd_pw[mask]),
         "median_norm_jsd": np.nanmedian(jsd_norm[mask]),
     }
+    valid_cor = profile_cor[mask]
+    valid_cor = valid_cor[np.isfinite(valid_cor)]
+    metrics_dictionary["profile_metrics"][name]["median_pearsonr"] = (
+        float(np.median(valid_cor)) if valid_cor.size else None)
     metrics.plot_histogram(jsd_pw[mask], jsd_rnd[mask],
                            output_prefix + suffix, label)
 
@@ -95,6 +100,7 @@ def main(args):
 
     _, _, jsd_pw, jsd_norm, jsd_rnd, _, _, _ = metrics.profile_metrics(
         true_counts, profile_probs_predictions)
+    profile_cor = metrics.profile_pearsonr(true_counts, profile_probs_predictions)
 
     # Same sentinel test the generator uses. These used to compare
     # case-sensitively against "None" while initializers lowercased, so a
@@ -120,7 +126,7 @@ def main(args):
         _record_subset_metrics(
             metrics_dictionary, name, suffix, label, mask,
             true_counts_sum, counts_sum_predictions,
-            jsd_pw, jsd_norm, jsd_rnd, args.output_prefix)
+            jsd_pw, jsd_norm, jsd_rnd, args.output_prefix, profile_cor)
 
     with open(args.output_prefix + '_metrics.json', 'w') as fp:
         json.dump(metrics_dictionary, fp, indent=4)
