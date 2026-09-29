@@ -1622,6 +1622,16 @@
     "required": false,
     "type": "None"
   },
+  "pipeline ignore_bias_flag": {
+    "choices": null,
+    "default": "False",
+    "nargs": "0",
+    "options": [
+      "--ignore-bias-flag"
+    ],
+    "required": false,
+    "type": "None"
+  },
   "pipeline input_bam_file": {
     "choices": null,
     "default": "None",
@@ -2787,6 +2797,16 @@
     "options": [
       "--html-prefix",
       "-hp"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "train ignore_bias_flag": {
+    "choices": null,
+    "default": "False",
+    "nargs": "0",
+    "options": [
+      "--ignore-bias-flag"
     ],
     "required": false,
     "type": "None"

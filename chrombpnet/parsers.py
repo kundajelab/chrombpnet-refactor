@@ -119,6 +119,27 @@ def _add_data_aug(optional):
              "shift. right/left/both-* are DNASE-only and raise for ATAC.")
 
 
+def _add_ignore_bias_flag(optional):
+    """Register ``--ignore-bias-flag`` on the commands that check it.
+
+    Only ``pipeline`` and ``train`` reach
+    ``stages.check_bias_model_quality``; ``bias pipeline`` trains a bias
+    model but never gates on its peak-count correlation, so offering the
+    flag there would imply a check that does not happen.
+    """
+    optional.add_argument(
+        "--ignore-bias-flag", action="store_true",
+        help="Downgrade the bias-model quality check from an error to a "
+             "warning. By default a bias model whose predicted counts "
+             "anti-correlate with observed peak counts (Pearson r <= -0.5) "
+             "stops the run, because subtracting it makes the accessibility "
+             "model worse. Use this only when the check is known to be "
+             "measuring the data rather than the model -- e.g. a sample "
+             "whose peak and background counts overlap so much that no "
+             "threshold can select a representative nonpeak set. The bias "
+             "correction in the resulting model is not trustworthy.")
+
+
 def _add_device(optional):
     optional.add_argument('--device', default=None, help="PyTorch device (default: CUDA when available)")
 
@@ -181,6 +202,7 @@ def _add_chrombpnet_training_arguments(parser):
     _add_genomics_inputs(required)
     _add_training_options(optional)
     add_benchmark_argument(optional)
+    _add_ignore_bias_flag(optional)
     required.add_argument("-b", "--bias-model-path", type=str, required=True, help="Path for a pretrained bias model .pt checkpoint")
     optional.add_argument("-sr", "--negative-sampling-ratio", type=float, default=0.1, help="Ratio of negatives to positive samples per epoch")
     _add_architecture_options(optional, filters=512, dilations=8, jitter=500)

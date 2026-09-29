@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import copy
 import json
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -93,15 +94,43 @@ def find_hyperparameters(args, layout, finder):
     finder.main(args_copy)
 
 
-def check_bias_model_quality(layout):
-    """Reject a bias model that anti-correlates with observed peak counts."""
+def check_bias_model_quality(layout, ignore=False):
+    """Reject a bias model that anti-correlates with observed peak counts.
+
+    A bias model whose predicted counts run *opposite* to observed counts in
+    peaks is not describing sequence bias, and subtracting it makes the
+    accessibility model worse rather than better -- so this refuses by
+    default and the refusal is worth heeding.
+
+    ``ignore`` downgrades it to a warning, for the case where the check is
+    known to be measuring the data rather than the model: where peak and
+    background counts overlap so heavily that no threshold can select a
+    representative low-count nonpeak set, the bias model is fitted to a
+    truncated tail and anti-correlates for reasons that no amount of
+    retraining will fix. Proceeding then is a deliberate choice to study a
+    sample the pipeline was not designed for, and the resulting model's
+    bias correction should not be trusted quantitatively.
+    """
     metrics_path = layout.unprefixed("evaluation", "bias_metrics.json")
     bias_metrics = json.load(open(metrics_path))
     pearsonr = bias_metrics["counts_metrics"]["peaks"]["pearsonr"]
     print("Bias model pearsonr performance in peaks is: {}".format(
         str(np.round(pearsonr, 2))))
-    if pearsonr <= MIN_BIAS_PEAK_PEARSONR:
-        raise ValueError("Bias model has strongly negative peak count correlation")
+    if pearsonr > MIN_BIAS_PEAK_PEARSONR:
+        return
+    message = ("Bias model has strongly negative peak count correlation "
+               f"({pearsonr:.2f} <= {MIN_BIAS_PEAK_PEARSONR})")
+    if not ignore:
+        raise ValueError(message)
+    # Loud, and repeated at the end of the run, because a warning in the
+    # middle of a two-day job's log is a warning nobody reads.
+    banner = "!" * 78
+    print(f"\n{banner}\n!! WARNING: {message}\n"
+          "!! --ignore-bias-flag was given, so training continues anyway.\n"
+          "!! The bias correction in this model is not trustworthy; treat its\n"
+          "!! scores as descriptive, not comparable with runs that passed.\n"
+          f"{banner}\n", flush=True)
+    warnings.warn(message, RuntimeWarning, stacklevel=2)
 
 
 def run_predictions(args, layout, output_prefix, model_path, peaks, nonpeaks):

@@ -1,5 +1,27 @@
 # Changelog
 
+## `--ignore-bias-flag`: proceed past a failing bias-model check
+
+- **New `--ignore-bias-flag`** on `pipeline` and `train`, downgrading
+  `stages.check_bias_model_quality` from a `ValueError` to a warning.
+- The check is worth keeping strict by default: a bias model whose predicted
+  counts *anti*-correlate with observed peak counts is not describing
+  sequence bias, and subtracting it makes the accessibility model worse.
+- It is worth being able to override because the check cannot distinguish a
+  bad model from bad data. Where peak and background counts overlap heavily
+  -- primary tissue with a hot, diffuse background -- the count threshold
+  falls below the nonpeak median, the bias model is fitted to a truncated
+  left tail, and it anti-correlates for reasons no amount of retraining
+  fixes. Proceeding is then a deliberate choice to study a sample the
+  pipeline was not designed for.
+- Opting out is audible, not silent: a 78-column banner on stdout plus a
+  `RuntimeWarning`, and the message now carries the measured r and the
+  threshold so the log records how bad it was.
+- Only `pipeline` and `train` get the flag. `bias pipeline` trains a bias
+  model but never gates on its peak-count correlation -- that check lives in
+  the ChromBPNet pipeline, on the model it is handed -- so offering the flag
+  there would imply a check that does not happen.
+
 ## Profile Pearson R in the evaluation JSON, always computed
 
 - **New `metrics.profile_pearsonr`**: Pearson R across bases between the
