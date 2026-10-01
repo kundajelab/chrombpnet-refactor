@@ -163,6 +163,20 @@
     "required": false,
     "type": "int"
   },
+  "bias pipeline engine": {
+    "choices": [
+      "jax",
+      "pytorch",
+      "tensorflow"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--engine"
+    ],
+    "required": false,
+    "type": "None"
+  },
   "bias pipeline epochs": {
     "choices": null,
     "default": "50",
@@ -521,6 +535,20 @@
     "required": false,
     "type": "None"
   },
+  "bias qc engine": {
+    "choices": [
+      "jax",
+      "pytorch",
+      "tensorflow"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--engine"
+    ],
+    "required": false,
+    "type": "None"
+  },
   "bias qc file_prefix": {
     "choices": null,
     "default": "None",
@@ -771,6 +799,20 @@
     ],
     "required": false,
     "type": "int"
+  },
+  "bias train engine": {
+    "choices": [
+      "jax",
+      "pytorch",
+      "tensorflow"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--engine"
+    ],
+    "required": false,
+    "type": "None"
   },
   "bias train epochs": {
     "choices": null,
@@ -1075,6 +1117,20 @@
     "required": false,
     "type": "None"
   },
+  "contribs_bw engine": {
+    "choices": [
+      "jax",
+      "pytorch",
+      "tensorflow"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--engine"
+    ],
+    "required": false,
+    "type": "None"
+  },
   "contribs_bw genome": {
     "choices": null,
     "default": "None",
@@ -1225,6 +1281,20 @@
     "nargs": "None",
     "options": [
       "--device"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "footprints engine": {
+    "choices": [
+      "jax",
+      "pytorch",
+      "tensorflow"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--engine"
     ],
     "required": false,
     "type": "None"
@@ -1555,6 +1625,20 @@
     ],
     "required": false,
     "type": "int"
+  },
+  "pipeline engine": {
+    "choices": [
+      "jax",
+      "pytorch",
+      "tensorflow"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--engine"
+    ],
+    "required": false,
+    "type": "None"
   },
   "pipeline epochs": {
     "choices": null,
@@ -1925,6 +2009,20 @@
     "required": false,
     "type": "None"
   },
+  "pred_bw engine": {
+    "choices": [
+      "jax",
+      "pytorch",
+      "tensorflow"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--engine"
+    ],
+    "required": false,
+    "type": "None"
+  },
   "pred_bw genome": {
     "choices": null,
     "default": "None",
@@ -2098,6 +2196,20 @@
     "nargs": "None",
     "options": [
       "--device"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "predict engine": {
+    "choices": [
+      "jax",
+      "pytorch",
+      "tensorflow"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--engine"
     ],
     "required": false,
     "type": "None"
@@ -2484,6 +2596,20 @@
     "required": false,
     "type": "None"
   },
+  "qc engine": {
+    "choices": [
+      "jax",
+      "pytorch",
+      "tensorflow"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--engine"
+    ],
+    "required": false,
+    "type": "None"
+  },
   "qc file_prefix": {
     "choices": null,
     "default": "None",
@@ -2734,6 +2860,20 @@
     ],
     "required": false,
     "type": "int"
+  },
+  "train engine": {
+    "choices": [
+      "jax",
+      "pytorch",
+      "tensorflow"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--engine"
+    ],
+    "required": false,
+    "type": "None"
   },
   "train epochs": {
     "choices": null,

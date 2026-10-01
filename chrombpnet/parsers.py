@@ -1,6 +1,6 @@
 import argparse
 
-from chrombpnet import conventions
+from chrombpnet import conventions, engines
 from chrombpnet.training.utils.benchmark_utils import add_benchmark_argument
 from argparse import RawTextHelpFormatter
 
@@ -151,7 +151,30 @@ def _add_ignore_bias_flag(optional):
 
 
 def _add_device(optional):
-    optional.add_argument('--device', default=None, help="PyTorch device (default: CUDA when available)")
+    """``--device``, and ``--engine`` with it: every command that places a
+    model on a device is a command that needs an engine, and no other is."""
+    optional.add_argument('--device', default=None, help="Device to run the model on: cpu, cuda or cuda:N (default: a GPU when available)")
+    _add_engine(optional)
+
+
+def _add_engine(optional):
+    """Register ``--engine`` on a command that builds or loads a model.
+
+    The default is ``None``, meaning *absent*: the engine is then taken from
+    the input models' checkpoint suffixes, else ``pytorch``
+    (:func:`chrombpnet.engines.resolve_name`). An absent flag is also removed
+    from the namespace before any stage sees it, so ``<prefix>.args.json``
+    records ``engine`` only when it was typed.
+    """
+    optional.add_argument(
+        "--engine", default=None, choices=list(engines.ENGINE_NAMES),
+        help="Deep-learning engine. pytorch (the default): this package's "
+             "PyTorch implementation. tensorflow: the original Keras "
+             "implementation, byte-identical to it given the same inputs. "
+             "jax: a placeholder, not implemented yet. When omitted, the "
+             "input models' suffixes decide (.pt PyTorch, .h5 TensorFlow), "
+             "else pytorch. Each engine runs in its own conda environment, "
+             "envs/chrombpnet-<engine>.yml.")
 
 
 def _add_predict_fk(optional):
@@ -213,7 +236,7 @@ def _add_chrombpnet_training_arguments(parser):
     _add_training_options(optional)
     add_benchmark_argument(optional)
     _add_ignore_bias_flag(optional)
-    required.add_argument("-b", "--bias-model-path", type=str, required=True, help="Path for a pretrained bias model .pt checkpoint")
+    required.add_argument("-b", "--bias-model-path", type=str, required=True, help="Path for a pretrained bias model checkpoint (.pt PyTorch, .h5 TensorFlow)")
     optional.add_argument("-sr", "--negative-sampling-ratio", type=float, default=0.1, help="Ratio of negatives to positive samples per epoch")
     _add_architecture_options(optional, filters=512, dilations=8, jitter=500)
     _add_batch_sizes(optional)
@@ -291,24 +314,24 @@ def build_parser():
     _add_chrombpnet_training_arguments(pipeline_parser)
 
     _add_qc_arguments(qc_parser, [
-        (("-cm", "--chrombpnet-model"), "Path to combined ChromBPNet .pt checkpoint"),
-        (("-cmb", "--chrombpnet-model-nb"), "Path to no-bias ChromBPNet .pt checkpoint"),
+        (("-cm", "--chrombpnet-model"), "Path to combined ChromBPNet checkpoint (.pt PyTorch, .h5 TensorFlow)"),
+        (("-cmb", "--chrombpnet-model-nb"), "Path to no-bias ChromBPNet checkpoint (.pt PyTorch, .h5 TensorFlow)"),
     ])
 
     _add_bias_training_arguments(bias_parser)
     _add_bias_training_arguments(bias_parser_train)
 
     _add_qc_arguments(bias_parser_qc, [
-        (("-bm", "--bias-model"), "Path to bias model .pt checkpoint"),
+        (("-bm", "--bias-model"), "Path to bias model checkpoint (.pt PyTorch, .h5 TensorFlow)"),
     ])
 
     _add_predict_arguments(predict_parser)
 
     # Make prediction bigwigs
     required_preds, optional_preds = _required_optional(preds_parser)
-    required_preds.add_argument("-bm", "--bias-model", type=str, required=False, help="Path to bias model .pt checkpoint (at least one model is required)")
-    required_preds.add_argument("-cm", "--chrombpnet-model", type=str, required=False, help="Path to combined ChromBPNet .pt checkpoint")
-    required_preds.add_argument("-cmb", "--chrombpnet-model-nb", type=str, required=False, help="Path to no-bias ChromBPNet .pt checkpoint")
+    required_preds.add_argument("-bm", "--bias-model", type=str, required=False, help="Path to bias model checkpoint, .pt or .h5 (at least one model is required)")
+    required_preds.add_argument("-cm", "--chrombpnet-model", type=str, required=False, help="Path to combined ChromBPNet checkpoint (.pt PyTorch, .h5 TensorFlow)")
+    required_preds.add_argument("-cmb", "--chrombpnet-model-nb", type=str, required=False, help="Path to no-bias ChromBPNet checkpoint (.pt PyTorch, .h5 TensorFlow)")
     required_preds.add_argument("-r", "--regions", type=str, required=True, help="10 column bed file of regions for prediction")
     required_preds.add_argument("-g", "--genome", type=str, required=True, help="Genome fasta")
     required_preds.add_argument("-c", "--chrom-sizes", type=str, required=True, help="Chromosome sizes 2 column tab-separated file")
@@ -323,7 +346,7 @@ def build_parser():
 
     # Make contribution score bigwigs
     required_contribs, optional_contribs = _required_optional(contribs_parser)
-    required_contribs.add_argument("-m", "--model-h5", type=str, required=True, help="Path to model .pt checkpoint (legacy option name)")
+    required_contribs.add_argument("-m", "--model-h5", type=str, required=True, help="Path to model checkpoint, .pt PyTorch or .h5 TensorFlow (legacy option name)")
     required_contribs.add_argument("-r", "--regions", type=str, required=True, help="10 column bed file of regions for contribution score predictions")
     required_contribs.add_argument("-g", "--genome", type=str, required=True, help="Genome fasta")
     required_contribs.add_argument("-c", "--chrom-sizes", type=str, required=True, help="Chromosome sizes 2 column tab-separated file")
@@ -341,7 +364,7 @@ def build_parser():
 
     # Get marginal footprints
     required_ftps, optional_ftps = _required_optional(footprints_parser)
-    required_ftps.add_argument("-m", "--model-h5", type=str, required=True, help="Path to model .pt checkpoint (legacy option name)")
+    required_ftps.add_argument("-m", "--model-h5", type=str, required=True, help="Path to model checkpoint, .pt PyTorch or .h5 TensorFlow (legacy option name)")
     required_ftps.add_argument("-r", "--regions", type=str, required=True, help="10 column bed file of non-peak regions")
     required_ftps.add_argument("-g", "--genome", type=str, required=True, help="Genome fasta")
     required_ftps.add_argument("-fl", "--chr-fold-path", type=str, required=True, help="Fold information - dictionary with test,valid and train keys and values with corresponding chromosomes")
@@ -377,7 +400,7 @@ def _add_predict_arguments(parser):
     no --inputlen/--outputlen to get wrong.
     """
     required, optional = _required_optional(parser)
-    required.add_argument("-m", "--model", type=str, required=True, help="Path to the .pt checkpoint to score")
+    required.add_argument("-m", "--model", type=str, required=True, help="Path to the checkpoint to score (.pt PyTorch, .h5 TensorFlow)")
     required.add_argument("-g", "--genome", type=str, required=True, help="Genome fasta")
     required.add_argument("-c", "--chrom-sizes", type=str, required=True, help="Chromosome sizes 2 column tab-separated file")
     required.add_argument("-bw", "--bigwig", type=str, required=True, help="Observed bigwig to score against")

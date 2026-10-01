@@ -1,5 +1,28 @@
 # Changelog
 
+## `--engine`: choose the deep-learning framework
+
+- **New `--engine {pytorch,tensorflow,jax}`** on every command that builds or
+  loads a model: `pipeline`, `train`, `qc`, `bias pipeline|train|qc`,
+  `predict`, `pred_bw`, `contribs_bw` and `footprints`. `prep` and
+  `modisco_motifs` never touch a model and do not take it.
+- **Omitted, it is inferred** from the input models' checkpoint suffixes
+  (`.pt` PyTorch, `.h5`/`.hdf5` TensorFlow), else `pytorch`. An explicit
+  `--engine` must agree with every input model, and input models from two
+  engines are refused.
+- `--predict-fk` and `--benchmark pytorch` are PyTorch-only and are refused
+  for any other engine, whether it was typed or inferred.
+- **No PyTorch artifact moves.** An omitted flag is removed from the argument
+  namespace before any stage sees it, so `<prefix>.args.json` is
+  byte-identical to before and records `engine` only when it was typed. The
+  regression harness reports all 150 artifacts identical.
+  `tests/cli_surface.json` gains exactly the ten `engine` entries.
+- `jax` is a placeholder. It is accepted, and it fails before any output
+  directory is created.
+- The engine registry and interface live in `chrombpnet/engines/`; the
+  PyTorch implementation moved to `chrombpnet/engines/pytorch/`, with the
+  old module paths kept as aliases.
+
 ## `--data-aug` defaults to `both-half` on DNASE
 
 - **Behaviour change.** An omitted `--data-aug` now selects `both-half` for

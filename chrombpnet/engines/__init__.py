@@ -27,18 +27,23 @@ import os
 from chrombpnet.engines.base import Engine, EngineNotImplemented, EngineUnavailable
 
 #: Every engine name, in the order ``--engine`` lists them.
-ENGINE_NAMES = ("pytorch",)
+ENGINE_NAMES = ("pytorch", "tensorflow", "jax")
 
 #: What an omitted ``--engine`` means when no model path says otherwise.
 DEFAULT_ENGINE = "pytorch"
 
 _MODULES = {
     "pytorch": "chrombpnet.engines.pytorch",
+    "tensorflow": "chrombpnet.engines.tensorflow",
+    "jax": "chrombpnet.engines.jax",
 }
 
-#: Checkpoint suffix -> engine that writes it.
+#: Checkpoint suffix -> engine that writes it. JAX has no checkpoint format
+#: yet, so nothing maps to it.
 _SUFFIX_TO_ENGINE = {
     ".pt": "pytorch",
+    ".h5": "tensorflow",
+    ".hdf5": "tensorflow",
 }
 
 #: Argument-namespace attributes that hold an input model path. Their suffixes
@@ -150,11 +155,26 @@ def configure_from_args(args, require=True):
     were before the flag existed; an explicit one stays and is recorded.
     """
     engine = configure(resolve_name(args))
+    _check_combinations(engine, args)
     if require:
         engine.require()
     if hasattr(args, "engine") and args.engine is None:
         delattr(args, "engine")
     return engine
+
+
+def _check_combinations(engine, args):
+    """Reject flags that only mean something for the PyTorch engine."""
+    if engine.name == "pytorch":
+        return
+    if getattr(args, "predict_fk", False):
+        raise ValueError(
+            f"--predict-fk runs PyTorch's fused Triton forward and cannot be "
+            f"combined with the {engine.name} engine")
+    if getattr(args, "benchmark", None) == "pytorch":
+        raise ValueError(
+            f"--benchmark pytorch opts out of PyTorch's TensorFlow-parity "
+            f"settings and has no meaning for the {engine.name} engine")
 
 
 def load_model_wrapper(path, device=None, *, announce=True, summary=True):

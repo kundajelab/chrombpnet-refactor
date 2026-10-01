@@ -25,8 +25,12 @@ def main():
 	fused_kernels.configure_from_args(args)
 	# Likewise the deep-learning engine, and before any output directory is
 	# created, so an engine this environment cannot import fails cleanly.
-	engines.configure_from_args(
-		args, require=args.cmd not in MODEL_FREE_COMMANDS)
+	try:
+		engines.configure_from_args(
+			args, require=args.cmd not in MODEL_FREE_COMMANDS)
+	except (ValueError, engines.EngineUnavailable,
+	        engines.EngineNotImplemented) as error:
+		raise SystemExit(f"chrombpnet: error: {error}")
 	
 	if args.cmd == "pipeline" or args.cmd == "train":
 		RunLayout.from_args(args).create_training_dirs()
