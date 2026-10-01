@@ -1,5 +1,28 @@
 # Changelog
 
+## TensorFlow engine: restore the best validation epoch when training runs out of epochs
+
+- **Behaviour change, TensorFlow engine only.** The engine now saves the best
+  validation epoch's weights in every case. The original saved the *last*
+  epoch's whenever a run used all of `--epochs`:
+  `EarlyStopping(restore_best_weights=True)` restores only when it actually
+  stops training, and the final `model.save` then overwrote the best
+  checkpoint that `ModelCheckpoint(save_best_only=True)` had written.
+- After `fit`, the engine reloads that checkpoint's weights before the final
+  save. When early stopping fired these are exactly the weights it had
+  restored, so those runs are byte-identical to before; the optimizer state
+  saved alongside is the final epoch's, as it always was. The no-bias model
+  is now taken from the best epoch too.
+- Gated by the `restore_best_checkpoint` benchmark control, which is on at
+  every level the TensorFlow engine accepts. This is the behaviour the
+  PyTorch engine already has, and what `save_best_only` and
+  `restore_best_weights` together intend.
+- `tests/parity/tf_engine.py` now checks this directly. Its out-of-epochs
+  case is chosen so that the best epoch is not the last, and the engine's
+  weights and no-bias model must equal the original's best-epoch checkpoint,
+  which the reference worker snapshots before the original overwrites it.
+  The early-stopping cases are still compared whole.
+
 ## TensorFlow engine: `--seed` now seeds the bias-factorized model's tower
 
 - **Behaviour change, TensorFlow engine only.** The engine now seeds NumPy,

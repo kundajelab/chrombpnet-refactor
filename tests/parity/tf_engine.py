@@ -89,7 +89,9 @@ TRACKABLES = [
 TRAINING_CASES = (
     ("bias_A", "bias", EPOCHS, 1, 0.01),
     ("chrombpnet_A", "chrombpnet", EPOCHS, 1, 0.1),
-    ("chrombpnet_B", "chrombpnet", 3, 10, 0.001),
+    # Runs out of epochs with its best validation epoch before the last, so
+    # restoring the best epoch is observable.
+    ("chrombpnet_B", "chrombpnet", 5, 10, 0.1),
 )
 
 #: Environment both sides run in. Thread and determinism pins are the
@@ -579,10 +581,16 @@ class Report:
         differing = sorted(k for k in set(left) | set(right) if left.get(k) != right.get(k))
         self.check(label, not differing, "differs at " + ", ".join(differing[:4]))
 
-    def weights(self, label, a, b, root_a="model_weights", root_b="model_weights"):
-        left, right = _weights_by_layer(a, root_a), _weights_by_layer(b, root_b)
+    def weights(self, label, a, b):
+        left, right = _weights_by_layer(a), _weights_by_layer(b)
         differing = sorted(k for k in set(left) | set(right) if left.get(k) != right.get(k))
         self.check(label, bool(left) and not differing, "differs at " + ", ".join(differing[:4]))
+
+    def weights_within(self, label, part, whole):
+        """Every weight in ``part`` equals the same-named weight in ``whole``."""
+        small, big = _weights_by_layer(part), _weights_by_layer(whole)
+        bad = sorted(k for k in small if small[k] != big.get(k))
+        self.check(label, bool(small) and not bad, "differs at " + ", ".join(bad[:4]))
 
     @property
     def failed(self):
@@ -591,6 +599,14 @@ class Report:
 
 def _epochs_run(log_path):
     return len(Path(log_path).read_text().strip().splitlines()) - 1
+
+
+def _best_and_last_epoch(log_path):
+    """(index of the lowest val_loss, index of the last epoch) in a CSVLogger log."""
+    lines = Path(log_path).read_text().strip().splitlines()
+    column = lines[0].split(",").index("val_loss")
+    losses = [float(line.split(",")[column]) for line in lines[1:]]
+    return int(np.argmin(losses)), len(losses) - 1
 
 
 def compare(workdir, report):
@@ -615,7 +631,11 @@ def compare(workdir, report):
     for key in sorted(build_ref.files):
         report.arrays("build: " + key, build_ref[key], build_eng[key])
 
-    # 2. Training.
+    # 2. Training. Where early stopping fires (case A) everything is
+    # identical. Where training runs out of epochs (case B) the engine
+    # restores the best validation epoch and the original saved the last one,
+    # so the engine's weights must equal the original's best-epoch checkpoint
+    # instead -- which the reference worker snapshots before overwriting it.
     for case, kind, epochs, early_stop, _ in TRAINING_CASES:
         prefix = "chrombpnet" if kind == "chrombpnet" else "bias"
         r, e = os.path.join(ref, case, prefix), os.path.join(eng, case, prefix)
@@ -626,9 +646,21 @@ def compare(workdir, report):
             case, "fired" if expect else "did not fire", ran, epochs), stopped_early == expect)
         report.files("train {}: .log".format(case), r + ".log", e + ".log")
         report.files("train {}: .log.batch".format(case), r + ".log.batch", e + ".log.batch")
-        report.h5("train {}: checkpoint".format(case), r + ".h5", e + ".h5")
+        if expect:
+            report.h5("train {}: checkpoint".format(case), r + ".h5", e + ".h5")
+            if kind == "chrombpnet":
+                report.h5("train {}: no-bias model".format(case), r + "_nobias.h5", e + "_nobias.h5")
+            continue
+        best, last = _best_and_last_epoch(r + ".log")
+        report.check("train {}: best epoch ({}) is not the last ({})".format(case, best, last),
+                     best != last)
+        report.weights("train {}: weights = reference's best epoch".format(case),
+                       r + ".best.h5", e + ".h5")
+        report.h5("train {}: optimizer state and attributes".format(case),
+                  r + ".h5", e + ".h5", exclude=("model_weights",))
         if kind == "chrombpnet":
-            report.h5("train {}: no-bias model".format(case), r + "_nobias.h5", e + "_nobias.h5")
+            report.weights_within("train {}: no-bias model = reference's best epoch".format(case),
+                                  e + "_nobias.h5", r + ".best.h5")
 
     # 3. Rescale, DeepSHAP, interop.
     report.h5("rescale: bias_model_scaled.h5", os.path.join(ref, "bias_model_scaled.h5"),

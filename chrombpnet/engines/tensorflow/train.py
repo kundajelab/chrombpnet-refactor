@@ -15,12 +15,14 @@ differs:
   level none of them changes anything: ``fit`` shuffles batches exactly as the
   original's default ``shuffle=True`` does;
 * fixed defects of the original: ``--seed`` is applied before the model is
-  built.
+  built, and the best validation checkpoint is restored even when training
+  runs out of epochs.
 """
 
 from __future__ import annotations
 
 import importlib.machinery
+import os
 import random
 
 import numpy as np
@@ -129,6 +131,17 @@ def fit_and_evaluate(model, train_gen, valid_gen, args, architecture_module):
               # True unless --benchmark medium/max pins the example order;
               # True is also Keras's default, which the original relied on.
               shuffle=use_keras_batch_order_shuffle(args))
+
+    if (benchmark_enables(args, "restore_best_checkpoint")
+            and os.path.exists(model_output_path_h5_name)):
+        # EarlyStopping(restore_best_weights=True) restores the best epoch
+        # only when it stops training, so the original saved the *last*
+        # epoch's weights over the best checkpoint whenever a run used all of
+        # --epochs. ModelCheckpoint(save_best_only=True) has just written the
+        # best epoch to this file; take its weights back before saving. When
+        # early stopping did fire these are the weights it restored, so that
+        # case is unchanged.
+        model.load_weights(model_output_path_h5_name)
 
     print('save model')
     model.save(model_output_path_h5_name)
