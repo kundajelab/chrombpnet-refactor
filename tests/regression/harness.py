@@ -78,6 +78,11 @@ ENGINE_PINNED_ENV = {
         "TF_NUM_INTRAOP_THREADS": "1",
         "TF_NUM_INTEROP_THREADS": "1",
         "TF_CPP_MIN_LOG_LEVEL": "2",
+        # WeasyPrint 61.2 (the newest for Python 3.8) embeds fontTools font
+        # subsets whose `head.modified` is the time of writing, so every PDF
+        # differs run to run by a few bytes. fontTools takes that timestamp
+        # from SOURCE_DATE_EPOCH when it is set.
+        "SOURCE_DATE_EPOCH": "0",
     },
 }
 
