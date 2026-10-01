@@ -156,6 +156,57 @@ def test_explain_handles_a_missing_artifact(tmp_path):
     assert "missing from baseline" in artifacts.explain(tmp_path / "gone.bed", present)
 
 
+def test_pytorch_scenarios_run_exactly_as_written(tmp_path):
+    """--engine pytorch must not change one byte of what the CLI is given.
+
+    An explicit ``--engine`` is recorded in ``<prefix>.args.json``, so adding
+    even the default would move artifacts of every PyTorch baseline.
+    """
+    for scenario in scenarios.SCENARIOS:
+        assert harness._for_engine(list(scenario.argv), "pytorch") == scenario.argv
+
+
+def test_tensorflow_scenarios_swap_checkpoints_and_name_the_engine():
+    for scenario in scenarios.SCENARIOS:
+        argv = harness._for_engine(list(scenario.argv), "tensorflow")
+        assert not any(part.endswith(".pt") for part in argv), scenario.name
+        takes_engine = scenario.argv[0] not in ("prep", "modisco_motifs")
+        assert (argv[-2:] == ["--engine", "tensorflow"]) == takes_engine, scenario.name
+    train = harness._for_engine(list(scenarios.BY_NAME["04_train"].argv), "tensorflow")
+    assert "{root}/03_bias_train/models/bias.h5" in train
+
+
+def test_hdf5_attributes_digest_as_before_unless_they_hold_a_keras_lambda():
+    """PyTorch-engine HDF5 digests must not move when the TensorFlow
+    engine's Lambda normalization is added -- only Keras model configs that
+    contain a Lambda are rewritten."""
+    import json
+    import numpy as np
+
+    for key, value in (("version", 3), ("names", np.array([b"a", b"b"])),
+                       ("model_config", json.dumps({"class_name": "Functional"}))):
+        assert artifacts._attr_text(key, value) == f"attr:{key}={value!r}"
+
+
+def test_keras_lambda_bytecode_is_compared_without_its_origin():
+    import base64
+    import json
+    import marshal
+
+    def config_for(source, filename):
+        code = compile(source, filename, "eval").co_consts[0]
+        payload = base64.encodebytes(marshal.dumps(code)).decode("ascii")
+        return json.dumps({"class_name": "Functional", "config": {"layers": [
+            {"class_name": "Lambda", "config": {"function": [payload, None, None]}}]}})
+
+    here = config_for("lambda x: x + 1", "/checkout/a/model.py")
+    there = config_for("\n\nlambda x: x + 1", "/checkout/b/model.py")
+    other = config_for("lambda x: x + 2", "/checkout/a/model.py")
+    assert here != there
+    assert artifacts._attr_text("model_config", here) == artifacts._attr_text("model_config", there)
+    assert artifacts._attr_text("model_config", here) != artifacts._attr_text("model_config", other)
+
+
 @pytest.mark.regression
 @pytest.mark.skipif(
     not os.environ.get("CHROMBPNET_REGRESSION_BASELINE"),

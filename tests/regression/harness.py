@@ -11,6 +11,9 @@ Usage::
     # Or do both in one step against a git ref (uses a temporary worktree):
     python -m tests.regression.harness against --ref main
 
+    # The TensorFlow engine, from the chrombpnet-tensorflow environment:
+    python -m tests.regression.harness capture --engine tensorflow --out DIR
+
 Baselines are captured locally rather than committed. The artifacts depend on
 the installed PyTorch build, so a committed digest would be a per-environment
 constant that goes stale on every dependency bump -- and the question this
@@ -64,6 +67,20 @@ PINNED_ENV = {
     "CUDA_VISIBLE_DEVICES": "",
 }
 
+#: Engines the sweep can run, and the checkpoint suffix each one writes.
+ENGINE_SUFFIXES = {"pytorch": ".pt", "tensorflow": ".h5"}
+
+#: TensorFlow sizes its own thread pools rather than following OMP_NUM_THREADS;
+#: with one thread each its CPU kernels reduce in a fixed order. Added only for
+#: --engine tensorflow, so the PyTorch environment is exactly what it was.
+ENGINE_PINNED_ENV = {
+    "tensorflow": {
+        "TF_NUM_INTRAOP_THREADS": "1",
+        "TF_NUM_INTEROP_THREADS": "1",
+        "TF_CPP_MIN_LOG_LEVEL": "2",
+    },
+}
+
 
 def modiscolite_available() -> bool:
     import importlib.util
@@ -82,9 +99,35 @@ def _placeholders(workspace: Path, paths: dict, scenario: Scenario) -> dict[str,
     return values
 
 
+def _accepts_engine(argv: list[str]) -> bool:
+    """--engine exists on every command except prep and modisco_motifs."""
+    return argv[0] not in ("prep", "modisco_motifs")
+
+
+def _for_engine(argv: list[str], engine: str) -> list[str]:
+    """Adapt a scenario's argv to an engine.
+
+    PyTorch runs the scenarios exactly as written: not even ``--engine
+    pytorch`` is added, because an explicit flag is recorded in
+    ``<prefix>.args.json`` and would move four artifacts. Any other engine
+    gets its checkpoint suffix in place of ``.pt`` and an explicit
+    ``--engine``, which ``bias train`` needs since it has no input model to
+    infer the engine from.
+    """
+    if engine == "pytorch":
+        return argv
+    suffix = ENGINE_SUFFIXES[engine]
+    argv = [part[:-len(".pt")] + suffix if part.endswith(".pt") else part
+            for part in argv]
+    if _accepts_engine(argv):
+        argv = argv + ["--engine", engine]
+    return argv
+
+
 def run_scenarios(workspace: Path, names: list[str] | None = None,
                   benchmark: str | None = None,
-                  verbose: bool = True) -> dict[str, dict[str, str]]:
+                  verbose: bool = True,
+                  engine: str = "pytorch") -> dict[str, dict[str, str]]:
     """Execute the scenarios and return ``{scenario: {artifact: digest}}``."""
     workspace = Path(workspace)
     if workspace.exists():
@@ -94,6 +137,7 @@ def run_scenarios(workspace: Path, names: list[str] | None = None,
 
     env = dict(os.environ)
     env.update(PINNED_ENV)
+    env.update(ENGINE_PINNED_ENV.get(engine, {}))
     _verify_package_root(env, workspace)
 
     # The architecture module's absolute path reaches <prefix>.args.json and
@@ -128,7 +172,7 @@ def run_scenarios(workspace: Path, names: list[str] | None = None,
         output.mkdir(parents=True)
 
         values = _placeholders(workspace, paths, scenario)
-        argv = [part.format(**values) for part in scenario.argv]
+        argv = _for_engine([part.format(**values) for part in scenario.argv], engine)
         if benchmark is not None and _accepts_benchmark(argv):
             argv += ["--benchmark", benchmark]
 
@@ -188,12 +232,19 @@ def _accepts_benchmark(argv: list[str]) -> bool:
                         ["bias", "train"])
 
 
-def capture(out: Path, benchmark: str | None, names: list[str] | None) -> Path:
+#: Records which engine a baseline was captured with. A sidecar file rather
+#: than a manifest key, so manifests keep the shape older harnesses read.
+ENGINE_RECORD = "engine.txt"
+
+
+def capture(out: Path, benchmark: str | None, names: list[str] | None,
+            engine: str = "pytorch") -> Path:
     """Run the scenarios in RUN_DIR and archive the result under ``out``."""
     out = Path(out)
-    manifests = run_scenarios(RUN_DIR, names=names, benchmark=benchmark)
+    manifests = run_scenarios(RUN_DIR, names=names, benchmark=benchmark, engine=engine)
     manifest_path = out / "manifest.json"
     artifacts.write_manifest(manifest_path, manifests)
+    (out / ENGINE_RECORD).write_text(engine + "\n")
 
     # Archive a copy so a later mismatch can be explained artifact-by-artifact.
     archive = out / "workspace"
@@ -209,14 +260,21 @@ def capture(out: Path, benchmark: str | None, names: list[str] | None) -> Path:
 
 
 def compare(baseline_dir: Path, benchmark: str | None,
-            names: list[str] | None) -> int:
+            names: list[str] | None, engine: str = "pytorch") -> int:
     """Re-run the scenarios and diff against a captured baseline."""
     baseline_dir = Path(baseline_dir)
     baseline = artifacts.read_manifest(baseline_dir / "manifest.json")
     baseline_workspace = baseline_dir / "workspace"
+    record = baseline_dir / ENGINE_RECORD
+    # Baselines from before --engine existed are PyTorch ones.
+    baseline_engine = record.read_text().strip() if record.exists() else "pytorch"
+    if baseline_engine != engine:
+        raise SystemExit(f"baseline was captured with --engine {baseline_engine}, "
+                         f"not {engine}")
 
     current_workspace = RUN_DIR
-    current = run_scenarios(current_workspace, names=names, benchmark=benchmark)
+    current = run_scenarios(current_workspace, names=names, benchmark=benchmark,
+                            engine=engine)
 
     problems: list[str] = []
     for name in sorted(set(baseline) | set(current)):
@@ -249,7 +307,7 @@ def compare(baseline_dir: Path, benchmark: str | None,
 
 
 def against_ref(ref: str, benchmark: str | None,
-                names: list[str] | None) -> int:
+                names: list[str] | None, engine: str = "pytorch") -> int:
     """Capture a baseline from ``ref`` in a temporary worktree, then compare.
 
     Only the *package under test* comes from ``ref``; the harness itself always
@@ -296,6 +354,8 @@ def against_ref(ref: str, benchmark: str | None,
                 "--out", str(baseline)]
         if benchmark:
             argv += ["--benchmark", benchmark]
+        if engine != "pytorch":
+            argv += ["--engine", engine]
         for name in names or []:
             argv += ["--scenario", name]
         subprocess.run(argv, cwd=neutral_cwd, env=env, check=True)
@@ -304,7 +364,7 @@ def against_ref(ref: str, benchmark: str | None,
                         str(worktree)], check=False, capture_output=True)
 
     print(f"\n--- comparing working tree against {ref} ---")
-    return compare(baseline, benchmark, names)
+    return compare(baseline, benchmark, names, engine)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -318,6 +378,9 @@ def main(argv: list[str] | None = None) -> int:
                                 "(omit for the CLI default, 'tensorflow')")
         child.add_argument("--scenario", action="append", dest="scenarios",
                            help="run only this scenario (repeatable)")
+        child.add_argument("--engine", default="pytorch", choices=sorted(ENGINE_SUFFIXES),
+                           help="deep-learning engine to run the scenarios with; "
+                                "run from that engine's environment")
         if name == "capture":
             child.add_argument("--out", required=True, type=Path)
         elif name == "compare":
@@ -327,11 +390,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "capture":
-        capture(args.out, args.benchmark, args.scenarios)
+        capture(args.out, args.benchmark, args.scenarios, args.engine)
         return 0
     if args.command == "compare":
-        return compare(args.baseline, args.benchmark, args.scenarios)
-    return against_ref(args.ref, args.benchmark, args.scenarios)
+        return compare(args.baseline, args.benchmark, args.scenarios, args.engine)
+    return against_ref(args.ref, args.benchmark, args.scenarios, args.engine)
 
 
 if __name__ == "__main__":

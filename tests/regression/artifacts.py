@@ -34,6 +34,63 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _code_behaviour(code) -> tuple:
+    """A code object's instructions, constants and names -- not its origin."""
+    import types
+
+    consts = tuple(_code_behaviour(c) if isinstance(c, types.CodeType) else repr(c)
+                   for c in code.co_consts)
+    return (code.co_code.hex(), consts, code.co_names, code.co_varnames,
+            code.co_argcount, code.co_freevars, code.co_cellvars)
+
+
+def _normalize_keras_lambdas(text: str) -> str:
+    """Keras model JSON with each ``Lambda``'s bytecode reduced to behaviour.
+
+    Keras serializes a ``Lambda`` layer's function as marshalled bytecode,
+    which embeds the absolute path and line number of the file that defined
+    it. For the TensorFlow engine's bias-factorized model that file is in the
+    package, so two checkouts of identical code would otherwise digest
+    differently -- the HDF5 analogue of the package-root substitution that
+    ``text_digest`` applies to ``args.json``.
+    """
+    import base64
+    import marshal
+
+    def walk(node):
+        if isinstance(node, dict):
+            if node.get("class_name") == "Lambda":
+                config = dict(node.get("config", {}))
+                function = config.get("function")
+                if isinstance(function, list) and function and isinstance(function[0], str):
+                    try:
+                        code = marshal.loads(base64.decodebytes(function[0].encode("ascii")))
+                        config["function"] = [repr(_code_behaviour(code))] + function[1:]
+                    except (ValueError, EOFError, TypeError):
+                        pass  # written by another Python version; leave as is
+                node = dict(node, config=config)
+            return {key: walk(value) for key, value in node.items()}
+        if isinstance(node, list):
+            return [walk(item) for item in node]
+        return node
+
+    return json.dumps(walk(json.loads(text)), sort_keys=True)
+
+
+def _attr_text(key: str, value) -> str:
+    """How one HDF5 attribute enters the digest.
+
+    Unchanged -- ``repr`` of the value -- for everything except a Keras
+    ``model_config`` that contains a ``Lambda`` layer, so the digests of every
+    PyTorch-engine artifact are exactly what they were.
+    """
+    if key == "model_config":
+        text = value.decode("utf-8") if isinstance(value, bytes) else value
+        if isinstance(text, str) and '"class_name": "Lambda"' in text:
+            return f"attr:{key}={_normalize_keras_lambdas(text)!r}"
+    return f"attr:{key}={value!r}"
+
+
 def hdf5_digest(path: Path) -> str:
     """Digest an HDF5 file's logical content, ignoring container layout.
 
@@ -52,7 +109,7 @@ def hdf5_digest(path: Path) -> str:
             node = handle[name]
             digest.update(name.encode())
             for key in sorted(node.attrs):
-                digest.update(f"attr:{key}={node.attrs[key]!r}".encode())
+                digest.update(_attr_text(key, node.attrs[key]).encode())
             if not isinstance(node, h5py.Dataset):
                 digest.update(b"<group>")
                 continue
