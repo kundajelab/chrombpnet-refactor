@@ -16,9 +16,17 @@ deeplift==0.6.13.0
 deepdish==0.3.7
 weasyprint==52.5
 
-# TF-MoDISco (modiscolite) for motif discovery and the motif reports. v2.5.2 is
-# the release the PyTorch regression baseline runs, and it supports Python 3.8.
-modisco @ git+https://github.com/kundajelab/tfmodisco.git@v2.5.2
+# TF-MoDISco (modiscolite) for motif discovery and the motif reports. 2.3.2 is
+# the newest release usable on Python 3.8: every later one (modisco-lite 2.4.0,
+# modisco 2.4.0-2.5.2 and the git checkout the PyTorch environment installs)
+# imports `memelite`, whose numba kernels need numba >= 0.59, which needs
+# Python >= 3.9. 2.3.2 runs TomTom through the MEME `tomtom` binary instead,
+# and provides every call chrombpnet/evaluation/modisco/api.py makes
+# (tests/test_modisco_compat.py). Motif discovery therefore runs a different
+# TF-MoDISco release in this environment than in the PyTorch one.
+modisco-lite==2.3.2
+igraph==0.11.8
+leidenalg==0.10.2
 
 pytest>=8
 pytest-cov>=5
