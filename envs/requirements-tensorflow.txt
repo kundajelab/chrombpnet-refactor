@@ -14,7 +14,12 @@ kundajelab-shap==1
 deeplift==0.6.13.0
 
 deepdish==0.3.7
-weasyprint==52.5
+# The newest WeasyPrint for Python 3.8. The original environment's 52.5
+# (cairo-based) writes PDFs whose compressed streams differ from run to run;
+# 61.2 (pydyf-based, like the PyTorch environment's) is byte-reproducible.
+# It needs pydyf < 0.11, whose PDF() constructor changed incompatibly.
+weasyprint==61.2
+pydyf==0.10.0
 
 # TF-MoDISco (modiscolite) for motif discovery and the motif reports. 2.3.2 is
 # the newest release usable on Python 3.8: every later one (modisco-lite 2.4.0,
