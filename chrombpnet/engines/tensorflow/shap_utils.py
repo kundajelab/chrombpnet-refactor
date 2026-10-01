@@ -1,5 +1,6 @@
 # TensorFlow engine. Verbatim from kundajelab/chrombpnet@09938fd,
-# chrombpnet/evaluation/interpret/shap_utils.py.
+# chrombpnet/evaluation/interpret/shap_utils.py, except that
+# shuffle_several_times passes an optional RandomState to dinuc_shuffle.
 # Av's code with a bit of reformatting
 # Adapted from Zahoor's mtbatchgen
 
@@ -52,12 +53,14 @@ def combine_mult_and_diffref(mult, orig_inp, bg_data):
     return to_return
 
 
-def shuffle_several_times(s,numshuffles=20):
+def shuffle_several_times(s,numshuffles=20,rng=None):
+    # rng=None is the original's behaviour: dinuc_shuffle then draws from a
+    # fresh, unseeded RandomState, so the references differ on every run.
     if len(s)==2:
-        return [np.array([dinuc_shuffle(s[0]) for i in range(numshuffles)]),
+        return [np.array([dinuc_shuffle(s[0], rng=rng) for i in range(numshuffles)]),
                 np.array([s[1] for i in range(numshuffles)])]
     else:
-        return [np.array([dinuc_shuffle(s[0]) for i in range(numshuffles)])]
+        return [np.array([dinuc_shuffle(s[0], rng=rng) for i in range(numshuffles)])]
 
 
 def get_weightedsum_meannormed_logits(model):

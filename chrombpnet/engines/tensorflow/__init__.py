@@ -4,8 +4,11 @@ The model definitions, loss, callbacks, training call, bias rescale and
 DeepSHAP code are the original implementation's (kundajelab/chrombpnet
 @09938fd); each module says what, if anything, it changes. Given the same
 batches and initial weights it reproduces that implementation's outputs
-byte for byte, which ``tests/parity/`` checks. It needs the
-``chrombpnet-tensorflow`` environment (Python 3.8, TF 2.8.0).
+byte for byte, which ``tests/parity/`` checks. Where it departs from the
+original it fixes a defect: ``--seed`` reaches the bias-factorized tower, the
+best validation epoch is kept when training runs out of epochs, and DeepSHAP's
+references are seeded. It needs the ``chrombpnet-tensorflow`` environment
+(Python 3.8, TF 2.8.0).
 """
 
 from __future__ import annotations
@@ -98,7 +101,7 @@ class TensorFlowEngine(Engine):
         from chrombpnet.engines.tensorflow import attribution
         return attribution.attribute(
             model.path, seqs, profile_or_counts, device=device,
-            num_shuffles=num_shuffles)
+            num_shuffles=num_shuffles, seed=seed)
 
 
 ENGINE = TensorFlowEngine()

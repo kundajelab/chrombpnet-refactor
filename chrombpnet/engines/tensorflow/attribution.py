@@ -18,6 +18,12 @@ eagerly in this process by the time attribution starts.
 
 ``--interpret-batch-size`` has no effect: the fork explains one example at a
 time, against its own references.
+
+One deliberate departure from the original: the dinucleotide-shuffled
+references are drawn from ``np.random.RandomState(seed)``, fresh for each
+head, where the original drew them from an unseeded stream. Contribution
+scores are therefore reproducible run to run, and ``--seed`` means what it
+says.
 """
 
 from __future__ import annotations
@@ -34,7 +40,16 @@ import numpy as np
 HEADS = ("counts", "profile")
 
 
-def explain(model, seqs, profile_or_counts, num_shuffles):
+def _references(num_shuffles, seed):
+    """The reference generator for one head, on its own seeded stream."""
+    from chrombpnet.engines.tensorflow import shap_utils
+
+    return functools.partial(shap_utils.shuffle_several_times,
+                             numshuffles=num_shuffles,
+                             rng=np.random.RandomState(seed))
+
+
+def explain(model, seqs, profile_or_counts, num_shuffles, seed):
     """Hypothetical scores per head. Needs graph mode and a graph-mode model."""
     import shap
     import tensorflow as tf
@@ -48,16 +63,11 @@ def explain(model, seqs, profile_or_counts, num_shuffles):
     counts_model_input = model.input
     counts_input = seqs
 
-    references = shap_utils.shuffle_several_times
-    if num_shuffles != 20:  # shuffle_several_times's own default
-        references = functools.partial(shap_utils.shuffle_several_times,
-                                       numshuffles=num_shuffles)
-
     scores = {}
     if "counts" in profile_or_counts:
         profile_model_counts_explainer = shap.explainers.deep.TFDeepExplainer(
             (counts_model_input, tf.reduce_sum(model.outputs[1], axis=-1)),
-            references,
+            _references(num_shuffles, seed),
             combine_mult_and_diffref=shap_utils.combine_mult_and_diffref)
 
         print("Generating 'counts' shap scores")
@@ -68,7 +78,7 @@ def explain(model, seqs, profile_or_counts, num_shuffles):
         weightedsum_meannormed_logits = shap_utils.get_weightedsum_meannormed_logits(model)
         profile_model_profile_explainer = shap.explainers.deep.TFDeepExplainer(
             (profile_model_input, weightedsum_meannormed_logits),
-            references,
+            _references(num_shuffles, seed),
             combine_mult_and_diffref=shap_utils.combine_mult_and_diffref)
 
         print("Generating 'profile' shap scores")
@@ -77,7 +87,7 @@ def explain(model, seqs, profile_or_counts, num_shuffles):
     return scores
 
 
-def _worker(model_path, workdir, profile_or_counts, num_shuffles, device):
+def _worker(model_path, workdir, profile_or_counts, num_shuffles, seed, device):
     """Child-process entry point: graph mode, load, explain, write ``.npy``."""
     from chrombpnet.engines.tensorflow.predictor import configure_device, load_model
 
@@ -91,11 +101,11 @@ def _worker(model_path, workdir, profile_or_counts, num_shuffles, device):
     model.summary()
 
     seqs = np.load(os.path.join(workdir, "seqs.npy"))
-    for head, values in explain(model, seqs, profile_or_counts, num_shuffles).items():
+    for head, values in explain(model, seqs, profile_or_counts, num_shuffles, seed).items():
         np.save(os.path.join(workdir, f"{head}.npy"), values)
 
 
-def attribute(model_path, seqs, profile_or_counts, *, device, num_shuffles):
+def attribute(model_path, seqs, profile_or_counts, *, device, num_shuffles, seed):
     """Yield ``(head, hypothetical_scores)``, counts before profile.
 
     The scores travel back through ``.npy`` files in a temporary directory
@@ -108,7 +118,8 @@ def attribute(model_path, seqs, profile_or_counts, *, device, num_shuffles):
         context = multiprocessing.get_context("spawn")
         process = context.Process(
             target=_worker,
-            args=(model_path, workdir, list(profile_or_counts), int(num_shuffles), device))
+            args=(model_path, workdir, list(profile_or_counts), int(num_shuffles),
+                  int(seed), device))
         process.start()
         process.join()
         if process.exitcode != 0:

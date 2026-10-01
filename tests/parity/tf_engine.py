@@ -373,14 +373,20 @@ class EngineSide:
         import tensorflow as tf
         tf.compat.v1.disable_eager_execution()
         _pin_tensorflow()
-        import deeplift.dinuc_shuffle
-        from chrombpnet.engines.tensorflow import attribution, shap_utils
+        from chrombpnet.engines.tensorflow import attribution
         from chrombpnet.engines.tensorflow.predictor import load_model
 
         model = load_model(model_path, compile=False)
-        shap_utils.dinuc_shuffle = functools.partial(
-            deeplift.dinuc_shuffle.dinuc_shuffle, rng=np.random.RandomState(seed))
-        return attribution.explain(model, seqs, [head], 20)[head]
+        # The engine seeds its own references, a fresh RandomState(seed) per
+        # head; the reference worker is given the same stream.
+        return attribution.explain(model, seqs, [head], 20, seed)[head]
+
+    def shap_end_to_end(self, model_path, seqs, seed):
+        """The CLI's path: a spawned graph-mode child, both heads in one go."""
+        handle = self.engine.load_attribution_model(model_path, None)
+        return dict(self.engine.attribute(
+            handle, seqs, list(HEADS), device=None, batch_size=1,
+            num_shuffles=20, seed=seed))
 
 
 # --------------------------------------------------------------------------
@@ -451,6 +457,11 @@ def task_shap(side, workdir, out):
     for head in HEADS:
         scores[head] = side.shap(os.path.join(workdir, "bias_init.h5"),
                                  fixture["shap_x"], head, SHAP_SEED)
+    if side.name == "engine":
+        end_to_end = side.shap_end_to_end(os.path.join(workdir, "bias_init.h5"),
+                                          fixture["shap_x"], SHAP_SEED)
+        for head in HEADS:
+            scores["end_to_end_" + head] = end_to_end[head]
     np.savez(os.path.join(out, "shap.npz"), **scores)
 
 
@@ -668,6 +679,8 @@ def compare(workdir, report):
     shap_ref, shap_eng = np.load(os.path.join(ref, "shap.npz")), np.load(os.path.join(eng, "shap.npz"))
     for head in HEADS:
         report.arrays("shap: {} hypothetical scores".format(head), shap_ref[head], shap_eng[head])
+        report.arrays("shap: {} scores via the CLI's subprocess path".format(head),
+                      shap_eng[head], shap_eng["end_to_end_" + head])
     interop = [np.load(os.path.join(d, "interop.npz")) for d in (ref, eng)]
     for model in ("reference", "engine"):
         for output in ("profile", "counts"):
@@ -739,8 +752,9 @@ def main(arguments):
         if report.failed:
             print("\n{} of {} checks failed.".format(len(report.failed), len(report.rows)))
             return 1
-        print("\nAll {} checks passed: the TensorFlow engine is byte-identical to "
-              "the original implementation.".format(len(report.rows)))
+        print("\nAll {} checks passed: the TensorFlow engine reproduces the original "
+              "implementation byte for byte, departing only where it fixes a "
+              "documented defect.".format(len(report.rows)))
         return 0
     finally:
         if arguments.keep:

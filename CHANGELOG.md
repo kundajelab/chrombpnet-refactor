@@ -1,5 +1,20 @@
 # Changelog
 
+## TensorFlow engine: seeded DeepSHAP references
+
+- **Behaviour change, TensorFlow engine only.** DeepSHAP's
+  dinucleotide-shuffled references are now drawn from
+  `np.random.RandomState(--seed)`, fresh for each head, so contribution
+  scores are reproducible run to run. The original passed no generator to
+  `deeplift.dinuc_shuffle`, which then drew from a new unseeded
+  `RandomState` on every call, so two identical runs scored differently.
+- `shap_utils.shuffle_several_times` gains an optional `rng`; with
+  `rng=None` it behaves exactly as the original.
+- `tests/parity/tf_engine.py` no longer patches the engine's shuffle. The
+  engine seeds itself, and the reference worker is given the same per-head
+  stream. A new check compares the CLI's spawned-subprocess path against the
+  in-process scores, for both heads.
+
 ## TensorFlow engine: restore the best validation epoch when training runs out of epochs
 
 - **Behaviour change, TensorFlow engine only.** The engine now saves the best
