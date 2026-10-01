@@ -1,3 +1,5 @@
+# TensorFlow engine. Verbatim from kundajelab/chrombpnet@09938fd,
+# chrombpnet/evaluation/interpret/shap_utils.py.
 # Av's code with a bit of reformatting
 # Adapted from Zahoor's mtbatchgen
 

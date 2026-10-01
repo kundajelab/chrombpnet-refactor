@@ -1,3 +1,5 @@
+# TensorFlow engine. Verbatim from kundajelab/chrombpnet@09938fd,
+# chrombpnet/training/utils/callbacks.py.
 import tensorflow.keras as keras
 
 class LossHistory(keras.callbacks.Callback):

@@ -1,9 +1,12 @@
+# TensorFlow engine. Verbatim from kundajelab/chrombpnet@09938fd,
+# chrombpnet/training/models/bpnet_model.py,
+# except that multinomial_nll is imported from this engine.
 import numpy as np ;
 from tensorflow.keras.backend import int_shape
 from tensorflow.keras.layers import Input, Cropping1D, add, Conv1D, GlobalAvgPool1D, Dense, Flatten
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.models import Model
-from chrombpnet.training.utils.losses import multinomial_nll
+from chrombpnet.engines.tensorflow.losses import multinomial_nll
 import tensorflow as tf
 import random as rn
 import os 

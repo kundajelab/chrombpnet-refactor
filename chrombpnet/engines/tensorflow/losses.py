@@ -1,3 +1,5 @@
+# TensorFlow engine. Verbatim from kundajelab/chrombpnet@09938fd,
+# chrombpnet/training/utils/losses.py.
 import tensorflow as tf
 import tensorflow_probability as tfp
 
