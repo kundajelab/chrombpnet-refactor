@@ -20,8 +20,8 @@ jobs:
       # is the dependency set -- not pip alone.
       - uses: conda-incubator/setup-miniconda@v3
         with:
-          environment-file: environment.yml
-          activate-environment: chrombpnet-refactor
+          environment-file: envs/chrombpnet-pytorch.yml
+          activate-environment: chrombpnet-pytorch
           auto-activate-base: false
 
       - name: Report the environment

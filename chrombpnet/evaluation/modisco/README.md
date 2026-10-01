@@ -1,6 +1,6 @@
 # TF-MoDISco integration
 
-ChromBPNet installs TF-MoDISco from the checkout named in `requirements.txt`
+ChromBPNet installs TF-MoDISco from the checkout named in `envs/requirements-pytorch.txt`
 and in the `[reports]` extra of `pyproject.toml`. Note
 that the *distribution* is named `modisco` -- that is the name
 `importlib.metadata.version` answers to -- while the *import package* is still

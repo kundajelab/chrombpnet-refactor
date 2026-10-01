@@ -26,13 +26,13 @@ configuration and a standard `state_dict`.
 ## Installation
 
 ```bash
-conda env create -f environment.yml
-conda activate chrombpnet-refactor
+conda env create -f envs/chrombpnet-pytorch.yml
+conda activate chrombpnet-pytorch
 ```
 
-Run this from the repository root: `environment.yml` installs the package in
-editable mode and applies the supplemental pip requirements in
-`requirements.txt`.
+Run this from the repository root: `envs/chrombpnet-pytorch.yml` installs the
+package in editable mode and applies the supplemental pip requirements in
+`envs/requirements-pytorch.txt`.
 
 The environment installs a CUDA-enabled PyTorch build that falls back to CPU
 automatically. Every command accepts `--device cpu`, `--device cuda`, or a
@@ -43,7 +43,7 @@ Conda also supplies the command-line tools the preprocessing step shells out to
 WeasyPrint needs to render the PDF reports.
 
 Motif discovery and the motif reports use TF-MoDISco, installed from the
-checkout named in `requirements.txt` and in the `[reports]` extra of
+checkout named in `envs/requirements-pytorch.txt` and in the `[reports]` extra of
 `pyproject.toml`. It is optional: everything except `modisco_motifs` and the
 motif section of the `qc` reports works without it.
 

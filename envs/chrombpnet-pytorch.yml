@@ -1,4 +1,8 @@
-name: chrombpnet-refactor
+# PyTorch engine (the default). Create from the repository root with
+#   conda env create -f envs/chrombpnet-pytorch.yml
+# Conda runs the pip section from this file's directory, so the relative
+# paths below resolve against envs/.
+name: chrombpnet-pytorch
 channels:
   - conda-forge
   - bioconda
@@ -27,5 +31,5 @@ dependencies:
   # 5.5.9's tomtom binary requires at most GLIBC_2.14 (Sherlock supports 2.17).
   - meme=5.5.9
   - pip:
-      - -r requirements.txt
-      - -e .
+      - -r requirements-pytorch.txt
+      - -e ..

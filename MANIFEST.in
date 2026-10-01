@@ -1,5 +1,4 @@
-include requirements.txt
-include environment.yml
+include envs/*
 include chrombpnet_bugs.md
 recursive-include tests *
 include chrombpnet/data/*
