@@ -1,32 +1,35 @@
-# JAX engine -- a PLACEHOLDER. `--engine jax` is accepted but not implemented
-# yet; this environment exists so the implementation has somewhere to land.
-# Create from the repository root with
+# JAX engine: Keras 3 on the JAX backend. Create from the repository root with
 #   conda env create -f envs/chrombpnet-jax.yml
 # Conda runs the pip section from this file's directory, so the relative
 # paths below resolve against envs/.
 #
-# The framework-neutral stack is the PyTorch environment's (Python 3.11), so
-# the shared preprocessing and downstream code runs on the same releases.
+# The deep-learning stack is the one kundajelab/chrombpnet#284 ("ChromBPNet
+# 2.0") was validated on: Python 3.12, NumPy 2, Keras 3.15.1 and JAX 0.11.2.
+# jax >= 0.11 is what requires Python >= 3.12 and NumPy >= 2.1; the shared
+# preprocessing and downstream code runs on the same releases here.
 name: chrombpnet-jax
 channels:
   - conda-forge
   - bioconda
   - defaults
 dependencies:
-  # Conda manages the compiled scientific and command-line stack.
-  - python=3.11
+  # Conda manages the compiled scientific and command-line stack; numpy and
+  # numba come from one solve, because numba supports a narrow NumPy range.
+  - python=3.12
   - pip
-  - numpy>=1.26,<2
-  - h5py>=3.10
-  - pandas>=2.1
-  - scipy>=1.11
+  - numpy>=2.1,<2.6
+  - numba>=0.61
+  - h5py>=3.12
+  - pandas>=2.2
+  - scipy>=1.15
   - scikit-learn>=1.3
+  - matplotlib>=3.9
   - pybigwig>=0.3.22
-  - pyfaidx>=0.8
+  - pyfaidx>=0.8.1
   - pillow
   # Native Pango/Cairo stack required by the pip-installed WeasyPrint package.
   - pango
-  - pytables>=3.9
+  - pytables>=3.10
   - tqdm>=4.66
   - termcolor>=2.4
   - bedtools
