@@ -1,5 +1,23 @@
 # Changelog
 
+## TensorFlow engine: `--seed` now seeds the bias-factorized model's tower
+
+- **Behaviour change, TensorFlow engine only.** The engine now seeds NumPy,
+  TensorFlow and Python's `random` before building the model. The original
+  implementation seeded only NumPy at that point: its bias-factorized builder
+  seeds TensorFlow and `random` after loading the bias model and building the
+  trainable tower. So `--seed` never reached that tower's initial weights,
+  and two runs with the same seed started from different weights (defect 6 in
+  `chrombpnet_bugs.md`, which the PyTorch engine already fixes).
+- Only the tower's initial weights move. The builders still re-seed where
+  they always did, so everything drawn after construction is unchanged,
+  including Keras's batch shuffle. The bias model, which its builder seeds
+  before building, is unaffected.
+- `tests/parity/tf_engine.py` still passes all 38 checks, because it injects
+  identical initial weights into both implementations. The new
+  `tests/test_tensorflow_engine.py::test_seed_controls_the_bias_factorized_tower`
+  pins the fix: it fails on the faithful port and passes now.
+
 ## `--engine`: choose the deep-learning framework
 
 - **New `--engine {pytorch,tensorflow,jax}`** on every command that builds or

@@ -13,14 +13,18 @@ differs:
   and the original's is the empty string;
 * ``--benchmark`` controls that apply to Keras are honoured. At the default
   level none of them changes anything: ``fit`` shuffles batches exactly as the
-  original's default ``shuffle=True`` does.
+  original's default ``shuffle=True`` does;
+* fixed defects of the original: ``--seed`` is applied before the model is
+  built.
 """
 
 from __future__ import annotations
 
 import importlib.machinery
+import random
 
 import numpy as np
+import tensorflow as tf
 import tensorflow.keras.callbacks as tfcallbacks
 
 from chrombpnet.engines.tensorflow import callbacks
@@ -80,8 +84,15 @@ def get_model(args, parameters):
     configure_device(getattr(args, "device", None))
     if benchmark_enables(args, "deterministic_kernels"):
         _enable_deterministic_kernels()
-    # The original train.main seeds NumPy here, before building the model.
+    # Seed everything before the model is built. The original seeded only
+    # NumPy here; its bias-factorized builder seeds TensorFlow and `random`
+    # only after loading the bias model and building the trainable tower, so
+    # --seed never reached that tower's initial weights (defect 6 in
+    # chrombpnet_bugs.md). The builders still re-seed where they always did,
+    # so everything drawn after construction is unchanged.
     np.random.seed(args.seed)
+    tf.random.set_seed(args.seed)
+    random.seed(args.seed)
     architecture_module = importlib.machinery.SourceFileLoader(
         '', args.architecture_from_file).load_module()
     builder = getattr(
