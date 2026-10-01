@@ -1,4 +1,11 @@
-"""Sequence contribution scores with Tangermeme DeepLIFT-SHAP."""
+"""Sequence contribution scores (DeepLIFT/DeepSHAP).
+
+Everything here is framework-neutral: region loading, the ACGT check, the
+``raw``/``shap``/``projected_shap`` output schema and the HDF5 writer. The
+hypothetical scores themselves come from the engine that wrote the model --
+Tangermeme for PyTorch (``chrombpnet/engines/pytorch/attribution.py``) -- which
+is the only downstream step that differs between engines.
+"""
 
 from __future__ import annotations
 
@@ -9,11 +16,9 @@ import h5py
 import numpy as np
 import pandas as pd
 import pyfaidx
-import torch
-from torch import nn
 
+from chrombpnet import engines
 from chrombpnet.evaluation.interpret import input_utils
-from chrombpnet.model import load_model, resolve_device
 
 
 from chrombpnet.regions import NARROWPEAK_SCHEMA
@@ -45,25 +50,13 @@ def resolve_interpret_batch_size(args, default=DEFAULT_TRAINING_BATCH_SIZE):
     return max(1, int(training) // INTERPRET_BATCH_DIVISOR)
 
 
-class CountsWrapper(nn.Module):
-    def __init__(self, model):
-        super().__init__()
-        self.model = model
-
-    def forward(self, sequence):
-        return self.model(sequence)[1]
-
-
-class ProfileWrapper(nn.Module):
-    def __init__(self, model):
-        super().__init__()
-        self.model = model
-
-    def forward(self, sequence):
-        logits = self.model(sequence)[0]
-        mean_normalized = logits - logits.mean(dim=1, keepdim=True)
-        weights = torch.softmax(mean_normalized.detach(), dim=1)
-        return (weights * mean_normalized).sum(dim=1, keepdim=True)
+def __getattr__(name):
+    # The PyTorch head selectors moved to the engine; re-exported lazily so
+    # this module imports no framework.
+    if name in ("CountsWrapper", "ProfileWrapper"):
+        from chrombpnet.engines.pytorch import attribution
+        return getattr(attribution, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def fetch_interpret_args():
@@ -126,7 +119,13 @@ def interpret(
     batch_size=64,
     num_shuffles=20,
     seed=1234,
+    engine=None,
 ):
+    """Score ``seqs`` and write ``<output_prefix>.<head>_scores.h5`` per head.
+
+    ``model`` is what ``engine.load_attribution_model`` returned; ``engine``
+    defaults to the configured one.
+    """
     seqs = np.asarray(seqs)
     if seqs.ndim != 3 or seqs.shape[2] != 4:
         raise ValueError(f"Sequences must have shape (examples, length, 4), got {seqs.shape}")
@@ -136,30 +135,10 @@ def interpret(
             f"{int(invalid_examples.sum())} sequence(s) contain unknown or invalid bases; "
             "contribution scoring requires ACGT-only sequences"
         )
-    # Tangermeme is intentionally lazy-loaded so prediction/preprocessing users
-    # do not pay its import and numba compilation cost.
-    from tangermeme.deep_lift_shap import deep_lift_shap
-
-    sequence = torch.as_tensor(seqs, dtype=torch.float32).permute(0, 2, 1)
-    targets = []
-    if "counts" in profile_or_counts:
-        targets.append(("counts", CountsWrapper(model)))
-    if "profile" in profile_or_counts:
-        targets.append(("profile", ProfileWrapper(model)))
-
-    for name, wrapper in targets:
-        wrapper.to(device).eval()
-        scores = deep_lift_shap(
-            wrapper,
-            sequence,
-            hypothetical=True,
-            n_shuffles=num_shuffles,
-            random_state=seed,
-            batch_size=batch_size,
-            device=device,
-            verbose=True,
-        )
-        scores_nlc = scores.detach().cpu().permute(0, 2, 1).numpy()
+    engine = engine or engines.current()
+    for name, scores_nlc in engine.attribute(
+            model, seqs, profile_or_counts, device=device,
+            batch_size=batch_size, num_shuffles=num_shuffles, seed=seed):
         _save_scores(
             f"{output_prefix}.{name}_scores.h5",
             generate_shap_dict(seqs, scores_nlc),
@@ -172,9 +151,10 @@ def main(args):
     regions_df = pd.read_csv(args.regions, sep="\t", names=NARROWPEAK_SCHEMA)
     if getattr(args, "debug_chr", None):
         regions_df = regions_df[regions_df["chr"].isin(args.debug_chr)]
-    device = resolve_device(getattr(args, "device", None))
-    model = load_model(args.model_h5, map_location=device)
-    input_length = model.config.input_length
+    engine = engines.for_model(args.model_h5)
+    device = engine.resolve_device(getattr(args, "device", None))
+    model = engine.load_attribution_model(args.model_h5, device)
+    input_length = engine.input_length(model)
     genome = pyfaidx.Fasta(args.genome)
     seqs, regions_used = input_utils.get_seq(regions_df, genome, input_length)
     genome.close()
@@ -201,6 +181,7 @@ def main(args):
         batch_size=batch_size,
         num_shuffles=getattr(args, "num_shuffles", 20),
         seed=getattr(args, "seed", 1234),
+        engine=engine,
     )
 
 

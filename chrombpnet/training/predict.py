@@ -3,7 +3,7 @@ import json
 import h5py
 import chrombpnet.training.metrics as metrics
 import chrombpnet.training.data_generators.initializers as initializers
-from chrombpnet.model import load_model_wrapper
+from chrombpnet.engines import load_model_wrapper
 from chrombpnet.predictions import softmax
 from chrombpnet.regions import is_disabled
 from chrombpnet.predictions import (

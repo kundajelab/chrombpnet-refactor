@@ -4,8 +4,7 @@ import numpy as np
 from chrombpnet.training.utils.benchmark_utils import benchmark_enables
 from chrombpnet.helpers.hyperparameters import param_utils as param_utils
 from chrombpnet.helpers.hyperparameters import common
-import torch
-from chrombpnet.model import load_model, save_model
+from chrombpnet import engines
 
 def parse_data_args():
     parser=argparse.ArgumentParser(description="find hyper-parameters for the architecture in chrombpnet/training/models/chrombpnet_with_bias_model.py")
@@ -29,29 +28,6 @@ def parse_model_args(parser):
     parser.add_argument("-op", "--output-prefix", help="output prefix for storing hyper-param TSV for chrombpnet")
     args = parser.parse_args()
     return args
-
-def adjust_bias_model_logcounts(bias_model, seqs, cts):
-    """
-    Given a bias model, sequences and associated counts, the function adds a 
-    constant to the output of the bias_model's logcounts that minimises squared
-    error between predicted logcounts and observed logcounts (infered from 
-    cts). This simply reduces to adding the average difference between observed 
-    and predicted to the "bias" (constant additive term) of the Dense layer.
-    Typically the seqs and counts would correspond to training nonpeak regions.
-    ASSUMES model_bias's last layer is a dense layer that outputs logcounts. 
-    This would change if you change the model.
-    """
-
-    # safeguards to prevent misuse
-    print("Predicting within adjust counts")
-    from chrombpnet.model import PredictionAdapter
-    adapter = PredictionAdapter(bias_model, device="cpu")
-    _, pred_logcts = adapter.predict(seqs, batch_size=64, verbose=True)
-    delta = np.mean(np.log(1+cts) - pred_logcts.ravel())
-    with torch.no_grad():
-        bias_model.count_dense.bias.add_(float(delta))
-    return bias_model
-
 
 def main(args): 
 
@@ -114,10 +90,15 @@ def main(args):
 
     # adjust bias model for training  - using train and validation set
     # the bias model might be trained on a difference read depth compared to the given data - so this step scales the bias model to account for that
-    bias_model = load_model(args.bias_model_path, map_location="cpu")
-    bias_model_scaled = adjust_bias_model_logcounts(bias_model, nonpeak_seqs[(nonpeak_cnts< upper_thresh) & (nonpeak_cnts>lower_thresh)], nonpeak_cnts[(nonpeak_cnts< upper_thresh) & (nonpeak_cnts>lower_thresh)])
-    # save the new bias model
-    save_model(bias_model_scaled, "{}bias_model_scaled.pt".format(args.output_prefix), kind="bias")
+    # The weight surgery is framework-specific, so the engine that wrote the
+    # bias model does it and saves the result in its own checkpoint format.
+    engine = engines.for_model(args.bias_model_path)
+    scaled_bias_model_path = "{}bias_model_scaled{}".format(
+        args.output_prefix, engine.checkpoint_suffix)
+    engine.rescale_bias_logcounts(
+        args.bias_model_path, scaled_bias_model_path,
+        nonpeak_seqs[(nonpeak_cnts< upper_thresh) & (nonpeak_cnts>lower_thresh)],
+        nonpeak_cnts[(nonpeak_cnts< upper_thresh) & (nonpeak_cnts>lower_thresh)])
 
     # store the parameters being used  - in a TSV file
     common.write_params_tsv(
@@ -133,8 +114,7 @@ def main(args):
         [("counts_loss_weight", round(counts_loss_weight, 2)),
          ("filters", args.filters),
          ("n_dil_layers", args.n_dilation_layers),
-         ("bias_model_path",
-          "{}bias_model_scaled.pt".format(args.output_prefix)),
+         ("bias_model_path", scaled_bias_model_path),
          ("inputlen", args.inputlen),
          ("outputlen", args.outputlen),
          ("max_jitter", args.max_jitter),

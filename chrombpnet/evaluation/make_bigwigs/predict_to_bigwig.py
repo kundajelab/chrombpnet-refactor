@@ -5,7 +5,7 @@ import pandas as pd
 import pyfaidx
 import chrombpnet.evaluation.make_bigwigs.bigwig_helper as bigwig_helper
 import chrombpnet.training.utils.data_utils as data_utils 
-from chrombpnet.model import load_model_wrapper
+from chrombpnet.engines import load_model_wrapper
 from chrombpnet.predictions import softmax, write_predictions_h5py
 from chrombpnet import finish_stage, preimport
 from chrombpnet.regions import NARROWPEAK_SCHEMA

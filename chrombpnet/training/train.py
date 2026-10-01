@@ -240,16 +240,25 @@ def fit_and_evaluate(model, train_gen, valid_gen, args, architecture_module, par
 
 
 def main(args):
+    """Train one model with the configured engine.
+
+    Shared by every engine: the parameter table, the generators and the
+    ``<prefix>.args.json`` record. Building and fitting the model are the
+    engine's.
+    """
+    from chrombpnet import engines
+
+    engine = engines.current()
     parameters = get_model_param_dict(args)
-    model, architecture_module = get_model(args, parameters)
+    model, architecture_module = engine.get_model(args, parameters)
     train_generator = initializers.initialize_generators(
         args, "train", parameters, return_coords=False
     )
     valid_generator = initializers.initialize_generators(
         args, "valid", parameters, return_coords=False
     )
-    fit_and_evaluate(
-        model, train_generator, valid_generator, args, architecture_module, parameters
+    engine.fit(
+        model, train_generator, valid_generator, args, parameters, architecture_module
     )
     with open(args.output_prefix + ".args.json", "w") as handle:
         json.dump(vars(args), handle, indent=4)

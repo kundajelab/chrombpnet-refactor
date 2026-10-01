@@ -8,13 +8,16 @@ the mapping to the previous inline implementation is recorded per function.
 ``train`` and ``bias train`` share their pipeline with ``pipeline`` and
 ``bias pipeline`` respectively, returning early after the report rather than
 going on to evaluate.
+
+Checkpoint filenames take the configured engine's suffix (``.pt`` for
+PyTorch), and the built-in architecture files are the engine's.
 """
 
 from __future__ import annotations
 
-from chrombpnet import stages
+from chrombpnet import engines, stages
+from chrombpnet.engines import load_model_wrapper
 from chrombpnet.layout import RunLayout
-from chrombpnet.model import load_model_wrapper
 
 
 def chrombpnet_train_pipeline(args):
@@ -25,6 +28,8 @@ def chrombpnet_train_pipeline(args):
     predict -> footprints -> interpret -> modisco -> report.
     """
     layout = RunLayout.from_args(args)
+    engine = engines.current()
+    sfx = engine.checkpoint_suffix
 
     stages.preprocess_and_qc_bigwig(args, layout)
 
@@ -44,7 +49,7 @@ def chrombpnet_train_pipeline(args):
         layout, ignore=getattr(args, "ignore_bias_flag", False))
 
     # Separate models and params from the auxiliary scratch directory.
-    layout.move("auxiliary", "models", "bias_model_scaled.pt")
+    layout.move("auxiliary", "models", f"bias_model_scaled{sfx}")
     layout.move("auxiliary", "logs", "chrombpnet_model_params.tsv")
     layout.move("auxiliary", "logs", "chrombpnet_data_params.tsv")
 
@@ -52,18 +57,17 @@ def chrombpnet_train_pipeline(args):
     # loads the model from it, so rewrite that one path.
     model_params = layout.logs("chrombpnet_model_params.tsv")
     params = open(model_params).read()
-    params = params.replace(layout.aux("bias_model_scaled.pt"),
-                            layout.models("bias_model_scaled.pt"))
+    params = params.replace(layout.aux(f"bias_model_scaled{sfx}"),
+                            layout.models(f"bias_model_scaled{sfx}"))
     with open(model_params, "w") as handle:
         handle.write(params)
 
-    import chrombpnet.training.models.chrombpnet_with_bias_model as chrombpnet_with_bias_model
     import chrombpnet.training.train as train
     import copy
 
     args_copy = copy.deepcopy(args)
     if args_copy.architecture_from_file is None:
-        args_copy.architecture_from_file = chrombpnet_with_bias_model.__file__
+        args_copy.architecture_from_file = engine.default_architecture("chrombpnet")
     args_copy.peaks = filtered_peaks
     args_copy.nonpeaks = layout.aux("filtered.nonpeaks.bed")
     args_copy.output_prefix = layout.models("chrombpnet")
@@ -80,12 +84,12 @@ def chrombpnet_train_pipeline(args):
         print("Finished training! Exiting!")
         return
 
-    nobias_model = layout.models("chrombpnet_nobias.pt")
+    nobias_model = layout.models(f"chrombpnet_nobias{sfx}")
 
     stages.run_predictions(
         args, layout,
         output_prefix=layout.evaluation("chrombpnet"),
-        model_path=layout.models("chrombpnet.pt"),
+        model_path=layout.models(f"chrombpnet{sfx}"),
         peaks=filtered_peaks, nonpeaks="None")
 
     motifs_to_pwm = stages.write_bias_motif_table(args, layout)
@@ -157,6 +161,7 @@ def train_bias_pipeline(args):
     contributions.
     """
     layout = RunLayout.from_args(args)
+    engine = engines.current()
 
     stages.preprocess_and_qc_bigwig(args, layout)
 
@@ -166,14 +171,13 @@ def train_bias_pipeline(args):
     layout.move("auxiliary", "logs", "bias_model_params.tsv")
     layout.move("auxiliary", "logs", "bias_data_params.tsv")
 
-    import chrombpnet.training.models.bpnet_model as bpnet_model
     import chrombpnet.training.train as train
     import copy
 
     filtered_nonpeaks = layout.aux("filtered.bias_nonpeaks.bed")
     args_copy = copy.deepcopy(args)
     if args_copy.architecture_from_file is None:
-        args_copy.architecture_from_file = bpnet_model.__file__
+        args_copy.architecture_from_file = engine.default_architecture("bias")
     args_copy.peaks = "None"
     args_copy.nonpeaks = filtered_nonpeaks
     args_copy.output_prefix = layout.models("bias")
@@ -190,7 +194,7 @@ def train_bias_pipeline(args):
         print("Finished training! Exiting!")
         return
 
-    bias_model = layout.models("bias.pt")
+    bias_model = layout.models(f"bias{engine.checkpoint_suffix}")
     filtered_peaks = layout.aux("filtered.bias_peaks.bed")
 
     stages.run_predictions(

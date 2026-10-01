@@ -1,5 +1,5 @@
 import chrombpnet.parsers as parsers
-from chrombpnet import exit_fast, fused_kernels
+from chrombpnet import engines, exit_fast, fused_kernels
 import os
 from chrombpnet.data import DefaultDataFile, get_default_data_path
 import chrombpnet.pipelines as pipelines
@@ -11,6 +11,11 @@ import subprocess
 logging.getLogger('matplotlib.font_manager').disabled = True
 
 
+#: Commands that never build or load a model, and so run in any engine's
+#: environment.
+MODEL_FREE_COMMANDS = ("prep", "modisco_motifs")
+
+
 # invoke pipeline modules based on command
 
 def main():
@@ -18,6 +23,10 @@ def main():
 	# Before any work starts: PredictionAdapter reads this several frames
 	# below, in code shared with training.
 	fused_kernels.configure_from_args(args)
+	# Likewise the deep-learning engine, and before any output directory is
+	# created, so an engine this environment cannot import fails cleanly.
+	engines.configure_from_args(
+		args, require=args.cmd not in MODEL_FREE_COMMANDS)
 	
 	if args.cmd == "pipeline" or args.cmd == "train":
 		RunLayout.from_args(args).create_training_dirs()
@@ -42,7 +51,7 @@ def main():
 	elif args.cmd == "predict":
 
 		import chrombpnet.training.predict as predict
-		from chrombpnet.model import load_model_wrapper
+		from chrombpnet.engines import load_model_wrapper
 
 		# Geometry off the checkpoint, as qc does; predict.main reads
 		# model_h5 rather than model.

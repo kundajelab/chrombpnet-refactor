@@ -10,7 +10,7 @@ import chrombpnet.parsers as parsers
 import json
 from chrombpnet.training.utils.data_utils import get_seq as get_seq
 import chrombpnet.training.utils.one_hot as one_hot
-from chrombpnet.model import load_model_wrapper
+from chrombpnet.engines import load_model_wrapper
 from chrombpnet.predictions import softmax
 from chrombpnet.regions import NARROWPEAK_SCHEMA
 
