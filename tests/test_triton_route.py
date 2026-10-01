@@ -10,7 +10,8 @@ import pathlib
 import sys
 
 import pytest
-import torch
+# PyTorch-engine tests: skipped in the TensorFlow and JAX environments.
+torch = pytest.importorskip("torch")
 
 from chrombpnet import fused_kernels, triton_forward
 from chrombpnet.model import BiasModel, BPNet, ChromBPNet, ModelConfig

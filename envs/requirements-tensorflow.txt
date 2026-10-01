@@ -1,0 +1,24 @@
+# Pinned to the original Keras ChromBPNet environment. Do not loosen these:
+# the TensorFlow engine's byte-identity tests (tests/parity/) hold only on
+# exactly these releases.
+numpy==1.23.4
+tensorflow==2.8.0
+tensorflow-estimator==2.8.0
+tensorflow-probability==0.15.0
+keras==2.8.0
+protobuf==3.20.0
+
+# DeepSHAP for TensorFlow: the kundajelab fork of shap (TFDeepExplainer with
+# combine_mult_and_diffref), and deeplift for the dinucleotide shuffle.
+kundajelab-shap==1
+deeplift==0.6.13.0
+
+deepdish==0.3.7
+weasyprint==52.5
+
+# TF-MoDISco (modiscolite) for motif discovery and the motif reports. v2.5.2 is
+# the release the PyTorch regression baseline runs, and it supports Python 3.8.
+modisco @ git+https://github.com/kundajelab/tfmodisco.git@v2.5.2
+
+pytest>=8
+pytest-cov>=5

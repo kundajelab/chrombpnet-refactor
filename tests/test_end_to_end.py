@@ -5,6 +5,9 @@ import numpy as np
 import pyBigWig
 import pytest
 
+# PyTorch-engine tests: skipped in the TensorFlow and JAX environments.
+pytest.importorskip("torch")
+
 from chrombpnet.evaluation.interpret.interpret import interpret
 from chrombpnet.evaluation.make_bigwigs.bigwig_helper import write_bigwig
 from chrombpnet.model import BiasModel, ModelConfig, PredictionAdapter, load_model

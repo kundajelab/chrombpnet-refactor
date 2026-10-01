@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
-import torch
+# PyTorch-engine tests: skipped in the TensorFlow and JAX environments.
+torch = pytest.importorskip("torch")
 from pathlib import Path
 from types import SimpleNamespace
 

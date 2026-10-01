@@ -4,6 +4,9 @@ import pyBigWig
 import pytest
 from types import SimpleNamespace
 
+# PyTorch-engine tests: skipped in the TensorFlow and JAX environments.
+pytest.importorskip("torch")
+
 from chrombpnet.evaluation.interpret.interpret import generate_shap_dict
 from chrombpnet.evaluation.interpret.input_utils import get_seq as get_interpret_sequences
 from chrombpnet.evaluation.make_bigwigs.bigwig_helper import write_bigwig

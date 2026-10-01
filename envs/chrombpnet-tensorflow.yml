@@ -1,0 +1,47 @@
+# TensorFlow engine. Create from the repository root with
+#   conda env create -f envs/chrombpnet-tensorflow.yml
+# Conda runs the pip section from this file's directory, so the relative
+# paths below resolve against envs/.
+#
+# The interpreter, TensorFlow, Keras, TensorFlow Probability, protobuf and
+# NumPy are pinned to exactly what the original Keras ChromBPNet environment
+# runs (Python 3.8.20, TF 2.8.0, numpy 1.23.4). The engine's byte-identity
+# with that implementation holds only on these releases, and Python 3.8 is also
+# what lets existing original .h5 models load: their count head is a Keras
+# Lambda layer, serialized as Python-version-specific bytecode.
+name: chrombpnet-tensorflow
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.8
+  - pip
+  - numpy=1.23.4
+  - h5py>=3.10
+  - pandas=2.0.3
+  - scipy=1.10.1
+  - scikit-learn=1.3.2
+  - matplotlib>=3.7,<3.8
+  - pybigwig=0.3.22
+  - pyfaidx>=0.8
+  - pillow
+  # Native Pango/Cairo stack required by the pip-installed WeasyPrint package.
+  - pango
+  - pytables>=3.8
+  - tqdm>=4.66
+  - termcolor>=2.4
+  - bedtools
+  - samtools
+  - ucsc-bedgraphtobigwig
+  # Provides the `tomtom` executable used by modiscolite report generation.
+  # 5.5.9's tomtom binary requires at most GLIBC_2.14 (Sherlock supports 2.17).
+  - meme=5.5.9
+  # GPU: TF 2.8 was built against CUDA 11.2 / cuDNN 8.1. Uncomment to run it
+  # on a GPU without a matching system CUDA. The byte-identity tests run on
+  # CPU and do not need these.
+  # - cudatoolkit=11.2
+  # - cudnn=8.1.0
+  - pip:
+      - -r requirements-tensorflow.txt
+      - -e ..[tensorflow]
