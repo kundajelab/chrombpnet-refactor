@@ -99,6 +99,10 @@ TRAINING_CASES = (
 PINNED_ENV = {
     "PYTHONHASHSEED": "0",
     "CUDA_VISIBLE_DEVICES": "",
+    # Also set through tf.config in each worker; the environment variables are
+    # what reach the attribution subprocess the engine spawns.
+    "TF_NUM_INTRAOP_THREADS": "1",
+    "TF_NUM_INTEROP_THREADS": "1",
     "TF_CPP_MIN_LOG_LEVEL": "2",
     "OMP_NUM_THREADS": "1",
     "MKL_NUM_THREADS": "1",
