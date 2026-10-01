@@ -19,7 +19,7 @@ def adjust_bias_model_logcounts(bias_model, seqs, cts):
     This would change if you change the model.
     """
     import torch
-    from chrombpnet.model import PredictionAdapter
+    from chrombpnet.engines.pytorch.model import PredictionAdapter
 
     # safeguards to prevent misuse
     print("Predicting within adjust counts")
@@ -55,25 +55,25 @@ class PyTorchEngine(Engine):
         return architecture.__file__
 
     def get_model(self, args, parameters):
-        from chrombpnet.training import train
+        from chrombpnet.engines.pytorch import train
         return train.get_model(args, parameters)
 
     def fit(self, model, train_gen, valid_gen, args, parameters, architecture_module):
-        from chrombpnet.training import train
+        from chrombpnet.engines.pytorch import train
         return train.fit_and_evaluate(
             model, train_gen, valid_gen, args, architecture_module, parameters)
 
     # -- inference ---------------------------------------------------------
     def resolve_device(self, value=None):
-        from chrombpnet.model import resolve_device
+        from chrombpnet.engines.pytorch.model import resolve_device
         return resolve_device(value)
 
     def load_predictor(self, path, device=None, *, announce=True, summary=True):
-        from chrombpnet.model import load_model_wrapper
+        from chrombpnet.engines.pytorch.model import load_model_wrapper
         return load_model_wrapper(path, device, announce=announce, summary=summary)
 
     def rescale_bias_logcounts(self, bias_path, output_path, seqs, cts):
-        from chrombpnet.model import load_model, save_model
+        from chrombpnet.engines.pytorch.model import load_model, save_model
         bias_model = load_model(bias_path, map_location="cpu")
         bias_model_scaled = adjust_bias_model_logcounts(bias_model, seqs, cts)
         save_model(bias_model_scaled, output_path, kind="bias")
@@ -82,7 +82,7 @@ class PyTorchEngine(Engine):
     def load_attribution_model(self, path, device):
         # The module itself, not the prediction adapter: DeepLIFT needs
         # autograd and hooks on the nn.ReLU modules.
-        from chrombpnet.model import load_model
+        from chrombpnet.engines.pytorch.model import load_model
         return load_model(path, map_location=device)
 
     def input_length(self, model):

@@ -1,6 +1,6 @@
 """Default PyTorch bias-model architecture hook."""
 
-from chrombpnet.model import BiasModel, ModelConfig, initialize_for_benchmark
+from chrombpnet.engines.pytorch.model import BiasModel, ModelConfig, initialize_for_benchmark
 
 
 def getModelGivenModelOptionsAndWeightInits(args, model_params):

@@ -1,6 +1,6 @@
 """Default bias-factorized PyTorch ChromBPNet architecture hook."""
 
-from chrombpnet.model import (
+from chrombpnet.engines.pytorch.model import (
     ChromBPNet,
     ModelConfig,
     initialize_for_benchmark,

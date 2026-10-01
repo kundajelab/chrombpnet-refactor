@@ -3,7 +3,7 @@
 `kernels.py` and `arch_tiles.json` are copied **byte-identical** from the
 ChromBPNet optimization kit, so `sha256sum` can compare them against upstream
 indefinitely. No modifications were made to either file; the local wrapper
-lives outside this directory, in `chrombpnet/triton_forward.py`.
+lives outside this directory, in `chrombpnet/engines/pytorch/triton_forward.py`.
 
 | | |
 |---|---|
@@ -32,7 +32,7 @@ certificates were measured against. A test pins both digests.
   torch 2.4.1 / triton 3.0.0 and both local environments are newer. The ~60
   lines that are genuinely needed — tile selection, the counts form, the
   batch bound, the two-submodel composition — are reimplemented in
-  `chrombpnet/triton_forward.py` under this package's conventions (explicit
+  `chrombpnet/engines/pytorch/triton_forward.py` under this package's conventions (explicit
   `raise`, no `os.environ` mutation, no unconditional `print`).
 * `triton_cache_sm90/`, `triton_cache_sm89_l40s/` — hundreds of megabytes of
   precompiled kernels for a torch/triton pair neither environment has. The

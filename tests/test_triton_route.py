@@ -43,7 +43,7 @@ def test_importing_chrombpnet_does_not_import_triton():
     not pay for it on a CPU-only run."""
     assert "chrombpnet" in sys.modules
     assert "chrombpnet.triton_forward" in sys.modules
-    assert "chrombpnet._vendor.chrombpnet_k1.kernels" not in sys.modules
+    assert "chrombpnet.engines.pytorch._vendor.chrombpnet_k1.kernels" not in sys.modules
 
 
 def test_the_shim_maps_the_model_onto_the_kernels_vocabulary():
