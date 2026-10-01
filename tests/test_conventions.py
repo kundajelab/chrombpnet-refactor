@@ -360,7 +360,7 @@ def test_half_integer_counts_train_on_the_same_objective():
     factor of two is largely absorbed. If this ever stops holding, the two
     arms stop being each other's control.
     """
-    import torch
+    torch = pytest.importorskip("torch")  # the PyTorch engine's loss
 
     from chrombpnet.training.utils.losses import multinomial_nll
 

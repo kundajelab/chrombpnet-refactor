@@ -49,9 +49,16 @@ def test_json_profile_pearsonr_uses_subset_medians_and_null(prediction_inputs):
 ])
 def test_pipeline_json_includes_profile_pearsonr(
         prediction_inputs, tmp_path, monkeypatch, pipeline, outputs):
-    from chrombpnet import pipelines, stages
+    import importlib.util
+
+    from chrombpnet import engines, pipelines, stages
     from chrombpnet.layout import RunLayout
     from chrombpnet.training import train
+
+    if importlib.util.find_spec("torch") is None:
+        # The training pipelines ask the engine for its architecture file;
+        # use an engine this environment has. Nothing here builds a model.
+        monkeypatch.setattr(engines, "_CURRENT", "tensorflow")
 
     layout = RunLayout(str(tmp_path), "run")
     layout.create_training_dirs()

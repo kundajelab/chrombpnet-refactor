@@ -24,12 +24,12 @@ LEGACY_ROOT = Path(__file__).resolve().parents[1] / "legacy"
 #: Every archived module, with the third-party packages it needs at import
 #: time. Those are optional extras, so a missing one is a skip, not a failure.
 LEGACY_MODULES = {
-    "legacy/helpers/reformat_chrombpnet_h5.py": (),
+    "legacy/helpers/reformat_chrombpnet_h5.py": ("torch",),
     "legacy/modisco/run_modisco.py": ("modiscolite",),
     "legacy/modisco/visualize_motif_matches.py": ("modiscolite",),
     "legacy/modisco/fetch_tomtom.py": ("modiscolite",),
-    "legacy/invivo_footprints/run_tfmodisco.py": ("modiscolite",),
-    "legacy/invivo_footprints/tf_modiscohits.py": ("modiscolite",),
+    "legacy/invivo_footprints/run_tfmodisco.py": ("modiscolite", "click"),
+    "legacy/invivo_footprints/tf_modiscohits.py": ("modiscolite", "click"),
     "legacy/figure_notebooks/subsampling/viz_sequence.py": (),
 }
 
@@ -69,4 +69,5 @@ def test_names_the_archive_imports_from_the_live_package_still_exist():
         assert hasattr(viz_sequence, name), (
             f"legacy/ and helpers/preprocessing import viz_sequence.{name}")
 
+    pytest.importorskip("torch")  # the archive's PyTorch model imports
     from chrombpnet.model import ChromBPNet, load_model, save_model  # noqa: F401

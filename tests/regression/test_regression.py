@@ -91,7 +91,7 @@ def test_scenario_outputs_are_unique():
 
 def test_explain_reports_the_tensor_that_moved(tmp_path):
     """The diff explainer is the harness's whole value once a hash mismatches."""
-    import torch
+    torch = pytest.importorskip("torch")  # PyTorch checkpoints
 
     from chrombpnet.model import BiasModel, ModelConfig, save_model
 

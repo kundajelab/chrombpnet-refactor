@@ -119,4 +119,7 @@ def metrics_table(data, key, index_label, decimals=REPORT_DECIMALS):
             return f"{value:.{decimals}f}"
         return value
 
-    return frame.map(show)
+    # DataFrame.map is pandas >= 2.1; Python 3.8 (the TensorFlow engine's
+    # environment) stops at pandas 2.0, where the same method is `applymap`.
+    elementwise = getattr(frame, "map", None) or frame.applymap
+    return elementwise(show)

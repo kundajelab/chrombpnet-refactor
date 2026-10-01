@@ -99,6 +99,7 @@ def test_the_legacy_profile_metrics_agrees():
 
 
 def test_the_legacy_predict_agrees():
+    pytest.importorskip("torch")  # PyTorch engine only
     from chrombpnet.model import BPNet, ModelConfig, PredictionAdapter
 
     # input_length - 20 (first conv) - 12 (two dilated) - 74 (profile conv)
