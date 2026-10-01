@@ -30,6 +30,16 @@ mirror, ``rc_shift = -1``. Depositing on **both** flanking bases is symmetric
 about the bond, so plain reversal is already right and ``rc_shift = 0``. ATAC
 is base-centred and also needs no shift.
 
+That last case is the DNase default (``both-half``), in preference to the
+shift. A shift corrects the misregistration; splitting the cut removes the
+asymmetry that causes it, so there is nothing left to correct and no dependence
+on getting the sign right. It also costs no edge base -- a shift leaves one
+label slot with no source (see :attr:`Convention.widens_label_window`) whereas
+a symmetric deposit does not -- at the price of smearing each cut over 2 bp.
+The ``0.5`` scale keeps the track total exactly what ``standard`` would give,
+which is what lets ``counts_loss_weight`` and the ``-oth``/``-b`` ratios carry
+over unchanged. ATAC has no bond to split, so its default stays ``standard``.
+
 This is not only derived but measured: the plus- and minus-strand cut-context
 PWMs shipped in ``chrombpnet/data/{DNASE,ATAC}.ref.motifs.txt`` align with
 each other's reverse complement at lag 0 for DNase and lag -1 for ATAC, and
@@ -50,11 +60,38 @@ BASE = "base"                # ATAC +4/-4: a base
 #: ``--data-aug`` values.
 DATA_AUG_CHOICES = ("standard", "fr-only", "rc-only", "right", "left",
                     "both-half", "both-full")
-DATA_AUG_DEFAULT = "standard"
 
 #: Arms that mean the same thing for either assay. The rest reshape a bond,
 #: which ATAC has not got.
 ASSAY_AGNOSTIC = ("standard", "fr-only", "rc-only")
+
+#: What an omitted ``--data-aug`` means, per assay.
+#:
+#: The default has to be assay-dependent, because the DNase default is an arm
+#: that does not exist for ATAC. ``both-half`` splits the cut across the two
+#: bases flanking the bond: symmetric about the bond, so reverse
+#: complementation needs no shift and cannot misregister, and scaled by 0.5 so
+#: the track total is unchanged. ATAC's cut is already on a base, so there is
+#: no bond to split and ``standard`` is the only thing an omitted flag can
+#: mean there.
+DATA_AUG_DEFAULT_DNASE = "both-half"
+DATA_AUG_DEFAULT_ATAC = "standard"
+
+#: There is deliberately no bare ``DATA_AUG_DEFAULT``. A single name meaning
+#: "the default" would have to be one assay's, and using it for the other is
+#: the exact mistake this split exists to prevent -- on ATAC it would name an
+#: arm that raises.
+
+
+def default_for(data_type):
+    """The arm an omitted ``--data-aug`` selects for ``data_type``."""
+    if data_type == "DNASE":
+        return DATA_AUG_DEFAULT_DNASE
+    if data_type == "ATAC":
+        return DATA_AUG_DEFAULT_ATAC
+    raise ValueError(
+        f"unknown --data-type {data_type!r}; expected ATAC or DNASE")
+
 
 _ALL_MODES = frozenset({"train", "valid", "test"})
 _TRAIN_ONLY = frozenset({"train"})
@@ -121,14 +158,16 @@ def resolve(data_type, data_aug=None):
     doing nothing: a silent no-op would let an ATAC sweep return several
     identical numbers with nothing to say why.
     """
-    data_aug = DATA_AUG_DEFAULT if data_aug is None else str(data_aug)
+    if data_type not in ("ATAC", "DNASE"):
+        raise ValueError(
+            f"unknown --data-type {data_type!r}; expected ATAC or DNASE")
+    # An omitted flag resolves per assay, so the message below only ever
+    # fires for an arm the caller actually asked for.
+    data_aug = default_for(data_type) if data_aug is None else str(data_aug)
     if data_aug not in DATA_AUG_CHOICES:
         raise ValueError(
             f"unknown --data-aug {data_aug!r}; expected one of "
             f"{', '.join(DATA_AUG_CHOICES)}")
-    if data_type not in ("ATAC", "DNASE"):
-        raise ValueError(
-            f"unknown --data-type {data_type!r}; expected ATAC or DNASE")
 
     rc_modes, rc_frac = _RC_MODES[data_aug]
 

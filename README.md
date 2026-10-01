@@ -260,8 +260,10 @@ rather than speed.
 ## Cut conventions and reverse complementation
 
 `--data-aug` selects how a cut is recorded and what reverse-complement
-augmentation does about it. **Omit it** for `standard`, which is the
-behaviour this package has always had.
+augmentation does about it. Omitting it selects **`both-half` on DNASE** and
+**`standard` on ATAC**. The default is assay-dependent because the DNase
+default is an arm that has no meaning for ATAC; pass `--data-aug standard`
+for the behaviour this package shipped before the flag existed.
 
 It exists because the two assays record different things. DNase I is a
 nuclease: it cuts the backbone *between* two bases, so the 0/+1 shift records
@@ -277,17 +279,27 @@ than `i → W-1-i`.
 
 | value | preprocessing | RC shift | splits flipped |
 |---|---|---|---|
-| *(omitted)* = `standard` | DNase 0/+1, ATAC +4/−4 | 0 | train, 50 % |
+| `standard` | DNase 0/+1, ATAC +4/−4 | 0 | train, 50 % |
 | `fr-only` | unchanged | — | none |
 | `rc-only` | unchanged | 0 | train, valid and test, 100 % |
 | `right` | unchanged | **+1** | train, 50 % |
 | `left` | DNase −1/0 | **−1** | train, 50 % |
-| `both-half` | 0.5 on both bases flanking the cut | 0 | train, 50 % |
+| **`both-half`** *(DNASE default)* | 0.5 on both bases flanking the cut | 0 | train, 50 % |
 | `both-full` | 1.0 on both bases flanking the cut | 0 | train, 50 % |
 
 `standard`, `fr-only` and `rc-only` apply to either assay. `right`, `left`
 and `both-*` reshape a bond, which ATAC has not got, so they raise for ATAC
-rather than silently doing nothing.
+rather than silently doing nothing — which is why an omitted flag means
+`standard` there.
+
+`both-half` is the DNase default in preference to the `right` shift. A shift
+corrects the misregistration; splitting the cut across both bases flanking
+the bond removes the asymmetry that causes it, so there is nothing left to
+correct and no dependence on getting the sign right. It also leaves no label
+slot without a source, so the label window is not widened. The cost is that
+each cut is smeared over 2 bp; the `0.5` scale keeps the track total exactly
+what `standard` gives, so `counts_loss_weight` and the `-oth`/`-b` ratios
+carry over unchanged.
 
 Available on `pipeline`, `train`, `qc`, their `bias` counterparts, `predict`,
 and `reads_to_bigwig`.

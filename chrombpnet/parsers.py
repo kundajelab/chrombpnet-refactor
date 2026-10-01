@@ -99,16 +99,24 @@ def _add_data_aug(optional):
 
     DNase records a cut as the *bond* between two bases and ATAC records it
     as a base, so reverse-complement augmentation owes them different things.
-    See :mod:`chrombpnet.conventions` for the geometry; the default
-    reproduces the behaviour this package has always had.
+    See :mod:`chrombpnet.conventions` for the geometry.
+
+    The default is ``None``, meaning *absent*, which
+    :func:`conventions.resolve` resolves per assay --- ``both-half`` for
+    DNASE, ``standard`` for ATAC. It has to be resolved there rather than
+    here, because argparse cannot see ``--data-type`` and the DNase default
+    is an arm that raises for ATAC. Recording ``None`` rather than the
+    resolved name also keeps ``<prefix>.args.json`` a faithful record of what
+    was typed, as ``--benchmark`` already does.
     """
     optional.add_argument(
-        "--data-aug", type=str, default=conventions.DATA_AUG_DEFAULT,
+        "--data-aug", type=str, default=None,
         choices=list(conventions.DATA_AUG_CHOICES),
         help="How cuts are recorded and how reverse complementation handles "
-             "them (default: %(default)s). "
-             "standard: today's behaviour -- DNase 0/+1, reverse complement "
-             "half of training, no re-registration. "
+             "them (default: both-half for DNASE, standard for ATAC). "
+             "standard: the behaviour this package shipped before --data-aug "
+             "-- DNase 0/+1, reverse complement half of training, no "
+             "re-registration. "
              "fr-only / rc-only: never / always reverse complement, in every "
              "split; the only two arms that also apply to ATAC. "
              "right: DNase 0/+1 with the +1 post-reversal shift that puts the "
@@ -116,7 +124,9 @@ def _add_data_aug(optional):
              "left: the -1/0 mirror of it. "
              "both-half / both-full: deposit 0.5 / 1.0 on both bases flanking "
              "the cut, which is symmetric about the bond and so needs no "
-             "shift. right/left/both-* are DNASE-only and raise for ATAC.")
+             "shift; both-half is the DNASE default and preserves the track "
+             "total exactly. right/left/both-* are DNASE-only and raise for "
+             "ATAC.")
 
 
 def _add_ignore_bias_flag(optional):

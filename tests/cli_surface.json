@@ -120,7 +120,7 @@
       "right",
       "standard"
     ],
-    "default": "'standard'",
+    "default": "None",
     "nargs": "None",
     "options": [
       "--data-aug"
@@ -489,7 +489,7 @@
       "right",
       "standard"
     ],
-    "default": "'standard'",
+    "default": "None",
     "nargs": "None",
     "options": [
       "--data-aug"
@@ -729,7 +729,7 @@
       "right",
       "standard"
     ],
-    "default": "'standard'",
+    "default": "None",
     "nargs": "None",
     "options": [
       "--data-aug"
@@ -1513,7 +1513,7 @@
       "right",
       "standard"
     ],
-    "default": "'standard'",
+    "default": "None",
     "nargs": "None",
     "options": [
       "--data-aug"
@@ -2070,7 +2070,7 @@
       "right",
       "standard"
     ],
-    "default": "'standard'",
+    "default": "None",
     "nargs": "None",
     "options": [
       "--data-aug"
@@ -2452,7 +2452,7 @@
       "right",
       "standard"
     ],
-    "default": "'standard'",
+    "default": "None",
     "nargs": "None",
     "options": [
       "--data-aug"
@@ -2692,7 +2692,7 @@
       "right",
       "standard"
     ],
-    "default": "'standard'",
+    "default": "None",
     "nargs": "None",
     "options": [
       "--data-aug"

@@ -144,13 +144,48 @@ def test_only_the_shifted_arms_widen_the_label_window():
     assert widen == {"right", "left"}
 
 
-def test_the_default_is_todays_behaviour():
-    for data_type in ("ATAC", "DNASE"):
-        assert resolve(data_type, None) == resolve(data_type, "standard")
+def test_the_default_is_assay_dependent():
+    """An omitted flag means ``both-half`` on DNASE, ``standard`` on ATAC.
+
+    It cannot be one name for both: the DNase default is an arm that raises
+    for ATAC, which is also why argparse carries ``default=None`` and the
+    resolution happens here, where ``data_type`` is known.
+    """
+    assert conventions.default_for("DNASE") == "both-half"
+    assert conventions.default_for("ATAC") == "standard"
+    assert resolve("DNASE", None) == resolve("DNASE", "both-half")
+    assert resolve("ATAC", None) == resolve("ATAC", "standard")
+
+
+def test_the_dnase_default_preserves_the_track_total_and_needs_no_shift():
+    """The two properties that make ``both-half`` safe as a default.
+
+    ``scale == 0.5`` over two deposits per read is the same total as one
+    deposit of 1.0, so ``counts_loss_weight`` and the ``-oth``/``-b`` ratios
+    carry over from ``standard`` unchanged. ``rc_shift == 0`` means the
+    default never widens the label window, so it cannot drop an edge base.
+    """
+    default = resolve("DNASE", None)
+    pairs = shift_delta_pairs(default, 0, 0)
+    assert len(pairs) == 2 and default.scale == 0.5
+    assert len(pairs) * default.scale == 1.0 * len(
+        shift_delta_pairs(resolve("DNASE", "standard"), 0, 0))
+    assert default.rc_shift == 0 and not default.widens_label_window
+
+
+def test_standard_still_names_the_pre_data_aug_behaviour():
+    """``standard`` is now opt-in, but it still has to mean what it meant."""
     convention = resolve("DNASE", "standard")
     assert convention.deposit == BOND_RIGHT and convention.scale == 1.0
     assert shift_delta_pairs(convention, 0, 0) == [(0, 1)]
     assert shift_delta_pairs(resolve("ATAC", "standard"), 0, 0) == [(4, -4)]
+
+
+def test_an_omitted_flag_never_raises_for_either_assay():
+    """The regression fixture is ATAC-only, so the harness cannot catch an
+    assay-dependent default going wrong. Assert it directly instead."""
+    for data_type in ("ATAC", "DNASE"):
+        resolve(data_type, None)
 
 
 def test_both_is_the_union_of_left_and_right():

@@ -24,9 +24,10 @@ def parse_args():
     parser.add_argument('--ATAC-ref-path', type=str, default=None, help="Path to ATAC reference motifs (chrombpnet/data/ATAC.ref.motifs.txt used by default)")
     parser.add_argument('--DNASE-ref-path', type=str, default=None, help="Path to DNASE reference motifs (chrombpnet/data/DNASE.ref.motifs.txt used by default)")
     parser.add_argument('--num-samples', type=int, default=10000, help="Number of reads to sample from BAM/fragment/tagAlign file for shift estimation")
-    parser.add_argument('--data-aug', type=str, default=conventions.DATA_AUG_DEFAULT,
+    parser.add_argument('--data-aug', type=str, default=None,
                         choices=list(conventions.DATA_AUG_CHOICES),
-                        help="Where a cut is recorded; see chrombpnet.conventions")
+                        help="Where a cut is recorded; see chrombpnet.conventions. "
+                             "Default: both-half for DNASE, standard for ATAC.")
     args = parser.parse_args()
 
     return args

@@ -85,9 +85,25 @@ def _run(workspace, data_type, data_aug):
     # ...and on both, which is what makes plain reversal correct.
     ("both-full", {99: 2.0, 100: 2.0}),
     ("both-half", {99: 1.0, 100: 1.0}),
+    # An omitted flag is both-half on DNASE, so it must land in the same
+    # place. Tested end to end rather than only in resolve(), because the
+    # regression fixture is ATAC-only and so cannot see a DNase default move.
+    (None,        {99: 1.0, 100: 1.0}),
 ])
 def test_each_arm_deposits_where_its_convention_says(workspace, data_aug, expected):
     assert _run(workspace, "DNASE", data_aug) == expected
+
+
+def test_the_atac_default_is_unchanged_by_the_dnase_default(workspace):
+    """ATAC has no bond to split, so an omitted flag must still be standard."""
+    assert _run(workspace, "ATAC", None) == _run(workspace, "ATAC", "standard")
+
+
+def test_the_dnase_default_conserves_the_track_total(workspace):
+    """The default may change *where* signal sits, never *how much*."""
+    omitted = sum(_run(workspace, "DNASE", None).values())
+    standard = sum(_run(workspace, "DNASE", "standard").values())
+    assert omitted == standard
 
 
 def test_both_half_conserves_the_track_total(workspace):

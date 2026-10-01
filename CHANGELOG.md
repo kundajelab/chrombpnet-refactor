@@ -1,5 +1,40 @@
 # Changelog
 
+## `--data-aug` defaults to `both-half` on DNASE
+
+- **Behaviour change.** An omitted `--data-aug` now selects `both-half` for
+  `-d DNASE`, where it previously selected `standard`. ATAC is unaffected:
+  an omitted flag still means `standard` there. Pass `--data-aug standard`
+  explicitly for the old behaviour.
+- The default is **assay-dependent**, which it has to be: `both-half`
+  reshapes a bond, ATAC has not got one, and `conventions.resolve` raises for
+  that combination. A single default name would therefore have made every
+  unflagged ATAC run fail. So `--data-aug` now carries `default=None` and the
+  resolution happens in `conventions.default_for`, where `--data-type` is
+  known -- the same pattern `--benchmark` uses, and it keeps
+  `<prefix>.args.json` a record of what was typed rather than of what it
+  resolved to.
+- `both-half` is preferred to the `right` shift for three reasons. A shift
+  *corrects* the misregistration; splitting the cut across both bases
+  flanking the bond *removes* the asymmetry that causes it, so there is
+  nothing left to correct and no dependence on getting the sign right. It
+  needs no extra label column, where a shift leaves one slot with no source.
+  And the `0.5` scale preserves the track total exactly, so
+  `counts_loss_weight` and the scale-invariant `-oth`/`-b` ratios carry over
+  from `standard` unchanged. The cost is real and is the reason this is a
+  choice rather than a fix: each cut is smeared over 2 bp, halving the
+  target's effective resolution.
+- **The regression harness cannot gate this.** Its fixture is ATAC-only, so
+  every artifact digest is unchanged and a DNase default moving would be
+  invisible to it. The proof is therefore direct: `tests/cli_surface.json`
+  moves in exactly 7 entries and nothing else; new tests in
+  `tests/test_preprocessing_conventions.py` run `reads_to_bigwig` with the
+  flag omitted and assert the deposits land on both flanking bases, that the
+  ATAC default is untouched, and that the track total still matches
+  `standard`.
+- `standard` is now opt-in rather than the default, so a test pins that it
+  still means what it meant.
+
 ## `--ignore-bias-flag`: proceed past a failing bias-model check
 
 - **New `--ignore-bias-flag`** on `pipeline` and `train`, downgrading
