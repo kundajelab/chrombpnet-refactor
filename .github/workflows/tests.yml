@@ -40,3 +40,31 @@ jobs:
       # against a baseline captured from another revision, which is a
       # developer workflow rather than a pass/fail gate -- and its artifacts
       # depend on the installed PyTorch build. See tests/regression/README.md.
+
+  # The same suite in the TensorFlow engine's environment (Python 3.8,
+  # TF 2.8.0). PyTorch-only tests skip themselves there; the shared code and
+  # tests/test_tensorflow_engine.py run. The byte-identity harness against the
+  # original implementation (tests/parity) needs a checkout of that repository
+  # and is opt-in, so it is not run here.
+  pytest-tensorflow:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          environment-file: envs/chrombpnet-tensorflow.yml
+          activate-environment: chrombpnet-tensorflow
+          auto-activate-base: false
+
+      - name: Report the environment
+        run: |
+          python -c "import sys, tensorflow as tf; print(sys.version); print('tensorflow', tf.__version__)"
+
+      - name: Run the test suite
+        env:
+          CUDA_VISIBLE_DEVICES: ""
+        run: python -m pytest -ra

@@ -56,6 +56,49 @@
   `tests/test_tensorflow_engine.py::test_seed_controls_the_bias_factorized_tower`
   pins the fix: it fails on the faithful port and passes now.
 
+## The TensorFlow engine, and one environment per engine
+
+- **`--engine tensorflow`**: the original Keras ChromBPNet
+  (kundajelab/chrombpnet@09938fd), on this package's shared preprocessing,
+  data generators and downstream code. Its model definitions, loss,
+  callbacks, `model.fit` call, bias rescale and DeepSHAP code are the
+  original's, imported verbatim and then adapted in a separate commit, so
+  `git log -p chrombpnet/engines/tensorflow` shows every change. Checkpoints
+  are Keras `.h5`, and models trained by the original package load and run
+  through every command.
+- **Byte-identical to the original**, given identical batches, initial
+  weights and DeepSHAP references: `tests/parity/tf_engine.py` runs both
+  implementations in the TensorFlow environment and requires exact equality
+  of model configurations, predictions, losses, checkpoints (weights,
+  optimizer state, Keras attributes), training logs, no-bias models, the
+  bias rescale, both heads' contribution scores, and cross-loading. The
+  original is checked against itself first. All 42 checks pass, in
+  `chrombpnet-tensorflow` and in the original package's own environment.
+  The engine departs from the original only in the three fixes listed above,
+  each with its own entry.
+- **Environments.** `envs/chrombpnet-pytorch.yml` (renamed from
+  `environment.yml`, Python 3.11), `envs/chrombpnet-tensorflow.yml`
+  (Python 3.8 with TF 2.8.0, Keras 2.8.0, TFP 0.15.0, protobuf 3.20.0 and
+  numpy 1.23.4, exactly the original's), and `envs/chrombpnet-jax.yml` for
+  the JAX placeholder. `pyproject.toml` moves torch/tangermeme to a
+  `pytorch` extra, the TensorFlow stack to a `tensorflow` extra, and lowers
+  `requires-python` to 3.8.
+- **TF-MoDISco differs by environment.** Every TF-MoDISco release after
+  modisco-lite 2.3.2 imports `memelite`, which needs Python >= 3.9, so the
+  TensorFlow environment runs 2.3.2. The adapter code is shared, and
+  `tests/test_modisco_compat.py` passes against both. For the same reason it
+  runs WeasyPrint 61.2 (with pydyf 0.10.0). The original's 52.5 writes PDFs
+  that differ from run to run.
+- The shared code now runs on Python 3.8 with pandas 2.0. The one pandas
+  2.1-only call (`DataFrame.map` in the report tables) falls back to
+  `applymap`. `pytest` runs in every engine's environment and skips what that
+  environment lacks: 206 passed and 14 skipped in `chrombpnet-tensorflow`.
+- `python -m tests.regression.harness ... --engine tensorflow` runs the
+  golden-artifact sweep through the TensorFlow engine: 146 artifacts across
+  10 scenarios, reproducible run to run.
+- **No PyTorch artifact moves.** Throughout the restructuring the PyTorch
+  sweep reports all 150 artifacts identical to the previous `main`.
+
 ## `--engine`: choose the deep-learning framework
 
 - **New `--engine {pytorch,tensorflow,jax}`** on every command that builds or

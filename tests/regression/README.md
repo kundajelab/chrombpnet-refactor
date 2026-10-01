@@ -31,6 +31,53 @@ A successful compare prints `all N artifacts identical`. A failure names each
 changed artifact and explains it in format-aware terms — which state-dict tensor
 moved and by how much, which HDF5 dataset, how many bigwig positions.
 
+## Engines
+
+The sweep runs through either deep-learning engine, from that engine's
+environment:
+
+```bash
+# chrombpnet-pytorch (the default; argv exactly as written in scenarios.py)
+python -m tests.regression.harness against --ref main
+
+# chrombpnet-tensorflow
+python -m tests.regression.harness capture --engine tensorflow --out /tmp/tf-base
+python -m tests.regression.harness compare --engine tensorflow --baseline /tmp/tf-base
+```
+
+For `--engine tensorflow` the harness swaps every `.pt` path for `.h5`,
+appends `--engine tensorflow` to each command that takes it, and pins
+TensorFlow's own thread pools (`TF_NUM_INTRAOP_THREADS`,
+`TF_NUM_INTEROP_THREADS`) and `SOURCE_DATE_EPOCH`, which fontTools stamps into
+the font subsets WeasyPrint 61.2 embeds in every PDF. PyTorch runs get none of
+that: not even an explicit
+`--engine pytorch`, which `<prefix>.args.json` would record. A baseline
+records its engine in `engine.txt`, and `compare` refuses a mismatch.
+
+A healthy TensorFlow sweep captures **146 artifacts across 10 scenarios**
+(PyTorch: 150). The difference is all in the qc scenarios' motif logos, whose
+number depends on which patterns TF-MoDISco finds for each engine's model --
+and the TensorFlow environment runs TF-MoDISco 2.3.2, the newest release that
+installs on Python 3.8, where the PyTorch one runs the git checkout.
+
+Keras serializes the bias-factorized model's logsumexp `Lambda` as marshalled
+bytecode that embeds its defining file's absolute path, so
+`artifacts.hdf5_digest` digests that one attribute by the bytecode's
+instructions, constants and names. Every other HDF5 attribute digests exactly
+as before.
+
+The TensorFlow engine's *byte-identity with the original Keras ChromBPNet* is
+a different question from "did my change move the output", and it has its own
+harness: `tests/parity/tf_engine.py`.
+
+**Checkouts other than the installed one.** `capture` and `compare` run the
+CLI as `python -m chrombpnet.CHROMBPNET` from the workspace, so it imports
+whichever `chrombpnet` the environment resolves -- with an editable install,
+the checkout it was installed from. To test another checkout (a worktree, a
+detached copy), put it on `PYTHONPATH` and set
+`CHROMBPNET_EXPECT_PACKAGE_ROOT` to it, so the harness verifies the CLI really
+imports it rather than silently comparing the installed code with itself.
+
 ## Why baselines are not committed
 
 The artifacts depend on the installed PyTorch build, so a committed digest would

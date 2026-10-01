@@ -7,9 +7,13 @@ sequence bias of the assay enzyme (Tn5 or DNase I). The bias-free model can
 then be interpreted to recover cis-regulatory sequence syntax, transcription
 factor footprints, and the effect of regulatory variants.
 
-This is a PyTorch implementation. Models are `torch.nn.Module`s and
-checkpoints are `.pt` files carrying a format version, the architecture
-configuration and a standard `state_dict`.
+The deep-learning engine is a choice: **PyTorch** (the default),
+**TensorFlow** (the original Keras implementation, byte-identical to it given
+the same inputs) or **JAX** (a placeholder). Everything else -- preprocessing,
+GC-matched negatives, the data generators, metrics, bigwigs, footprints, motif
+discovery and the reports -- is shared, framework-neutral code; DeepLIFT/DeepSHAP
+is the only downstream step that differs between engines. See
+[Engines](#engines).
 
 ## Table of contents
 
@@ -17,6 +21,7 @@ configuration and a standard `state_dict`.
 - [QuickStart](#quickstart)
   - [Training a bias-factorized ChromBPNet model](#training-a-bias-factorized-chrombpnet-model)
   - [Training a bias model](#training-a-bias-model)
+- [Engines](#engines)
 - [Command line](#command-line)
 - [Reproducibility](#reproducibility)
 - [Python API](#python-api)
@@ -25,14 +30,20 @@ configuration and a standard `state_dict`.
 
 ## Installation
 
+Each engine has its own conda environment, because their frameworks cannot
+share one (TensorFlow 2.8 needs Python <= 3.10; the PyTorch stack is on 3.11):
+
 ```bash
-conda env create -f envs/chrombpnet-pytorch.yml
+conda env create -f envs/chrombpnet-pytorch.yml      # default engine
 conda activate chrombpnet-pytorch
+
+conda env create -f envs/chrombpnet-tensorflow.yml   # --engine tensorflow
+conda env create -f envs/chrombpnet-jax.yml          # --engine jax (placeholder)
 ```
 
-Run this from the repository root: `envs/chrombpnet-pytorch.yml` installs the
-package in editable mode and applies the supplemental pip requirements in
-`envs/requirements-pytorch.txt`.
+Run these from the repository root: each file installs the package in
+editable mode with its engine's extra (`-e ..[pytorch]` and so on) and applies
+the supplemental pip requirements in `envs/requirements-<engine>.txt`.
 
 The environment installs a CUDA-enabled PyTorch build that falls back to CPU
 automatically. Every command accepts `--device cpu`, `--device cuda`, or a
@@ -206,6 +217,57 @@ whose counts exceed `-b x` the 1st-percentile peak count are dropped, so the
 model never sees background that looks like signal. Start at `0.5` for ATAC
 and `0.8` for DNase. The trained model lands at `models/bias.pt` and is what
 you pass to `chrombpnet pipeline -b`.
+
+## Engines
+
+```bash
+chrombpnet pipeline --engine pytorch ...      # the default
+chrombpnet pipeline --engine tensorflow ...   # from the chrombpnet-tensorflow env
+chrombpnet pred_bw -cm models/chrombpnet.h5 ...   # engine inferred: TensorFlow
+```
+
+`--engine` is accepted by every command that builds or loads a model. When it
+is omitted the input models' checkpoint suffixes decide (`.pt` PyTorch, `.h5`
+TensorFlow), else PyTorch; an explicit `--engine` must agree with every input
+model. `prep` and `modisco_motifs` never touch a model, take no `--engine`, and
+run in any of the three environments.
+
+| | PyTorch | TensorFlow | JAX |
+|---|---|---|---|
+| environment | `chrombpnet-pytorch` (Python 3.11) | `chrombpnet-tensorflow` (Python 3.8, TF 2.8.0) | `chrombpnet-jax` (Python 3.11) |
+| checkpoints | `.pt` | `.h5` (Keras) | not yet chosen |
+| DeepLIFT/DeepSHAP | Tangermeme | kundajelab `shap` fork | -- |
+| TF-MoDISco | git checkout (2.6 API) | modisco-lite 2.3.2 (newest for Python 3.8) | git checkout |
+| status | default | byte-identical to the original | placeholder |
+| reproducibility gate | `tests/regression` (golden artifacts) | `tests/parity/tf_engine.py` | -- |
+
+The engine is a narrow interface (`chrombpnet/engines/base.py`): build and
+train a model, load one for prediction, rescale the bias model's count head,
+and compute hypothetical contribution scores. The shared code reaches a model
+only through it, and the predictor it hands back has the Keras-shaped surface
+the shared code always used (NLC one-hot in, `(profile_logits, logcounts)`
+out).
+
+**TensorFlow** is the original implementation (kundajelab/chrombpnet@09938fd)
+behind that interface: its model definitions, loss, callbacks, `model.fit`
+call, bias rescale and DeepSHAP code, each module stating what it changes.
+Given identical batches, initial weights and shuffle references it reproduces
+the original's checkpoints, logs, predictions and contribution scores byte for
+byte, which `tests/parity/tf_engine.py` checks against a checkout of the
+original. It loads models trained by the original package, so every downstream
+command works on existing `.h5` models. It differs from the original only where
+this package fixes a defect, each in its own commit and CHANGELOG entry:
+`--seed` now seeds the bias-factorized model's trainable tower; the best
+validation checkpoint is restored even when training runs out of epochs; and
+DeepSHAP's dinucleotide shuffles are seeded by `--seed`. Attribution runs in a
+spawned subprocess, because the shap fork needs TF1 graph mode, which is
+process-global; `--interpret-batch-size` has no effect there.
+
+**JAX** is registered and has an environment, but every operation raises a
+"not implemented" error before any output is written.
+
+`--predict-fk` (the fused Triton forward) and `--benchmark pytorch` are
+PyTorch-only and are refused for other engines.
 
 ## Command line
 
@@ -406,7 +468,16 @@ tests/dump_cli_help.sh > /tmp/help.txt
 # Cross-framework parity, opt-in: needs a second environment alongside this
 # one. Compares 13 arrays and a predictions HDF5 at atol=1e-6, rtol=1e-5.
 CHROMBPNET_TF_PARITY=1 pytest tests/test_tensorflow.py
+
+# TensorFlow engine, from the chrombpnet-tensorflow environment: byte-identity
+# with the original Keras implementation (opt-in, several minutes) ...
+CHROMBPNET_TF_ENGINE_PARITY=1 pytest tests/parity
+# ... and the golden-artifact sweep run through --engine tensorflow.
+python -m tests.regression.harness capture --engine tensorflow --out DIR
 ```
+
+`pytest` runs in every engine's environment; tests that need a framework the
+environment lacks are skipped.
 
 See [`tests/regression/README.md`](tests/regression/README.md) for what makes
 the artifact comparison valid and which fixture constants are pinned by
