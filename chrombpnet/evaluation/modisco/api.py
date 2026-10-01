@@ -6,6 +6,8 @@ here prevents the command line and the historical helper scripts from
 drifting apart again.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator

@@ -32,4 +32,4 @@ dependencies:
   - meme=5.5.9
   - pip:
       - -r requirements-pytorch.txt
-      - -e ..
+      - -e ..[pytorch]

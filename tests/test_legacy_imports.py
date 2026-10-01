@@ -36,7 +36,9 @@ LEGACY_MODULES = {
 
 def _import_by_path(relative: str):
     path = LEGACY_ROOT.parent / relative
-    name = relative.replace("/", "_").removesuffix(".py")
+    name = relative.replace("/", "_")
+    if name.endswith(".py"):  # str.removesuffix is Python 3.9+
+        name = name[:-len(".py")]
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None, relative
     module = importlib.util.module_from_spec(spec)

@@ -5,29 +5,48 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "chrombpnet-refactor"
 version = "1.0.1+torch"
-description = "PyTorch replica of ChromBPNet"
+description = "ChromBPNet with a choice of deep-learning engine: PyTorch, TensorFlow or JAX"
 readme = "README.md"
-requires-python = ">=3.11,<3.12"
+# 3.8 for the TensorFlow engine, which must run TF 2.8.0 to stay
+# byte-identical to the original Keras implementation; 3.11 for PyTorch.
+requires-python = ">=3.8,<3.12"
 license = {file = "LICENSE"}
 authors = [{name = "Kundaje Lab"}]
+# The framework-neutral stack every engine shares. The lower bounds are the
+# newest releases that still support Python 3.8; each engine's environment
+# file (envs/chrombpnet-<engine>.yml) pins its own versions on top.
 dependencies = [
   "deepdish>=0.3",
   "h5py>=3.10",
-  "matplotlib>=3.8",
-  "numpy>=1.26,<2",
-  "pandas>=2.1",
+  "matplotlib>=3.7",
+  "numpy>=1.23,<2",
+  "pandas>=2.0",
   "pyBigWig>=0.3.22",
   "pyfaidx>=0.8",
-  "scipy>=1.11",
-  "tables>=3.9",
-  "tangermeme @ git+https://github.com/jmschrei/tangermeme.git",
+  "scipy>=1.10",
+  "tables>=3.8",
   "termcolor>=2.4",
-  "torch>=2.5,<2.13",
   "tqdm>=4.66",
   "weasyprint>=52.5",
 ]
 
 [project.optional-dependencies]
+pytorch = [
+  "tangermeme @ git+https://github.com/jmschrei/tangermeme.git",
+  "torch>=2.5,<2.13",
+]
+# Pinned exactly: the TensorFlow engine is byte-identical to the original
+# Keras implementation only on these releases.
+tensorflow = [
+  "deeplift==0.6.13.0",
+  "kundajelab-shap==1",
+  "protobuf==3.20.0",
+  "tensorflow==2.8.0",
+  "tensorflow-estimator==2.8.0",
+  "tensorflow-probability==0.15.0",
+]
+# Placeholder: the JAX engine is not implemented yet.
+jax = ["flax", "jax", "optax", "orbax-checkpoint"]
 reports = ["modisco @ git+https://github.com/kundajelab/tfmodisco.git"]
 test = ["pytest>=8", "pytest-cov>=5", "pillow>=10"]
 
