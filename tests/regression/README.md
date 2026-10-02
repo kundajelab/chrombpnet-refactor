@@ -33,8 +33,8 @@ moved and by how much, which HDF5 dataset, how many bigwig positions.
 
 ## Engines
 
-The sweep runs through either deep-learning engine, from that engine's
-environment:
+The sweep runs through any of the three deep-learning engines, from that
+engine's environment:
 
 ```bash
 # chrombpnet-pytorch (the default; argv exactly as written in scenarios.py)
@@ -43,6 +43,10 @@ python -m tests.regression.harness against --ref main
 # chrombpnet-tensorflow
 python -m tests.regression.harness capture --engine tensorflow --out /tmp/tf-base
 python -m tests.regression.harness compare --engine tensorflow --baseline /tmp/tf-base
+
+# chrombpnet-jax
+python -m tests.regression.harness capture --engine jax --out /tmp/jax-base
+python -m tests.regression.harness compare --engine jax --baseline /tmp/jax-base
 ```
 
 For `--engine tensorflow` the harness swaps every `.pt` path for `.h5`,
@@ -66,9 +70,19 @@ bytecode that embeds its defining file's absolute path, so
 instructions, constants and names. Every other HDF5 attribute digests exactly
 as before.
 
-The TensorFlow engine's *byte-identity with the original Keras ChromBPNet* is
-a different question from "did my change move the output", and it has its own
-harness: `tests/parity/tf_engine.py`.
+For `--engine jax` the `.pt` paths become `.keras`, and JAX runs on the CPU
+platform only (`JAX_PLATFORMS=cpu`, so no CUDA context even where a GPU is
+visible) with XLA's CPU thread pool at one thread. A healthy JAX sweep
+captures **152 artifacts across 10 scenarios**, reproducibly; again only the
+motif-logo count differs. `.keras` archives are digested by content
+(`artifacts.keras_archive_digest`): Keras stamps the time of saving into each
+one and marks shared objects with a memory address, so their bytes differ
+between two saves of the same model.
+
+The TensorFlow engine's *byte-identity with the original Keras ChromBPNet*, and
+the JAX engine's agreement with it, are different questions from "did my
+change move the output", and they have their own harnesses:
+`tests/parity/tf_engine.py` and `tests/parity/jax_engine.py`.
 
 **Checkouts other than the installed one.** `capture` and `compare` run the
 CLI as `python -m chrombpnet.CHROMBPNET` from the workspace, so it imports

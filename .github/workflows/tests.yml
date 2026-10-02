@@ -68,3 +68,33 @@ jobs:
         env:
           CUDA_VISIBLE_DEVICES: ""
         run: python -m pytest -ra
+
+  # The same suite in the JAX engine's environment (Python 3.12, NumPy 2,
+  # Keras 3.15 on JAX 0.11), on the CPU: tests/jax_engine/ and the shared code
+  # run; PyTorch- and TensorFlow-only tests skip. The agreement harness
+  # against the original implementation (tests/parity/jax_engine.py) needs the
+  # TensorFlow environment and a checkout of the original, and is opt-in.
+  pytest-jax:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          environment-file: envs/chrombpnet-jax.yml
+          activate-environment: chrombpnet-jax
+          auto-activate-base: false
+
+      - name: Report the environment
+        env:
+          JAX_PLATFORMS: cpu
+        run: |
+          python -c "import sys, chrombpnet.engines.jax, jax, keras; print(sys.version); print('jax', jax.__version__, 'keras', keras.__version__, keras.backend.backend())"
+
+      - name: Run the test suite
+        env:
+          JAX_PLATFORMS: cpu
+        run: python -m pytest -ra

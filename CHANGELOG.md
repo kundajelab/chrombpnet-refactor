@@ -1,5 +1,87 @@
 # Changelog
 
+## The JAX engine: Keras 3 on JAX, from ChromBPNet 2.0
+
+- **`--engine jax`** is no longer a placeholder. It is the Keras 3 / JAX port
+  of the original ChromBPNet from
+  [kundajelab/chrombpnet#284](https://github.com/kundajelab/chrombpnet/pull/284)
+  ("ChromBPNet 2.0", NNFC-GMD/chrombpnet@14ca773). It brings the PR's
+  architectures, loss, callbacks, `model.fit` call, loader for the original's
+  `.h5` models, bias rescale and native JAX DeepSHAP behind the engine
+  interface, on this package's shared preprocessing and downstream code. The
+  PR's modules were imported verbatim first, and each module states what this
+  package changes. Nothing else from the PR was taken.
+- **Environment.** `envs/chrombpnet-jax.yml`: Python 3.12, NumPy 2, Keras
+  3.15.1, `jax[cuda13]` 0.11.2 (NVIDIA driver >= 580; `jax[cuda12]` on older
+  drivers). The shared code runs on NumPy 2 there; the one incompatibility
+  was deepdish (see the next entry).
+- **Checkpoints are `.keras`** (`<prefix>.keras`, `_nobias.keras`,
+  `bias_model_scaled.keras`). The engine also reads the original's `.h5`
+  models without TensorFlow (their bytecode count head is never run) and
+  ChromBPNet 2.0's Keras 3 `.h5` files. Engine inference reads suffixes:
+  `.keras` means JAX, an explicit `--engine` may name any engine that can read
+  every input (`--engine jax -b original_bias.h5`), and inputs in both formats
+  go to the engine that reads them all.
+- **Agreement with the original**, checked by the new
+  `tests/parity/jax_engine.py` on identical inputs, CPU, full float32. It
+  passes all 67 checks:
+  - predictions within 9.5e-7;
+  - `test_on_batch` losses within 2.3e-7 relative;
+  - a 20-step Adam trace within 2.6e-6 relative in loss and 1.9e-3 relative
+    L2 in final weights;
+  - the bias rescale within 4.8e-7;
+  - DeepSHAP hypothetical scores within 8.8e-6 relative L2, with
+    bitwise-identical references;
+  - the original's 1.x models loaded within 6.0e-7;
+  - a `.keras` round trip, exact;
+  - `export --legacy-h5` files read by the TensorFlow engine and by the
+    original within 9.5e-7.
+  The tolerances are the PR's.
+- **DeepSHAP references** are drawn as the TensorFlow engine draws them: one
+  `RandomState(--seed)`, `--num-shuffles` single dinucleotide shuffles per
+  sequence, in region order. The PR instead seeds each sequence from its own
+  content. Each sequence's references are drawn exactly once, even across the
+  explainer's prefetching and its out-of-memory retries. The profile head
+  uses the `shap` fork's effective midpoint weighting, as the TensorFlow
+  engine does. `--interpret-batch-size` counts (sequence, reference) pairs.
+- **One `on_epoch_end` per pass.** Keras 3 also calls a dataset's
+  `on_epoch_end` from `EpochIterator.reset()`, before the first epoch and
+  before every validation pass, and it starts an extra pass to inspect the
+  first batch. The PR's generator saw both. Here the adapter forwards
+  `on_epoch_end` only after a pass begins, and the engine builds the model's
+  loss and metrics before `fit`. The shared generator's augmentation (at
+  `--benchmark max`, derived from `(seed, mode, epoch)`) therefore stays in
+  step with the PyTorch and TensorFlow engines.
+- **New options, JAX only** (refused for the other engines, and dropped from
+  the namespace when absent, so `args.json` is unchanged): `--optimizer
+  {adam,muon}`, `--muon-lr`, `--ema`, `--ema-momentum`, `--lr-schedule
+  {constant,cosine}`, `--precision {default,highest,bf16}`. The defaults are
+  the original recipe.
+- **GPU:** on hosts whose login shell puts a system cuDNN on
+  `LD_LIBRARY_PATH`, the pip-wheel cuDNN that jax[cuda13] brings would load
+  the system cuDNN's engine libraries, and every GPU convolution would fail
+  (`CUDNN_STATUS_SUBLIBRARY_LOADING_FAILED`). The engine preloads the
+  bundled cuDNN in that case. Checked end to end with `--device cuda` on an
+  L40S: `bias train`, `pred_bw` and `contribs_bw`.
+- **`chrombpnet export --legacy-h5`** writes a JAX-engine model in the
+  original's `.h5` layout, for the TensorFlow engine, chrombpnet 1.x,
+  variant-scorer and bpnet-lite.
+- `python -m tests.regression.harness ... --engine jax` runs the
+  golden-artifact sweep through JAX: 152 artifacts across 10 scenarios,
+  reproducible run to run. `.keras` archives are digested by content (save
+  time and Keras's memory-address shared-object ids excluded).
+- **No PyTorch or TensorFlow artifact moves**: the PyTorch sweep is 150/150
+  identical to `main`, and the TensorFlow engine is still 42/42
+  byte-identical to the original.
+
+## `contribs_bw` reads contribution scores with h5py
+
+- `importance_hdf5_to_bigwig` read `/projected_shap/seq` with
+  `deepdish.io.load`, which no longer imports on NumPy 2. It now reads the
+  same float16 array with h5py, with `hdf5plugin` for Blosc-compressed files
+  written by the original package. Output is unchanged (regression harness).
+- deepdish leaves `pyproject.toml`'s core dependencies; only `legacy/` uses it.
+
 ## TensorFlow engine: seeded DeepSHAP references
 
 - **Behaviour change, TensorFlow engine only.** DeepSHAP's
