@@ -62,3 +62,21 @@ def test_profile_pearsonr_undefined_profiles_without_warnings():
         assert np.isnan(profile_pearsonr(np.ones((1, 7)), np.ones((1, 7)))).all()
         assert np.isnan(profile_pearsonr(np.ones((2, 1)), np.ones((2, 1)))).all()
         assert profile_pearsonr(np.empty((0, 3)), np.empty((0, 3))).size == 0
+
+
+def test_density_scatter_drops_nans_in_either_input():
+    """From kundajelab/chrombpnet#284 tests/test_training.py: different NaN
+    counts in x and y used to raise in np.isin, so a model predicting NaN
+    crashed the counts plot."""
+    import matplotlib
+    matplotlib.use("Agg")
+    from matplotlib import pyplot as plt
+    from chrombpnet.training.utils.metrics_utils import density_scatter
+
+    rng = np.random.RandomState(0)
+    x, y = rng.normal(size=200), rng.normal(size=200)
+    x[3] = np.nan
+    y[[10, 20]] = np.nan
+    ax = density_scatter(x, y, xlab="x", ylab="y")
+    assert len(ax.collections[0].get_offsets()) == 197
+    plt.close("all")

@@ -38,9 +38,12 @@ def density_scatter(x, y, xlab, ylab, ax = None, sort = True, bins = 20):
     """
     Scatter plot colored by 2d histogram
     """
-    bad_indices=np.where(np.isnan(x))+np.where(np.isnan(y))
-    x=x[~np.isin(np.arange(x.size),bad_indices)]
-    y=y[~np.isin(np.arange(y.size),bad_indices)]
+    # One boolean mask for both. The previous mask concatenated the two
+    # np.where tuples, which only worked when x and y had the same number of
+    # NaNs; a NaN prediction (labels have none) raised "inhomogeneous shape".
+    bad = np.isnan(x) | np.isnan(y)
+    x = x[~bad]
+    y = y[~bad]
 
     if ax is None:
         _, ax = plt.subplots()
