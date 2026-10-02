@@ -7,6 +7,7 @@ from chrombpnet.layout import RunLayout
 import copy
 import pandas as pd
 import logging
+import shutil
 import subprocess
 logging.getLogger('matplotlib.font_manager').disabled = True
 
@@ -14,6 +15,30 @@ logging.getLogger('matplotlib.font_manager').disabled = True
 #: Commands that never build or load a model, and so run in any engine's
 #: environment.
 MODEL_FREE_COMMANDS = ("prep", "modisco_motifs")
+
+
+def runs_motif_report(args):
+	"""Whether this command ends with a TF-MoDISco motif report."""
+	if args.cmd == "bias":
+		return getattr(args, "cmd_bias", None) in ("pipeline", "qc")
+	return args.cmd in ("pipeline", "qc", "modisco_motifs")
+
+
+def check_tomtom(args):
+	"""Fail before any work if the motif report will need MEME's tomtom and
+	it is not installed.
+
+	The report runs at the very end, hours into a pipeline, and modiscolite
+	looks tomtom up on PATH only then. shutil.which("tomtom") is exactly its
+	lookup.
+	"""
+	if not runs_motif_report(args) or getattr(args, "tomtom_lite", None):
+		return
+	if shutil.which("tomtom") is None:
+		raise SystemExit(
+			"chrombpnet: error: the motif report needs MEME's `tomtom`, which is "
+			"not on PATH. Install MEME (it is in every envs/chrombpnet-*.yml, as "
+			"`meme`) or activate the environment that has it.")
 
 
 # invoke pipeline modules based on command
@@ -31,6 +56,7 @@ def main():
 	except (ValueError, engines.EngineUnavailable,
 	        engines.EngineNotImplemented) as error:
 		raise SystemExit(f"chrombpnet: error: {error}")
+	check_tomtom(args)
 	
 	if args.cmd == "pipeline" or args.cmd == "train":
 		RunLayout.from_args(args).create_training_dirs()

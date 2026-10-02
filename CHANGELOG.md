@@ -1,5 +1,18 @@
 # Changelog
 
+## A missing MEME `tomtom` fails at startup, not hours later
+
+- `pipeline`, `qc`, `bias pipeline`, `bias qc` and `modisco_motifs` end with
+  a TF-MoDISco motif report, and modiscolite looks up MEME's `tomtom` only
+  then. The CLI now checks for it (`shutil.which("tomtom")`, the same
+  lookup) before creating any directory, and exits with an error saying how
+  to install it. `train` and `bias train`, which never run reports, are not
+  checked.
+- `modisco_motifs` on scores that yield no patterns used to finish without
+  `tomtom`; it now requires it too.
+- From kundajelab/chrombpnet#284, which checks the training commands but not
+  `modisco_motifs`. No artifact changes.
+
 ## Clearer `reads_to_bigwig` failures
 
 - A bedGraph with no reads left after filtering now stops with an error naming

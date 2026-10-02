@@ -1,3 +1,4 @@
+import os
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -206,3 +207,28 @@ def test_the_legacy_encoder_still_agrees_with_the_shipping_one():
 def test_one_hot_rejects_ragged_input():
     with pytest.raises(ValueError, match="same length"):
         dna_to_one_hot(["ACGT", "ACG"])
+
+
+def test_a_missing_tomtom_fails_before_any_work(tmp_path):
+    """The motif report looks tomtom up only at the end of a run; the CLI
+    checks first and creates nothing."""
+    output = tmp_path / "out"
+    completed = subprocess.run(
+        [sys.executable, "-m", "chrombpnet.CHROMBPNET", "modisco_motifs",
+         "-i", str(tmp_path / "scores.h5"), "-op", str(output / "modisco")],
+        capture_output=True, text=True, env=dict(os.environ, PATH=str(tmp_path)), cwd=tmp_path)
+    assert completed.returncode != 0
+    assert "needs MEME's `tomtom`" in completed.stderr
+    assert not output.exists()
+
+
+def test_only_motif_reports_need_tomtom():
+    from argparse import Namespace
+    from chrombpnet.CHROMBPNET import runs_motif_report
+
+    for cmd, sub in (("pipeline", None), ("qc", None), ("modisco_motifs", None),
+                     ("bias", "pipeline"), ("bias", "qc")):
+        assert runs_motif_report(Namespace(cmd=cmd, cmd_bias=sub))
+    for cmd, sub in (("train", None), ("bias", "train"), ("pred_bw", None),
+                     ("contribs_bw", None), ("prep", None)):
+        assert not runs_motif_report(Namespace(cmd=cmd, cmd_bias=sub))
