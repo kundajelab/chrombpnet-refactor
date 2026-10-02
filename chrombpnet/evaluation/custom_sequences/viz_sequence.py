@@ -168,4 +168,6 @@ def plot_weights(array,
         highlight=highlight,
         ylabel=ylabel,
         ylim=ylim)
-#     plt.show()
+    # Returned so a caller can save or close it; it used to be unreachable
+    # except through plt.gcf().
+    return fig

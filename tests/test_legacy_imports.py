@@ -76,3 +76,15 @@ def test_names_the_archive_imports_from_the_live_package_still_exist():
 
     pytest.importorskip("torch")  # the archive's PyTorch model imports
     from chrombpnet.model import ChromBPNet, load_model, save_model  # noqa: F401
+
+
+def test_plot_weights_returns_its_figure():
+    import matplotlib
+    matplotlib.use("Agg")
+    import numpy as np
+    from matplotlib import pyplot as plt
+    from chrombpnet.evaluation.custom_sequences import viz_sequence
+
+    fig = viz_sequence.plot_weights(np.eye(4)[[0, 1, 2, 3, 0]] * 0.5, dpi=50)
+    assert fig is not None and len(fig.axes) == 1
+    plt.close(fig)
