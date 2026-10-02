@@ -132,6 +132,26 @@ def test_bias_training_writes_keras_checkpoints_and_restores_the_best_epoch(engi
     assert not hasattr(args, "total_steps")
 
 
+def test_training_extras_together(engine, tmp_path):
+    """--optimizer muon --lr-schedule cosine --ema --precision bf16, through
+    get_model and fit: the cosine schedule gets its step count from fit, the
+    saved model is float32, and the process-wide precision is restored."""
+    import jax
+
+    prefix = tmp_path / "bias"
+    args = training_args(engine, "bias", prefix, epochs=2, optimizer="muon", lr_schedule="cosine",
+                         ema=True, precision="bf16")
+    model, module = engine.get_model(args, parameters())
+    assert keras.config.dtype_policy().name == "mixed_bfloat16"
+    engine.fit(model, Generator(0), Generator(1), args, parameters(), module)
+    assert keras.config.dtype_policy().name == "float32"
+    assert jax.config.jax_default_matmul_precision is None
+    assert not hasattr(args, "total_steps")
+    from chrombpnet.engines.jax import model_io
+    saved = model_io.load_model(str(prefix) + ".keras")
+    assert {layer.dtype_policy.name for layer in saved.layers} == {"float32"}
+
+
 def test_seed_sets_the_bias_factorized_tower(engine, tmp_path):
     bias, module = engine.get_model(training_args(engine, "bias", tmp_path / "b"), parameters())
     bias_path = str(tmp_path / "bias.keras")

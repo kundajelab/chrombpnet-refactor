@@ -118,7 +118,14 @@ def get_model(args, parameters):
         if builder is None:
             raise AttributeError(
                 "Architecture must define getModelGivenModelOptionsAndWeightInits(args, parameters)")
-        model = builder(args, parameters)
+        build_args = args
+        if getattr(args, "lr_schedule", None) == "cosine" and not getattr(args, "total_steps", None):
+            # The architecture file builds the optimizer, and a cosine
+            # schedule needs the step count, which only fit knows; build with
+            # a constant rate here, and fit compiles the schedule in.
+            build_args = copy.copy(args)
+            build_args.lr_schedule = "constant"
+        model = builder(build_args, parameters)
         print("got the model")
         if benchmark_enables(args, "shared_initial_weights"):
             assign_canonical_weights(model, parameters, args.seed)

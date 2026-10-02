@@ -104,6 +104,25 @@ def test_pytorch_only_flags_are_refused_for_other_engines():
             Namespace(model_h5="m.h5", predict_fk=True), require=False)
 
 
+def test_jax_only_training_options_are_refused_for_other_engines():
+    for engine in ("pytorch", "tensorflow"):
+        with pytest.raises(ValueError, match="--optimizer, --ema only apply to the JAX engine"):
+            engines.configure_from_args(
+                Namespace(engine=engine, optimizer="muon", ema=True), require=False)
+
+
+def test_absent_jax_options_leave_no_trace_in_the_namespace():
+    absent = {name: None for name in engines.JAX_ONLY_OPTIONS}
+    args = Namespace(engine=None, bias_model_path="bias.pt", **absent)
+    engines.configure_from_args(args, require=False)
+    assert not any(hasattr(args, name) for name in engines.JAX_ONLY_OPTIONS)
+
+    given = Namespace(engine="jax", **dict(absent, optimizer="muon", precision="highest"))
+    engines.configure_from_args(given, require=False)
+    assert given.optimizer == "muon" and given.precision == "highest"
+    assert not hasattr(given, "ema")
+
+
 def test_model_loading_follows_the_checkpoint_not_the_configured_engine():
     engines.configure("tensorflow")
     assert engines.for_model("bias.pt").name == "pytorch"

@@ -193,6 +193,24 @@ def _add_predict_fk(optional):
              "Needs an H100 or H200; refuses by name on anything else.")
 
 
+def _add_jax_training_options(optional):
+    """Training options only the JAX engine has (from kundajelab/chrombpnet#284).
+
+    Every one defaults to ``None``, meaning *absent*: absent options are
+    removed from the namespace before any stage sees it, as an absent
+    ``--engine`` is, so ``<prefix>.args.json`` is unchanged for every run that
+    does not use them; and any of them is refused for the other engines.
+    The defaults the JAX engine then applies are the original recipe: Adam,
+    constant learning rate, no moving average, the backend's precision.
+    """
+    optional.add_argument("--optimizer", type=str, default=None, choices=["adam", "muon"], help="JAX engine only. Optimizer for model training (default adam). 'muon' (experimental) applies Muon to the dilated convolution kernels and Adam to all other weights")
+    optional.add_argument("--muon-lr", type=float, default=None, help="JAX engine only. Learning rate of the Muon updates (only with --optimizer muon, default 2e-3)")
+    optional.add_argument("--ema", default=None, action="store_true", help="JAX engine only. Keep an exponential moving average of the weights and checkpoint the averaged weights")
+    optional.add_argument("--ema-momentum", type=float, default=None, help="JAX engine only. Momentum of the weight moving average (only with --ema, default 0.999)")
+    optional.add_argument("--lr-schedule", type=str, default=None, choices=["constant", "cosine"], help="JAX engine only. Learning rate schedule: constant (default) or warmup followed by cosine decay")
+    optional.add_argument("--precision", type=str, default=None, choices=["default", "highest", "bf16"], help="JAX engine only. Training numerics: default (TF32 matmuls/convolutions on GPUs that have them, like TensorFlow), highest (full float32) or bf16 (mixed bfloat16; faster but less accurate)")
+
+
 def _add_architecture_options(optional, *, filters, dilations, jitter):
     optional.add_argument("-fil", "--filters", type=int, default=filters, help="Number of filters to use in chrombpnet mode")
     optional.add_argument("-dil", "--n-dilation-layers", type=int, default=dilations, help="Number of dilation layers to use in chrombpnet model")
@@ -240,6 +258,7 @@ def _add_chrombpnet_training_arguments(parser):
     optional.add_argument("-sr", "--negative-sampling-ratio", type=float, default=0.1, help="Ratio of negatives to positive samples per epoch")
     _add_architecture_options(optional, filters=512, dilations=8, jitter=500)
     _add_batch_sizes(optional)
+    _add_jax_training_options(optional)
 
 
 def _add_bias_training_arguments(parser):
@@ -256,6 +275,7 @@ def _add_bias_training_arguments(parser):
     required.add_argument("-b", "--bias-threshold-factor", type=float, required=True, help="A threshold is applied on maximum count of non-peak region for training bias model, which is set as this threshold x min(count over peak regions). Recommended start value 0.5 for ATAC and 0.8 for DNase.")
     _add_architecture_options(optional, filters=128, dilations=4, jitter=0)
     _add_batch_sizes(optional)
+    _add_jax_training_options(optional)
 
 
 def build_parser():

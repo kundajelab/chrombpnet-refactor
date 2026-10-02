@@ -163,6 +163,26 @@
     "required": false,
     "type": "int"
   },
+  "bias pipeline ema": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--ema"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "bias pipeline ema_momentum": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--ema-momentum"
+    ],
+    "required": false,
+    "type": "float"
+  },
   "bias pipeline engine": {
     "choices": [
       "jax",
@@ -309,6 +329,19 @@
     "required": false,
     "type": "float"
   },
+  "bias pipeline lr_schedule": {
+    "choices": [
+      "constant",
+      "cosine"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--lr-schedule"
+    ],
+    "required": false,
+    "type": "str"
+  },
   "bias pipeline max_jitter": {
     "choices": null,
     "default": "0",
@@ -319,6 +352,16 @@
     ],
     "required": false,
     "type": "int"
+  },
+  "bias pipeline muon_lr": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--muon-lr"
+    ],
+    "required": false,
+    "type": "float"
   },
   "bias pipeline n_dilation_layers": {
     "choices": null,
@@ -362,6 +405,19 @@
     "required": false,
     "type": "int"
   },
+  "bias pipeline optimizer": {
+    "choices": [
+      "adam",
+      "muon"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--optimizer"
+    ],
+    "required": false,
+    "type": "str"
+  },
   "bias pipeline outlier_threshold": {
     "choices": null,
     "default": "0.9999",
@@ -404,6 +460,20 @@
       "-p"
     ],
     "required": true,
+    "type": "str"
+  },
+  "bias pipeline precision": {
+    "choices": [
+      "bf16",
+      "default",
+      "highest"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--precision"
+    ],
+    "required": false,
     "type": "str"
   },
   "bias pipeline seed": {
@@ -800,6 +870,26 @@
     "required": false,
     "type": "int"
   },
+  "bias train ema": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--ema"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "bias train ema_momentum": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--ema-momentum"
+    ],
+    "required": false,
+    "type": "float"
+  },
   "bias train engine": {
     "choices": [
       "jax",
@@ -946,6 +1036,19 @@
     "required": false,
     "type": "float"
   },
+  "bias train lr_schedule": {
+    "choices": [
+      "constant",
+      "cosine"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--lr-schedule"
+    ],
+    "required": false,
+    "type": "str"
+  },
   "bias train max_jitter": {
     "choices": null,
     "default": "0",
@@ -956,6 +1059,16 @@
     ],
     "required": false,
     "type": "int"
+  },
+  "bias train muon_lr": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--muon-lr"
+    ],
+    "required": false,
+    "type": "float"
   },
   "bias train n_dilation_layers": {
     "choices": null,
@@ -999,6 +1112,19 @@
     "required": false,
     "type": "int"
   },
+  "bias train optimizer": {
+    "choices": [
+      "adam",
+      "muon"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--optimizer"
+    ],
+    "required": false,
+    "type": "str"
+  },
   "bias train outlier_threshold": {
     "choices": null,
     "default": "0.9999",
@@ -1041,6 +1167,20 @@
       "-p"
     ],
     "required": true,
+    "type": "str"
+  },
+  "bias train precision": {
+    "choices": [
+      "bf16",
+      "default",
+      "highest"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--precision"
+    ],
+    "required": false,
     "type": "str"
   },
   "bias train seed": {
@@ -1626,6 +1766,26 @@
     "required": false,
     "type": "int"
   },
+  "pipeline ema": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--ema"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "pipeline ema_momentum": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--ema-momentum"
+    ],
+    "required": false,
+    "type": "float"
+  },
   "pipeline engine": {
     "choices": [
       "jax",
@@ -1782,6 +1942,19 @@
     "required": false,
     "type": "float"
   },
+  "pipeline lr_schedule": {
+    "choices": [
+      "constant",
+      "cosine"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--lr-schedule"
+    ],
+    "required": false,
+    "type": "str"
+  },
   "pipeline max_jitter": {
     "choices": null,
     "default": "500",
@@ -1792,6 +1965,16 @@
     ],
     "required": false,
     "type": "int"
+  },
+  "pipeline muon_lr": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--muon-lr"
+    ],
+    "required": false,
+    "type": "float"
   },
   "pipeline n_dilation_layers": {
     "choices": null,
@@ -1846,6 +2029,19 @@
     "required": false,
     "type": "int"
   },
+  "pipeline optimizer": {
+    "choices": [
+      "adam",
+      "muon"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--optimizer"
+    ],
+    "required": false,
+    "type": "str"
+  },
   "pipeline outlier_threshold": {
     "choices": null,
     "default": "0.9999",
@@ -1888,6 +2084,20 @@
       "-p"
     ],
     "required": true,
+    "type": "str"
+  },
+  "pipeline precision": {
+    "choices": [
+      "bf16",
+      "default",
+      "highest"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--precision"
+    ],
+    "required": false,
     "type": "str"
   },
   "pipeline seed": {
@@ -2861,6 +3071,26 @@
     "required": false,
     "type": "int"
   },
+  "train ema": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--ema"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "train ema_momentum": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--ema-momentum"
+    ],
+    "required": false,
+    "type": "float"
+  },
   "train engine": {
     "choices": [
       "jax",
@@ -3017,6 +3247,19 @@
     "required": false,
     "type": "float"
   },
+  "train lr_schedule": {
+    "choices": [
+      "constant",
+      "cosine"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--lr-schedule"
+    ],
+    "required": false,
+    "type": "str"
+  },
   "train max_jitter": {
     "choices": null,
     "default": "500",
@@ -3027,6 +3270,16 @@
     ],
     "required": false,
     "type": "int"
+  },
+  "train muon_lr": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--muon-lr"
+    ],
+    "required": false,
+    "type": "float"
   },
   "train n_dilation_layers": {
     "choices": null,
@@ -3081,6 +3334,19 @@
     "required": false,
     "type": "int"
   },
+  "train optimizer": {
+    "choices": [
+      "adam",
+      "muon"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--optimizer"
+    ],
+    "required": false,
+    "type": "str"
+  },
   "train outlier_threshold": {
     "choices": null,
     "default": "0.9999",
@@ -3123,6 +3389,20 @@
       "-p"
     ],
     "required": true,
+    "type": "str"
+  },
+  "train precision": {
+    "choices": [
+      "bf16",
+      "default",
+      "highest"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--precision"
+    ],
+    "required": false,
     "type": "str"
   },
   "train seed": {

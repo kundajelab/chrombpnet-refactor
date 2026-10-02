@@ -59,6 +59,11 @@ MODEL_PATH_ATTRIBUTES = (
     "chrombpnet_model_nb",
 )
 
+#: Training options only the JAX engine has (``parsers._add_jax_training_options``).
+#: Like ``--engine`` they default to ``None`` and are dropped when absent.
+JAX_ONLY_OPTIONS = ("optimizer", "muon_lr", "ema", "ema_momentum",
+                    "lr_schedule", "precision")
+
 _INSTANCES = {}
 _CURRENT = DEFAULT_ENGINE
 
@@ -165,19 +170,27 @@ def configure_from_args(args, require=True):
 
     An omitted ``--engine`` (``None``) is removed from ``args`` afterwards, so
     the namespaces later dumped to ``<prefix>.args.json`` are exactly what they
-    were before the flag existed; an explicit one stays and is recorded.
+    were before the flag existed; an explicit one stays and is recorded. The
+    same goes for the JAX-only training options.
     """
     engine = configure(resolve_name(args))
     _check_combinations(engine, args)
     if require:
         engine.require()
-    if hasattr(args, "engine") and args.engine is None:
-        delattr(args, "engine")
+    for attribute in ("engine",) + JAX_ONLY_OPTIONS:
+        if hasattr(args, attribute) and getattr(args, attribute) is None:
+            delattr(args, attribute)
     return engine
 
 
 def _check_combinations(engine, args):
-    """Reject flags that only mean something for the PyTorch engine."""
+    """Reject flags that only mean something for another engine."""
+    if engine.name != "jax":
+        given = [a for a in JAX_ONLY_OPTIONS if getattr(args, a, None) is not None]
+        if given:
+            flags = ", ".join("--" + a.replace("_", "-") for a in given)
+            raise ValueError(
+                f"{flags} only apply to the JAX engine, not the {engine.name} engine")
     if engine.name == "pytorch":
         return
     if getattr(args, "predict_fk", False):
