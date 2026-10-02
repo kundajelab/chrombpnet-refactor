@@ -1,3 +1,5 @@
+# JAX engine. From kundajelab/chrombpnet#284 (NNFC-GMD/chrombpnet@14ca773),
+# chrombpnet/helpers/postprocessing/export_legacy_h5.py, except that it imports from this engine.
 """Export a ChromBPNet model as a TF-Keras 2.x full-model .h5 file (`chrombpnet export --legacy-h5`).
 
 Keras 3 writes .h5 files that TF-Keras 2.x (chrombpnet 1.x, the kundajelab variant-scorer) cannot load, and whose
@@ -60,7 +62,7 @@ import warnings
 
 import numpy as np
 
-import chrombpnet  # noqa: F401  (sets KERAS_BACKEND=jax before keras is imported)
+import chrombpnet.engines.jax  # noqa: F401  (sets KERAS_BACKEND=jax before keras is imported)
 import h5py
 import keras
 from keras.src.legacy.saving.legacy_h5_format import save_attributes_to_hdf5_group
@@ -68,7 +70,7 @@ from keras.src.models.functional import Functional
 from keras.src.ops.function import make_node_key
 from keras.src.utils.naming import to_snake_case
 
-from chrombpnet.training.utils.layers import LOGSUMEXP_LAMBDA_FUNCTION, LogSumExp
+from chrombpnet.engines.jax.layers import LOGSUMEXP_LAMBDA_FUNCTION, LogSumExp
 
 LEGACY_KERAS_VERSION = "2.12.0"   # the TF-Keras version that wrote the chrombpnet 1.x reference files
 LEGACY_BACKEND = "tensorflow"
@@ -371,7 +373,7 @@ def export_legacy_h5(model_or_path, out_path, normalize_names=True, count_head="
     """
     logsumexp_lambda_fields(count_head)   # refuse a bad value before loading anything
     if isinstance(model_or_path, (str, os.PathLike)):
-        from chrombpnet.training.utils.model_io import load_model
+        from chrombpnet.engines.jax.model_io import load_model
         model = load_model(str(model_or_path), compile=False)
     else:
         model = model_or_path

@@ -307,6 +307,7 @@ def build_parser():
     motifs_parser = subparsers.add_parser("modisco_motifs", help="Discover motifs from contribution scores with TF-MoDISco 2.6")
     footprints_parser = subparsers.add_parser("footprints", help="Get marginal footprinting for given model and given motifs")
     predict_parser = subparsers.add_parser("predict", help="Score one model on a fold's test split and write metrics")
+    export_parser = subparsers.add_parser("export", help="Export a JAX-engine model for TF-Keras 2.x readers (the TensorFlow engine, chrombpnet 1.x, variant-scorer, bpnet-lite)")
 
     # Generate non-peak regions from peak-regions
     required_nonpeaks_parser, optional_nonpeaks_parser = _required_optional(nonpeaks_parser)
@@ -346,6 +347,7 @@ def build_parser():
     ])
 
     _add_predict_arguments(predict_parser)
+    _add_export_arguments(export_parser)
 
     # Make prediction bigwigs
     required_preds, optional_preds = _required_optional(preds_parser)
@@ -406,6 +408,24 @@ def build_parser():
     optional_tfm.add_argument("-v", "--verbose", action="store_true", default=False)
 
     return parser
+
+
+def _add_export_arguments(parser):
+    """``export``, from kundajelab/chrombpnet#284: always the JAX engine,
+    which reads every model format and writes the 1.x one."""
+    required, optional = _required_optional(parser)
+    parser.set_defaults(engine="jax")
+    required.add_argument("-m", "--model-h5", type=str, required=True, help="Model to export: bias / chrombpnet / chrombpnet_nobias .keras file (JAX engine), or a ChromBPNet 2.0 .h5 file")
+    required.add_argument("-o", "--output", type=str, required=True, help="Output .h5 file")
+    optional.add_argument("--legacy-h5", dest="format", action="store_const", const="legacy-h5", default="legacy-h5",
+                    help="Write a TF-Keras 2.x full-model .h5 file, in the layout chrombpnet 1.x wrote (the default and, for now, "
+                    "the only format). TF-Keras loads it with load_model(path, compile=False)")
+    optional.add_argument("--count-head", choices=["bytecode", "named"], default="bytecode",
+                    help="How the count head (logsumexp Lambda) of a full chrombpnet model is written. 'bytecode' (default): the "
+                    "chrombpnet 1.x Lambda verbatim (Python 3.8 bytecode), which TF-Keras on Python 3.8 - 3.10 (chrombpnet 1.x, "
+                    "the TensorFlow engine, variant-scorer) loads without custom objects. 'named': for TF-Keras on Python >= 3.11, "
+                    "which cannot unmarshal that bytecode; the Lambda names its function, so load_model needs "
+                    "custom_objects={'chrombpnet_logsumexp': ...}. Bias and no-bias models have no Lambda")
 
 
 def _add_predict_arguments(parser):

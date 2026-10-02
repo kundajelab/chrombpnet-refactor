@@ -217,6 +217,30 @@ def test_rescale_shifts_the_count_head_and_saves_keras(engine, tmp_path):
     np.testing.assert_allclose(after - before, np.full_like(after, np.mean(after - before)), atol=1e-5)
 
 
+# -- export --------------------------------------------------------------------
+
+def test_export_writes_a_tf_keras_2_file_from_the_cli(engine, tmp_path):
+    import subprocess
+    import sys
+
+    import h5py
+
+    model, _ = engine.get_model(training_args(engine, "bias", tmp_path / "b"), parameters())
+    source, target = str(tmp_path / "bias.keras"), str(tmp_path / "bias.legacy.h5")
+    model.save(source)
+    completed = subprocess.run(
+        [sys.executable, "-m", "chrombpnet.CHROMBPNET", "export", "--legacy-h5", "-m", source, "-o", target],
+        capture_output=True, text=True, env=dict(os.environ, JAX_PLATFORMS="cpu"))
+    assert completed.returncode == 0, completed.stderr
+    with h5py.File(target, "r") as handle:
+        assert str(handle.attrs["keras_version"]).startswith("2.")
+        assert handle.attrs["backend"] == "tensorflow"
+    # and the JAX engine reads its own export back
+    exported = engine.load_predictor(target, announce=False, summary=False)
+    x = Generator(0)[0][0]
+    np.testing.assert_allclose(exported.predict(x, verbose=0)[0], model.predict(x, verbose=0)[0], atol=1e-6)
+
+
 # -- attribution ----------------------------------------------------------------
 
 def test_attribute_yields_counts_then_profile(engine, tmp_path):

@@ -1393,6 +1393,62 @@
     "required": false,
     "type": "int"
   },
+  "export count_head": {
+    "choices": [
+      "bytecode",
+      "named"
+    ],
+    "default": "'bytecode'",
+    "nargs": "None",
+    "options": [
+      "--count-head"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "export format": {
+    "choices": null,
+    "default": "'legacy-h5'",
+    "nargs": "0",
+    "options": [
+      "--legacy-h5"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "export help": {
+    "choices": null,
+    "default": "'==SUPPRESS=='",
+    "nargs": "0",
+    "options": [
+      "--help",
+      "-h"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "export model_h5": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--model-h5",
+      "-m"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "export output": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--output",
+      "-o"
+    ],
+    "required": true,
+    "type": "str"
+  },
   "footprints batch_size": {
     "choices": null,
     "default": "64",

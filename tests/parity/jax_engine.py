@@ -33,7 +33,11 @@ Checks (tolerances as in the PR, CPU, full float32):
   through ``engine.attribute``: relative L2 <= 1e-4;
 * the JAX engine loads the original's 1.x models (including the full
   bias-factorized model with its bytecode ``Lambda``) and predicts within 1e-4;
-* a ``.keras`` save/load round trip is exact.
+* a ``.keras`` save/load round trip is exact;
+* ``export --legacy-h5``: the JAX engine's bias, bias-factorized and no-bias
+  models, exported to the 1.x ``.h5`` layout, load in this package's
+  TensorFlow engine and in the original implementation, and predict within
+  1e-4 of the JAX engine.
 
 The golden worker is checked against itself first.
 
@@ -277,6 +281,12 @@ def jax_side(workdir, golden_dir, out):
         results["interop_{}_counts".format(kind)] = counts
     np.savez(os.path.join(out, "jax.npz"), **results)
 
+    # export --legacy-h5, for the TensorFlow-side workers to load.
+    from chrombpnet.engines.jax.export_legacy_h5 import export_legacy_h5
+
+    for name, source in EXPORTS.items():
+        export_legacy_h5(os.path.join(out, source), os.path.join(out, "export_{}.h5".format(name)))
+
     # Bias rescale, through the engine.
     scaled_path = os.path.join(out, "bias_model_scaled.keras")
     engine.rescale_bias_logcounts(os.path.join(workdir, "bias_init.h5"), scaled_path,
@@ -298,6 +308,44 @@ def jax_side(workdir, golden_dir, out):
                                              seed=SHAP_SEED):
             scores["{}_{}".format(name, head)] = values
     np.savez(os.path.join(out, "shap.npz"), **scores)
+
+
+#: Exported model -> the JAX-engine checkpoint it is exported from. Their
+#: JAX predictions are jax.npz's "<name>_profile"/"<name>_counts".
+EXPORTS = {
+    "bias": "bias_built.keras",
+    "chrombpnet": "chrombpnet_built.keras",
+    "nobias": "chrombpnet_built_nobias.keras",
+}
+
+
+def _predict_exports(load, workdir, jax_dir, name):
+    fixture = np.load(os.path.join(workdir, "fixture.npz"))
+    results = {}
+    for model_name in EXPORTS:
+        model = load(os.path.join(jax_dir, "export_{}.h5".format(model_name)))
+        profile, counts = model.predict(fixture["predict_x"], batch_size=8)
+        results[model_name + "_profile"], results[model_name + "_counts"] = profile, counts
+    np.savez(os.path.join(jax_dir, name + ".npz"), **results)
+
+
+def tf_export(workdir, jax_dir):
+    """This package's TensorFlow engine loads the exports."""
+    sys.path.insert(0, str(REPO_ROOT))
+    import chrombpnet  # noqa: F401
+    from chrombpnet import engines
+    _tf_engine()._pin_tensorflow()
+    engine = engines.get("tensorflow")
+    _predict_exports(lambda path: engine.load_predictor(path, announce=False, summary=False),
+                     workdir, jax_dir, "tf_export")
+
+
+def golden_export(workdir, jax_dir, original_repo):
+    """The original implementation loads the exports."""
+    tf_engine = _tf_engine()
+    side = tf_engine.Reference(original_repo)
+    tf_engine._pin_tensorflow()
+    _predict_exports(side.load_predictor, workdir, jax_dir, "golden_export")
 
 
 # --------------------------------------------------------------------------
@@ -397,6 +445,15 @@ def compare(golden_dir, golden_dir2, jax_dir, report):
     for key in ("profile", "counts"):
         report.close("rescale: " + key, rj[key], rg[key], 1e-4)
 
+    for reader in ("tf_export", "golden_export"):
+        loaded = np.load(os.path.join(jax_dir, reader + ".npz"))
+        who = "TensorFlow engine" if reader == "tf_export" else "original"
+        for name in EXPORTS:
+            for output in ("profile", "counts"):
+                key = "{}_{}".format(name, output)
+                report.close("export --legacy-h5: {} {} loaded by the {}".format(name, output, who),
+                             loaded[key], j[key], 1e-4)
+
     sg, sj = (np.load(os.path.join(d, "shap.npz")) for d in (golden_dir, jax_dir))
     report.equal("shap: references", sj["references"], sg["references"])
     for name in ("bias", "nobias"):
@@ -446,6 +503,8 @@ def main(arguments):
         os.makedirs(jax_dir)
         os.symlink(golden_dir, golden_link)
         _run(arguments.jax_python, "jax", workdir, jax_dir, arguments, "jax")
+        _run(arguments.tf_python, "tf_export", workdir, jax_dir, arguments, "tf-export")
+        _run(arguments.tf_python, "golden_export", workdir, jax_dir, arguments, "golden-export")
         report = Report()
         compare(golden_dir, golden_dir2, jax_dir, report)
         if report.failed:
@@ -482,6 +541,10 @@ if __name__ == "__main__":
         golden_shap(arguments.workdir, arguments.out, arguments.original_repo)
     elif arguments.worker == "jax":
         jax_side(arguments.workdir, os.path.join(arguments.out, ".golden"), arguments.out)
+    elif arguments.worker == "tf_export":
+        tf_export(arguments.workdir, arguments.out)
+    elif arguments.worker == "golden_export":
+        golden_export(arguments.workdir, arguments.out, arguments.original_repo)
     elif arguments.worker:
         raise SystemExit("unknown worker {}".format(arguments.worker))
     else:

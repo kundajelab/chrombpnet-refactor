@@ -66,6 +66,12 @@ def main():
 		args.model_h5 = args.model
 		predict.main(args)
 
+	elif args.cmd == "export":
+
+		from chrombpnet.engines.jax.export_legacy_h5 import export_legacy_h5
+		out = export_legacy_h5(args.model_h5, args.output, count_head=args.count_head)
+		print("wrote {} ({}, count head: {})".format(out, args.format, args.count_head))
+
 	elif args.cmd == "pred_bw":
 	
 		if not any((args.bias_model, args.chrombpnet_model, args.chrombpnet_model_nb)):
