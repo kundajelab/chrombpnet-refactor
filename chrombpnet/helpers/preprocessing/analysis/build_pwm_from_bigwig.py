@@ -69,6 +69,7 @@ def main(args):
         height_padding_factor=0.2, length_padding=1.0,
         subticks_frequency=1.0, highlight={})
     plt.savefig(args.output_prefix+'.png')
+    plt.close(fig)
     
 if __name__=="__main__":
     args = parse_args()

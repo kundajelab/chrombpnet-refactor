@@ -152,6 +152,7 @@ def main(args):
 	plt.xticks(ticks=[0,100,200], labels=[-100,0,100])
 	plt.tight_layout()
 	plt.savefig(args.output_prefix+".{}.footprint.png".format(motif))
+	plt.close()
 
 
 	#get motif names from column1 of the pwm_df
@@ -176,6 +177,7 @@ def main(args):
 		plt.xticks(ticks=[0,100,200], labels=[-100,0,100])
 		plt.tight_layout()
 		plt.savefig(args.output_prefix+".{}.footprint.png".format(motif))
+		plt.close()
 
 	if len(avg_response_at_tn5) > 0:
 		if np.all(np.array(avg_response_at_tn5) < 0.003):

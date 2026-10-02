@@ -80,3 +80,22 @@ def test_density_scatter_drops_nans_in_either_input():
     ax = density_scatter(x, y, xlab="x", ylab="y")
     assert len(ax.collections[0].get_offsets()) == 197
     plt.close("all")
+
+
+def test_metric_plots_close_their_figures(tmp_path):
+    """A pipeline draws these once per scored subset and per model in one
+    process; unclosed, each keeps its figure (several MB at 300 dpi) and
+    matplotlib warns past twenty."""
+    import matplotlib
+    matplotlib.use("Agg")
+    from matplotlib import pyplot as plt
+    from chrombpnet.training.metrics import counts_metrics, plot_histogram
+
+    plt.close("all")
+    rng = np.random.RandomState(0)
+    labels, preds = rng.normal(size=50), rng.normal(size=50)
+    counts_metrics(labels, preds, str(tmp_path / "m"), "test")
+    plot_histogram(rng.uniform(size=50), rng.uniform(size=50), str(tmp_path / "m"), "test")
+    assert plt.get_fignums() == []
+    assert (tmp_path / "m.counts_pearsonr.png").exists()
+    assert (tmp_path / "m.profile_jsd.png").exists()

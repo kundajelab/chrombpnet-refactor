@@ -52,6 +52,7 @@ def loss_curve(prefix: str, fpx: str, log_name: str) -> str:
     plt.tight_layout()
     plt.savefig(os.path.join(prefix, "evaluation/{}epoch_loss.png".format(fpx)),
                 format='png', dpi=300)
+    plt.close()
     return os.path.join("./", "{}epoch_loss.png".format(fpx))
 
 
