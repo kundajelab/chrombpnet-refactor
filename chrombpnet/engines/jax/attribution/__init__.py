@@ -6,7 +6,16 @@ JAX DeepSHAP: the multipliers of the kundajelab ``shap`` fork's
 ``TFDeepExplainer`` that the original ChromBPNet used, computed with one jitted
 forward per chunk for both heads, and projected on the device.
 
-What this module adds is the reference stream. The PR seeds each sequence's
+This module adds two things. The first is the profile target's weights. The
+engine uses ``profile_weighting="softmax_x"``: the target's ``stop_gradient``
+is honoured, so each mean-normalized logit of the input is weighted by its
+softmax, ``softmax(mn_x)``. That is what the PyTorch engine computes, and the
+TensorFlow engine too, now that it registers the ``StopGradient`` handler
+that the shap fork has commented out (``deep_tf.py:595``). The PR's default,
+``"chrombpnet"``, reproduces that fork's midpoint weights instead,
+``0.5 * (softmax(mn_x) + softmax(mn_r))``.
+
+The second is the reference stream. The PR seeds each sequence's
 references from its own content; here they are drawn exactly as the
 TensorFlow engine draws them: one ``np.random.RandomState(seed)``, consumed in
 region order, ``num_shuffles`` single ``dinuc_shuffle`` calls per sequence --
@@ -86,7 +95,7 @@ def attribute(model, seqs, profile_or_counts, *, batch_size, num_shuffles, seed)
         return
     seqs = np.asarray(seqs)
     explainer = DeepLiftShap(
-        model, heads=heads, profile_weighting="chrombpnet",
+        model, heads=heads, profile_weighting="softmax_x",
         batch_seqs=sequences_per_step(batch_size, num_shuffles),
         num_shuffles=num_shuffles)
     print("Seqs dimension : {}".format(seqs.shape))

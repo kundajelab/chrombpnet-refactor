@@ -9,6 +9,14 @@ feeds both implementations identical batches, identical initial weights and
 identical DeepSHAP references, and then requires every output to be equal --
 not close, equal.
 
+One defect fix changes an output on purpose: the engine honours the profile
+DeepSHAP target's ``tf.stop_gradient``, whose handler the shap fork has
+commented out (``deep_tf.py:595``). Both sides are therefore run with that
+handler registered -- by the harness, on the reference side -- and must still
+be equal. The original's own scores, without it, are recorded as well, to
+check that the handler changes the profile head and leaves the counts head
+alone.
+
 Everything runs in the ``chrombpnet-tensorflow`` environment, in separate
 processes, because both code bases are the package ``chrombpnet``:
 
@@ -35,7 +43,10 @@ What is compared, exactly:
               for a bias model and a bias-factorized model where early stopping
               fires, and a bias-factorized model that runs out of epochs;
 * ``rescale`` the hyperparameter finder's bias count-head rescale;
-* ``shap``    DeepSHAP hypothetical scores for both heads;
+* ``shap``    DeepSHAP hypothetical scores for both heads, with the
+              StopGradient handler on both sides; and, on the reference side,
+              the original's unchanged counts head and its different profile
+              head without it;
 * ``interop`` each side loading and predicting with the other side's model.
 
 The reference is first checked against itself, since a byte-identity claim
@@ -54,6 +65,7 @@ Usage::
 
 import argparse
 import base64
+import contextlib
 import functools
 import json
 import marshal
@@ -111,9 +123,43 @@ PINNED_ENV = {
 }
 
 
+#: Relative L2 distance between the engine's profile scores (StopGradient
+#: honoured) and the original's (midpoint weights) above which the departure
+#: counts as observed. Measured: 1.05 here and in jax_engine.py, 0.64 in
+#: deepshap_engines.py; float32 agreement is 1e-6 or better.
+MIN_PROFILE_DEPARTURE = 1e-3
+
+
 # --------------------------------------------------------------------------
 # Shared by both workers: they import this file, never each other's package.
 # --------------------------------------------------------------------------
+
+@contextlib.contextmanager
+def honour_stop_gradient():
+    """Register the shap fork's ``break_dependence`` for ``StopGradient`` --
+    the line it has commented out, ``deep_tf.py:595`` -- and restore the
+    previous entry on exit. The harness's own copy of what the engine does
+    (``engines/tensorflow/attribution.honour_stop_gradient``), for the
+    reference worker, which must not import this package.
+    """
+    from shap.explainers.deep import deep_tf
+
+    missing = object()
+    previous = deep_tf.op_handlers.get("StopGradient", missing)
+    deep_tf.op_handlers["StopGradient"] = deep_tf.break_dependence
+    try:
+        yield
+    finally:
+        if previous is missing:
+            del deep_tf.op_handlers["StopGradient"]
+        else:
+            deep_tf.op_handlers["StopGradient"] = previous
+
+
+def relative_l2(a, b):
+    a, b = np.asarray(a, np.float64), np.asarray(b, np.float64)
+    return float(np.linalg.norm(a - b) / max(np.linalg.norm(b), 1e-30))
+
 
 def _pin_tensorflow():
     import tensorflow as tf
@@ -321,7 +367,9 @@ class Reference:
         bias_model = param_utils.load_model_wrapper(bias_path)
         finder.adjust_bias_model_logcounts(bias_model, seqs, cts).save(out)
 
-    def shap(self, model_path, seqs, head, seed):
+    def shap(self, model_path, seqs, head, seed, stop_gradient=True):
+        """``stop_gradient``: with the harness's StopGradient handler, as the
+        engine runs; without it, the original exactly."""
         # Importing interpret disables eager execution, as the original's CLI
         # did at startup; it must happen before the model is loaded.
         from chrombpnet.evaluation.interpret import interpret, input_utils, shap_utils
@@ -342,7 +390,8 @@ class Reference:
         shap_utils.dinuc_shuffle = functools.partial(
             deeplift.dinuc_shuffle.dinuc_shuffle, rng=np.random.RandomState(seed))
         out = tempfile.mkdtemp()
-        interpret.interpret(model, seqs, os.path.join(out, "scores"), [head])
+        with honour_stop_gradient() if stop_gradient else contextlib.nullcontext():
+            interpret.interpret(model, seqs, os.path.join(out, "scores"), [head])
         shutil.rmtree(out)
         return captured["scores"]
 
@@ -461,6 +510,11 @@ def task_shap(side, workdir, out):
     for head in HEADS:
         scores[head] = side.shap(os.path.join(workdir, "bias_init.h5"),
                                  fixture["shap_x"], head, SHAP_SEED)
+    if side.name == "reference":
+        for head in HEADS:
+            scores["unpatched_" + head] = side.shap(
+                os.path.join(workdir, "bias_init.h5"), fixture["shap_x"], head,
+                SHAP_SEED, stop_gradient=False)
     if side.name == "engine":
         end_to_end = side.shap_end_to_end(os.path.join(workdir, "bias_init.h5"),
                                           fixture["shap_x"], SHAP_SEED)
@@ -685,6 +739,13 @@ def compare(workdir, report):
         report.arrays("shap: {} hypothetical scores".format(head), shap_ref[head], shap_eng[head])
         report.arrays("shap: {} scores via the CLI's subprocess path".format(head),
                       shap_eng[head], shap_eng["end_to_end_" + head])
+    report.arrays("shap: counts unchanged by the StopGradient handler",
+                  shap_ref["unpatched_counts"], shap_ref["counts"])
+    departure = relative_l2(shap_eng["profile"], shap_ref["unpatched_profile"])
+    report.check("shap: profile departs from the original's midpoint",
+                 departure > MIN_PROFILE_DEPARTURE,
+                 "relative L2 {:.3g} <= {:g}".format(departure, MIN_PROFILE_DEPARTURE))
+    print("    (relative L2 between the two profile weightings: {:.3g})".format(departure))
     interop = [np.load(os.path.join(d, "interop.npz")) for d in (ref, eng)]
     for model in ("reference", "engine"):
         for output in ("profile", "counts"):

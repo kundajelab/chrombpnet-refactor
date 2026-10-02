@@ -1,5 +1,41 @@
 # Changelog
 
+## TensorFlow and JAX engines: DeepSHAP honours the profile target's stop_gradient
+
+- **Behaviour change: profile contribution scores, TensorFlow and JAX
+  engines.** The profile target is `sum(softmax(stop_gradient(mn)) * mn)`
+  over the mean-normalized logits `mn`. The stop_gradient makes the softmax
+  fixed weights, so each logit of the input is weighted by `softmax(mn_x)`.
+  The PyTorch engine computes exactly that, and is the reference. The
+  kundajelab `shap` fork has its `StopGradient` handler commented out
+  (`deep_tf.py:595`), so the original ChromBPNet, and with it the TensorFlow
+  and JAX engines, treated the weights as a second varying input. The fork's
+  two-input rule then weighted the logits by the midpoint
+  `0.5 * (softmax(mn_x) + softmax(mn_r))` of the input's and the reference's
+  softmax.
+- TensorFlow: `attribution.honour_stop_gradient` registers the fork's
+  `break_dependence` for `StopGradient` while the profile explainer is built
+  and run, then restores the fork's table. JAX: `engine.attribute` passes
+  `profile_weighting="softmax_x"`. `DeepLiftShap` keeps the PR's default,
+  `"chrombpnet"`, which still reproduces the midpoint.
+- Counts scores are unchanged. With the handler registered, the original's
+  counts scores are bitwise identical.
+- `tests/parity/tf_engine.py` registers the same handler on the reference
+  side, and the engine still matches the original bitwise. Two checks are
+  new. The handler leaves the original's counts scores bitwise unchanged.
+  The engine's profile scores differ from the original's unpatched ones
+  (relative L2 1.05 on the fixture). `tests/parity/jax_engine.py` compares
+  against the patched original, and checks the same difference from the
+  unpatched one.
+- New `tests/parity/deepshap_engines.py` (opt-in
+  `test_deepshap_engines.py`): one model with the same weights and
+  references in all three engines. TensorFlow and JAX agree with PyTorch
+  within 1.1e-6 relative L2 on the profile head and 1.3e-7 on counts. The
+  midpoint weighting is 0.64 away.
+- With the TensorFlow or JAX engine, the profile motif reports of
+  `pipeline`, `qc`, `bias pipeline` and `bias qc` change with the scores.
+  The counts reports do not. Nothing changes in the PyTorch engine.
+
 ## Motif-report settings on the command line
 
 - **New `--interpret-subsample`, `--modisco-max-seqlets` and

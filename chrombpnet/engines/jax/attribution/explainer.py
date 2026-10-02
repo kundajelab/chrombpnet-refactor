@@ -1,7 +1,8 @@
 # JAX engine. From kundajelab/chrombpnet#284 (NNFC-GMD/chrombpnet@14ca773),
 # chrombpnet/evaluation/interpret/explainer.py,
-# except that it imports from this engine and an error message names
-# this engine's no-bias checkpoint.
+# except that it imports from this engine, an error message names
+# this engine's no-bias checkpoint, and the profile_weighting note says
+# which weighting the engine uses.
 """Native DeepSHAP explainer for ChromBPNet / BPNet Keras 3 models on the JAX backend.
 
 Usage::
@@ -197,7 +198,8 @@ class DeepLiftShap:
     Args:
         model: Keras 3 model with outputs [profile logits, log counts].
         heads: subset of ("counts", "profile").
-        profile_weighting: see deeplift_jax.profile_weights; "chrombpnet" reproduces chrombpnet 1.x.
+        profile_weighting: see deeplift_jax.profile_weights; "chrombpnet" reproduces chrombpnet 1.x, and
+            the engine uses "softmax_x" (the target's StopGradient honoured, as in PyTorch and TensorFlow).
         precision: matmul/conv precision while tracing: "auto" (default: "highest" on CPU, "default" on GPU),
             "highest" (full float32), "high", or "default" (TF32 on Ampere+ GPUs; faster, noisier near ReLU
             branch switches).

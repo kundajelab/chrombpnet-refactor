@@ -263,12 +263,17 @@ call, bias rescale and DeepSHAP code, each module stating what it changes.
 Given identical batches, initial weights and shuffle references it reproduces
 the original's checkpoints, logs, predictions and contribution scores byte for
 byte, which `tests/parity/tf_engine.py` checks against a checkout of the
-original. It loads models trained by the original package, so every downstream
+original (for the profile scores, with the original's `StopGradient` handler
+restored, below). It loads models trained by the original package, so every downstream
 command works on existing `.h5` models. It differs from the original only where
 this package fixes a defect, each in its own commit and CHANGELOG entry:
 `--seed` now seeds the bias-factorized model's trainable tower; the best
-validation checkpoint is restored even when training runs out of epochs; and
-DeepSHAP's dinucleotide shuffles are seeded by `--seed`. Attribution runs in a
+validation checkpoint is restored even when training runs out of epochs;
+DeepSHAP's dinucleotide shuffles are seeded by `--seed`; and the profile
+DeepSHAP target's `stop_gradient` is honoured, so each logit is weighted by the
+input's own softmax, as in the PyTorch engine. The `shap` fork has that
+handler commented out, so the original weighted it by the midpoint of the
+input's and the reference's softmax. Attribution runs in a
 spawned subprocess, because the shap fork needs TF1 graph mode, which is
 process-global; `--interpret-batch-size` has no effect there.
 
@@ -278,13 +283,15 @@ process-global; `--interpret-batch-size` has no effect there.
 `LogSumExp` count head instead of a bytecode `Lambda`), loss, callbacks,
 `model.fit`, loader for the original's `.h5` models (no TensorFlow needed, and
 their bytecode is never run), bias rescale, and native JAX DeepSHAP -- the
-`shap` fork's multipliers, including its effective profile weighting, with
-both heads from one jitted pass per chunk. Each module states what this package
+`shap` fork's multipliers, with both heads from one jitted pass per chunk.
+The profile target's `stop_gradient` is honoured, as in the other two
+engines, where the PR reproduces the fork's midpoint weighting. Each module states what this package
 changes. The defaults are the original training recipe. It cannot be byte-identical
 to TensorFlow 2.8, so `tests/parity/jax_engine.py` checks agreement with the
 original on identical inputs: predictions within 1e-4, a 20-step Adam trace
-within 1e-3, DeepSHAP within 1e-4 relative L2 with bitwise-identical
-references (drawn exactly as the TensorFlow engine draws them), and the
+within 1e-3, DeepSHAP within 1e-4 relative L2 (against the original with
+its `StopGradient` handler restored) with bitwise-identical references (drawn
+exactly as the TensorFlow engine draws them), and the
 original's models loaded within 1e-4. Models are `.keras` files;
 `chrombpnet export --legacy-h5 -m model.keras -o model.h5` writes a copy in the
 original's `.h5` layout, which the TensorFlow engine, chrombpnet 1.x,

@@ -19,15 +19,26 @@ eagerly in this process by the time attribution starts.
 ``--interpret-batch-size`` has no effect: the fork explains one example at a
 time, against its own references.
 
-One deliberate departure from the original: the dinucleotide-shuffled
-references are drawn from ``np.random.RandomState(seed)``, fresh for each
-head, where the original drew them from an unseeded stream. Contribution
-scores are therefore reproducible run to run, and ``--seed`` means what it
-says.
+Two deliberate departures from the original:
+
+- The dinucleotide-shuffled references are drawn from
+  ``np.random.RandomState(seed)``, fresh for each head, where the original
+  drew them from an unseeded stream. Contribution scores are therefore
+  reproducible run to run, and ``--seed`` means what it says.
+- The profile target's ``tf.stop_gradient`` is honoured
+  (``honour_stop_gradient``). The target weights each mean-normalized logit
+  by its softmax under ``stop_gradient``, so that the softmax acts as fixed
+  weights: the input's logits weighted by ``softmax(mn_x)``, as the PyTorch
+  engine computes them. The shap fork has its ``StopGradient`` handler
+  commented out (``deep_tf.py:595``), so the original treated the weights as
+  a second varying input and its two-input rule weighted the logits by the
+  midpoint ``0.5 * (softmax(mn_x) + softmax(mn_r))`` instead. The counts head
+  is unchanged.
 """
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import multiprocessing
 import os
@@ -38,6 +49,30 @@ import numpy as np
 
 #: Order in which heads are computed and yielded; the original's order.
 HEADS = ("counts", "profile")
+
+
+@contextlib.contextmanager
+def honour_stop_gradient():
+    """Have the shap fork stop attributions at ``tf.stop_gradient``.
+
+    Registers ``break_dependence`` for ``StopGradient``, the line the fork
+    has commented out (``deep_tf.py:595``), and restores the previous entry
+    on exit. It must cover both the explainer's construction, which reads
+    the dependence breakers, and ``shap_values``, which builds the gradient
+    graph from ``op_handlers`` on its first call.
+    """
+    from shap.explainers.deep import deep_tf
+
+    missing = object()
+    previous = deep_tf.op_handlers.get("StopGradient", missing)
+    deep_tf.op_handlers["StopGradient"] = deep_tf.break_dependence
+    try:
+        yield
+    finally:
+        if previous is missing:
+            del deep_tf.op_handlers["StopGradient"]
+        else:
+            deep_tf.op_handlers["StopGradient"] = previous
 
 
 def _references(num_shuffles, seed):
@@ -76,14 +111,15 @@ def explain(model, seqs, profile_or_counts, num_shuffles, seed):
 
     if "profile" in profile_or_counts:
         weightedsum_meannormed_logits = shap_utils.get_weightedsum_meannormed_logits(model)
-        profile_model_profile_explainer = shap.explainers.deep.TFDeepExplainer(
-            (profile_model_input, weightedsum_meannormed_logits),
-            _references(num_shuffles, seed),
-            combine_mult_and_diffref=shap_utils.combine_mult_and_diffref)
+        with honour_stop_gradient():
+            profile_model_profile_explainer = shap.explainers.deep.TFDeepExplainer(
+                (profile_model_input, weightedsum_meannormed_logits),
+                _references(num_shuffles, seed),
+                combine_mult_and_diffref=shap_utils.combine_mult_and_diffref)
 
-        print("Generating 'profile' shap scores")
-        scores["profile"] = profile_model_profile_explainer.shap_values(
-            profile_input, progress_message=100)
+            print("Generating 'profile' shap scores")
+            scores["profile"] = profile_model_profile_explainer.shap_values(
+                profile_input, progress_message=100)
     return scores
 
 
