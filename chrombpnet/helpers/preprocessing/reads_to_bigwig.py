@@ -1,5 +1,6 @@
 import argparse
 import subprocess
+import sys
 import tempfile
 import os
 import chrombpnet.helpers.preprocessing.auto_shift_detect as auto_shift_detect
@@ -117,9 +118,25 @@ def generate_bigwig(input_bam_file, input_fragment_file, input_tagalign_file, ou
         if no_st:
             auto_shift_detect.check_input_streams(p1)
 
+    if os.path.getsize(tmp_bedgraph.name) == 0:
+        source = input_bam_file or input_fragment_file or input_tagalign_file
+        raise RuntimeError(
+            f"The bedGraph built from {source} is empty: no reads were left after "
+            f"filtering them to the reference genome ({genome_fasta_file}) and the chrom "
+            f"sizes file ({chrom_sizes_file}). Check that the input has reads and that "
+            f"its chromosome names match the reference.")
+
     print("Making Bigwig")
-    subprocess.run(["bedGraphToBigWig", tmp_bedgraph.name, chrom_sizes_file,
-                    output_prefix + "_unstranded.bw"], check=True)
+    try:
+        subprocess.run(["bedGraphToBigWig", tmp_bedgraph.name, chrom_sizes_file,
+                        output_prefix + "_unstranded.bw"], check=True)
+    except subprocess.CalledProcessError:
+        # bedtools genomecov only warns about reads on contigs the chrom sizes
+        # file lacks; bedGraphToBigWig is where such a run fails.
+        print(f"bedGraphToBigWig failed: every chromosome or contig with reads must be "
+              f"listed in the chrom sizes file {chrom_sizes_file} (use the full chrom sizes "
+              f"of the reference the reads were aligned to).", file=sys.stderr)
+        raise
 
     tmp_bedgraph.close()
 

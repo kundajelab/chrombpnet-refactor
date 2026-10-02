@@ -167,3 +167,41 @@ def test_bigwig_from_truncated_gzip_raises(tmp_path, genome, kind, no_st):
         reads_to_bigwig.generate_bigwig(*bigwig_inputs(kind, truncated), str(tmp_path / "out"), fasta,
                                         False, None, no_st, sizes, [(4, -4)])
     assert not (tmp_path / "out_unstranded.bw").exists()
+
+
+def test_uncompressed_fragments_stream_like_the_cat_awk_pipeline(tmp_path):
+    """The file is awk's stdin now, instead of `cat -- file | awk`."""
+    needs_tools("awk", "sh")
+    fragments = tmp_path / "odd.tsv"
+    fragments.write_text("chr1\t10\t60\tBC1\t3\nchr2\t5\t105\nchr1  7   77  x\nchr1\t8\n\nchr2\t1\t2\tBC\t1\textra\n")
+    legacy = subprocess.run(
+        "cat -- " + str(fragments) + """ | awk -v OFS="\\t" '{print $1,$2,$3,1000,0,"+"; """
+        """print $1,$2,$3,1000,0,"-"}'""", shell=True, check=True, stdout=subprocess.PIPE).stdout
+    assert read_stream(auto_shift_detect.fragment_to_tagalign_stream, str(fragments)) == legacy
+    assert read_stream(auto_shift_detect.fragment_to_tagalign_stream, gzip_file(str(fragments))) == legacy
+
+
+@pytest.mark.parametrize("no_st", [False, True])
+def test_contig_missing_from_chrom_sizes_fails_with_a_hint(tmp_path, genome, no_st, capsys):
+    """Reads on chr2 with a chrom sizes file lacking it: genomecov only warns,
+    so bedGraphToBigWig fails the run, with a hint, and writes no bigwig."""
+    needs_tools("bedtools", "bedGraphToBigWig", "awk", "sort")
+    fasta, _ = genome
+    tagalign = write_input(tmp_path, "tagalign", 200)
+    only_chr1 = tmp_path / "chr1.chrom.sizes"
+    only_chr1.write_text("chr1\t{}\n".format(CHROM_LEN))
+    with pytest.raises(subprocess.CalledProcessError):
+        reads_to_bigwig.generate_bigwig(None, None, tagalign, str(tmp_path / "out"), fasta, False,
+                                        None, no_st, str(only_chr1), [(4, -4)])
+    assert "must be listed in the chrom sizes file" in capsys.readouterr().err
+    assert not (tmp_path / "out_unstranded.bw").exists()
+
+
+def test_no_reads_left_is_a_clear_error(tmp_path, genome):
+    needs_tools("bedtools", "awk", "sort")
+    fasta, sizes = genome
+    elsewhere = tmp_path / "elsewhere.tagAlign"
+    elsewhere.write_text("chrUn\t10\t60\tN\t1000\t+\n")
+    with pytest.raises(RuntimeError, match="bedGraph built from .* is empty"):
+        reads_to_bigwig.generate_bigwig(None, None, str(elsewhere), str(tmp_path / "out"), fasta,
+                                        False, None, False, sizes, [(4, -4)])

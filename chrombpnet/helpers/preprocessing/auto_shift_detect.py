@@ -109,14 +109,14 @@ def fragment_to_tagalign_stream(fragment_file_path):
     """
     Expected format for fragment file: tsv with columns chr, start, end and optionally more columns
     """
-    source = subprocess.Popen(
-        ["gzip", "-cd", fragment_file_path] if is_gz_file(fragment_file_path)
-        else ["cat", "--", fragment_file_path], stdout=subprocess.PIPE
-    )
-    awk = subprocess.Popen(
-        ["awk", '-v', 'OFS=\t', '{print $1,$2,$3,1000,0,"+"; print $1,$2,$3,1000,0,"-"}'],
-        stdin=source.stdout, stdout=subprocess.PIPE,
-    )
+    awk_command = ["awk", '-v', 'OFS=\t', '{print $1,$2,$3,1000,0,"+"; print $1,$2,$3,1000,0,"-"}']
+    if not is_gz_file(fragment_file_path):
+        # The file is awk's stdin directly: the same bytes as `cat -- file |
+        # awk`, with one process fewer.
+        with open(fragment_file_path, "rb") as handle:
+            return subprocess.Popen(awk_command, stdin=handle, stdout=subprocess.PIPE)
+    source = subprocess.Popen(["gzip", "-cd", fragment_file_path], stdout=subprocess.PIPE)
+    awk = subprocess.Popen(awk_command, stdin=source.stdout, stdout=subprocess.PIPE)
     source.stdout.close()
     awk._chrombpnet_upstream = source
     return awk

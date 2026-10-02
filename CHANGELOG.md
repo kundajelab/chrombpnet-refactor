@@ -1,5 +1,18 @@
 # Changelog
 
+## Clearer `reads_to_bigwig` failures
+
+- A bedGraph with no reads left after filtering now stops with an error naming
+  the input, the reference and the chrom sizes file, instead of reaching
+  `bedGraphToBigWig` with an empty file. This changes behaviour only on that
+  failure path.
+- When `bedGraphToBigWig` fails, the error output says that every contig with
+  reads must be in the chrom sizes file (`bedtools genomecov` only warns
+  about them), then the error propagates as before.
+- Uncompressed fragment files are read by `awk` directly instead of through
+  `cat | awk`, with the same bytes. From kundajelab/chrombpnet#284. No
+  artifact changes.
+
 ## gzip inputs with trailing garbage are accepted, with a warning
 
 - **Behaviour change, input acceptance only.** A gzipped tagAlign or fragment
