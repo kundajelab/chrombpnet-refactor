@@ -57,10 +57,9 @@ TEST_CHROMS = ("chr4",)
 # * OUTPUTLEN >= 200, because marginal_footprinting.py:145 plots
 #   footprint[outputlen//2 - 100 : outputlen//2 + 100] against range(200) and
 #   raises "x and y must have same first dimension" for anything smaller.
-# * INPUTLEN >= 500, because the qc pipelines call modisco through
-#   pipelines._run_modisco_motifs, whose window defaults to 500 and is not
-#   configurable from the command line; centered_slice then rejects any
-#   contribution track shorter than the window.
+# * INPUTLEN >= 500, because the qc scenarios run motif discovery with the
+#   default --modisco-window, 500 (api.run_motifs), and centered_slice
+#   rejects any contribution track shorter than the window.
 #
 # INPUTLEN must also cover the receptive field: a 1-dilation BPNet loses
 # 20 (first conv) + 4 (dilated) + 74 (profile conv) = 98 bases, and the

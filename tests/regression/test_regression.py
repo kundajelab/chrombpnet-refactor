@@ -60,7 +60,7 @@ def test_fixture_geometry_satisfies_the_packages_hardcoded_limits():
     # marginal_footprinting.py:145 slices [outputlen//2-100 : outputlen//2+100]
     # and plots it against range(200).
     assert fixture.OUTPUTLEN >= 200
-    # pipelines._run_modisco_motifs defaults window=500 and is not configurable.
+    # The qc scenarios use the default --modisco-window, 500 (api.run_motifs).
     assert fixture.INPUTLEN >= 500
     # BPNet receptive field: first conv 20 + dilated 2*2**1 + profile conv 74.
     profile_length = fixture.INPUTLEN - (20 + 2 * 2 ** 1 + 74)

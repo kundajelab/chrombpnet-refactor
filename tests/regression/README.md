@@ -142,7 +142,7 @@ elsewhere in the package, and `test_regression.py` guards each one:
 | Constraint | Why |
 |---|---|
 | `OUTPUTLEN >= 200` | `marginal_footprinting.py:145` plots `footprint[outputlen//2-100 : outputlen//2+100]` against `range(200)` |
-| `INPUTLEN >= 500` | the qc pipelines run motif discovery through `pipelines._run_modisco_motifs`, whose `window` defaults to 500 and is not reachable from the CLI |
+| `INPUTLEN >= 500` | the qc scenarios run motif discovery with the default `--modisco-window`, 500 (`api.run_motifs`), and `centered_slice` rejects any contribution track shorter than the window |
 | under 20 000 reads | `auto_shift_detect.sample_reads` pipes through `shuf` with no `--random-source`; above `2 * num_samples` it really subsamples and the shift estimate stops being reproducible |
 
 The genome is long (200 kb/chromosome) but reads and training regions occupy
@@ -170,32 +170,14 @@ branches of `predict_to_bigwig`.
 The three scenarios that run motif discovery need `modiscolite`, which is only
 the optional `[reports]` extra; they skip where it is absent.
 
-## `qc` is not reproducible, so it is not compared
+## `qc` and `bias qc` are compared
 
-`05_bias_qc` and `06_qc` still run -- that catches crashes -- but their
-artifacts are excluded from the comparison, because the commands themselves are
-nondeterministic:
-
-`qc` and `bias qc` expose neither `--seed` nor `--benchmark`, so
-`initializers.initialize_generators` passes `benchmark_seed=None` and
-`make_generator_rng` returns the *global* `np.random`. Nothing in the qc path
-ever seeds it -- `np.random.seed` is only called in `train.get_model`, which qc
-never reaches. `subsample_nonpeak_data` then draws a different 1:1 nonpeak
-subsample for the test set on every run.
-
-Measured across two identical `bias qc` runs: `coords/coords_center` in
-`bias_predictions.h5` differed by up to 32475 (an entirely different region
-set), `predictions/logcounts` by 0.05, and the reported counts pearsonr in
-`overall_report.html` moved from `-0.0` to `-0.21`. So the headline QC numbers
-for a model are not reproducible today.
-
-The training scenarios are unaffected despite the same unseeded global stream,
-because they pass `nonpeaks "None"` to `predict`, which takes the peaks-only
-branch of `crop_revcomp_data` and never reaches the subsample. That is also why
-`04_train` compares clean while `06_qc` does not.
-
-Once this is fixed, drop the `nondeterministic=` marker from both scenarios in
-`scenarios.py` and they become byte-comparable like the rest.
+They used not to be. Neither command seeded the global `np.random` stream that
+draws the test set's 1:1 nonpeak subsample, so two identical runs reported
+different metrics (counts pearsonr `-0.0` in one, `-0.21` in the other).
+98bd410 made them reproducible. Since then `05_bias_qc` and `06_qc` are
+compared byte for byte like the other scenarios, and the `nondeterministic=`
+marker in `scenarios.py` is unused.
 
 
 ## Comparing optimization phases

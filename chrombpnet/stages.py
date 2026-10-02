@@ -31,7 +31,7 @@ import pandas as pd
 from chrombpnet.data import DefaultDataFile, get_default_data_path
 
 #: Contribution scores are computed on at most this many peaks, sampled with a
-#: fixed seed so a rerun scores the same regions.
+#: fixed seed so a rerun scores the same regions (--interpret-subsample).
 INTERPRET_SUBSAMPLE_SIZE = 30_000
 INTERPRET_SUBSAMPLE_SEED = 1234
 
@@ -178,17 +178,19 @@ def run_marginal_footprints(args, layout, model_path, regions, output_prefix,
     marginal_footprinting.main(args_copy)
 
 
-def subsample_peaks_for_interpretation(layout, peaks_path):
-    """Sample at most INTERPRET_SUBSAMPLE_SIZE peaks and return the BED path.
+def subsample_peaks_for_interpretation(layout, peaks_path, size=None):
+    """Sample at most ``size`` (default INTERPRET_SUBSAMPLE_SIZE) peaks and
+    return the BED path, which keeps its ``30K_`` name whatever the size.
 
     Also creates ``auxiliary/interpret_subsample/``, with ``exist_ok=False`` as
     before, so a rerun into a populated directory fails rather than mixing
     contribution scores from two runs.
     """
+    if size is None:
+        size = INTERPRET_SUBSAMPLE_SIZE
     peaks = pd.read_csv(peaks_path, sep="\t", header=None)
-    if peaks.shape[0] > INTERPRET_SUBSAMPLE_SIZE:
-        sub_peaks = peaks.sample(INTERPRET_SUBSAMPLE_SIZE,
-                                 random_state=INTERPRET_SUBSAMPLE_SEED)
+    if peaks.shape[0] > size:
+        sub_peaks = peaks.sample(size, random_state=INTERPRET_SUBSAMPLE_SEED)
     else:
         sub_peaks = peaks
     subsample_path = layout.aux("30K_subsample_peaks.bed")
@@ -216,7 +218,9 @@ def run_modisco(args, layout, scores_name, kind, pdf_name):
 
     ``kind`` is "profile" or "counts" and selects both the results filename and
     the ``evaluation/modisco_<kind>/`` report directory. ``args`` supplies the
-    report options (``--tomtom-lite``), each absent unless given.
+    report options (``--tomtom-lite``, ``--modisco-max-seqlets``,
+    ``--modisco-window``), each absent unless given; absent ones keep
+    run_motifs' defaults.
     """
     from chrombpnet.evaluation.modisco.api import generate_report, run_motifs
     import chrombpnet.evaluation.modisco.convert_html_to_pdf as convert_html_to_pdf
@@ -226,8 +230,12 @@ def run_modisco(args, layout, scores_name, kind, pdf_name):
         f"modisco_results_{kind}_scores.h5")
     report_dir = layout.modisco_dir(kind)
 
+    settings = {name: getattr(args, option)
+                for name, option in (("max_seqlets", "modisco_max_seqlets"),
+                                     ("window", "modisco_window"))
+                if getattr(args, option, None) is not None}
     run_motifs(layout.interpret_subsample(f"{scores_name}.{kind}_scores.h5"),
-               results)
+               results, **settings)
     generate_report(results, report_dir, meme_file,
                     tomtom_lite=bool(getattr(args, "tomtom_lite", None)))
     convert_html_to_pdf.main(report_dir + "motifs.html",

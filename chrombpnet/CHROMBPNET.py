@@ -50,6 +50,18 @@ def check_tomtom(args):
 			"`meme`), activate the environment that has it, or pass --tomtom-lite.")
 
 
+def check_modisco_window(args):
+	"""Fail before training if --modisco-window is wider than the scored
+	sequences, which are --inputlen long. qc takes the input length from the
+	model, so there run_motifs reports it, before discovery starts."""
+	window = getattr(args, "modisco_window", None)
+	inputlen = getattr(args, "inputlen", None)
+	if window is not None and inputlen is not None and window > inputlen:
+		raise SystemExit(
+			f"chrombpnet: error: --modisco-window {window} is wider than the "
+			f"sequences it is applied to (--inputlen {inputlen}).")
+
+
 # invoke pipeline modules based on command
 
 def main():
@@ -66,6 +78,7 @@ def main():
 	        engines.EngineNotImplemented) as error:
 		raise SystemExit(f"chrombpnet: error: {error}")
 	check_tomtom(args)
+	check_modisco_window(args)
 	parsers.drop_absent(args)
 	
 	if args.cmd == "pipeline" or args.cmd == "train":

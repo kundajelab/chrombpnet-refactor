@@ -33,6 +33,24 @@ def ylim_pair(text):
             f"y-limits must be numbers, got {text!r}") from None
     return (lower, upper)
 
+def positive_int(text):
+    """An integer of at least 1."""
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected an integer, got {text!r}") from None
+    if value < 1:
+        raise argparse.ArgumentTypeError(f"must be at least 1, got {value}")
+    return value
+
+
+def even_positive_int(text):
+    """A positive even integer: a window centred on the sequence midpoint."""
+    value = positive_int(text)
+    if value % 2:
+        raise argparse.ArgumentTypeError(f"must be even, got {value}")
+    return value
+
 # ---------------------------------------------------------------------------
 # Reusable argument groups.
 #
@@ -212,10 +230,12 @@ def _add_jax_training_options(optional):
 
 
 #: Options of the motif report that pipeline, qc, bias pipeline, bias qc and
-#: modisco_motifs end with. Each defaults to None, meaning absent, and an
+#: modisco_motifs end with, and of the contribution scoring and motif
+#: discovery it is built from. Each defaults to None, meaning absent, and an
 #: absent one is removed from the namespace (drop_absent) before any stage
 #: sees it, so <prefix>.args.json is unchanged unless it was given.
-REPORT_OPTIONS = ("tomtom_lite",)
+REPORT_OPTIONS = ("tomtom_lite", "interpret_subsample", "modisco_max_seqlets",
+                  "modisco_window")
 
 
 def drop_absent(args):
@@ -225,8 +245,16 @@ def drop_absent(args):
             delattr(args, name)
 
 
-def _add_report_options(optional):
+def _add_report_options(optional, interpretation=True):
+    """``interpretation``: the settings of the contribution scoring and motif
+    discovery that the report is built from. Not for modisco_motifs, which is
+    given its scores and has its own --max-seqlets and --window."""
     optional.add_argument("--tomtom-lite", action="store_true", default=None, help="Match the TF-MoDISco motifs with TOMTOM-lite (memelite) instead of MEME's tomtom: MEME is not needed, and the report gives uncorrected p-values (pval0..2) instead of q-values. Needs TF-MoDISco 2.5 or later, so not in the TensorFlow environment")
+    if not interpretation:
+        return
+    optional.add_argument("--interpret-subsample", type=positive_int, default=None, help="Number of peaks, sampled with a fixed seed, whose contribution scores the TF-MoDISco motif reports are built from (default 30000; all peaks if there are fewer). The sample is written to auxiliary/30K_subsample_peaks.bed whatever its size")
+    optional.add_argument("--modisco-max-seqlets", type=positive_int, default=None, help="Maximum seqlets per positive/negative pattern group in TF-MoDISco motif discovery (default 50000)")
+    optional.add_argument("--modisco-window", type=even_positive_int, default=None, help="Width in bp of the window, centred on each scored sequence, in which TF-MoDISco discovers motifs (default 500). Must be even and no longer than the model input length")
 
 
 def _add_architecture_options(optional, *, filters, dilations, jitter):
@@ -430,7 +458,7 @@ def build_parser():
     optional_tfm.add_argument("-l", "--n-leiden", type=int, default=2, help="Number of Leiden clustering runs.")
     optional_tfm.add_argument("-w", "--window", type=int, default=500, help="Centered contribution-score window used for discovery (must be even).")
     optional_tfm.add_argument("-v", "--verbose", action="store_true", default=False)
-    _add_report_options(optional_tfm)
+    _add_report_options(optional_tfm, interpretation=False)
 
     return parser
 

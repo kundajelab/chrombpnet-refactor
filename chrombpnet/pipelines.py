@@ -99,7 +99,8 @@ def chrombpnet_train_pipeline(args):
         motifs_to_pwm=motifs_to_pwm)
     layout.move("evaluation", "auxiliary", "chrombpnet_nobias_footprints.h5")
 
-    subsample = stages.subsample_peaks_for_interpretation(layout, filtered_peaks)
+    subsample = stages.subsample_peaks_for_interpretation(
+        layout, filtered_peaks, getattr(args, "interpret_subsample", None))
     # Profile only, deliberately: make_html renders just the profile MoDISco
     # table for ChromBPNet models. The bias pipelines score both.
     stages.run_interpret(
@@ -141,7 +142,8 @@ def chrombpnet_qc(args):
         motifs_to_pwm=motifs_to_pwm)
     layout.move("evaluation", "auxiliary", "chrombpnet_nobias_footprints.h5")
 
-    subsample = stages.subsample_peaks_for_interpretation(layout, args.peaks)
+    subsample = stages.subsample_peaks_for_interpretation(
+        layout, args.peaks, getattr(args, "interpret_subsample", None))
     stages.run_interpret(
         args, layout, model_path=args.chrombpnet_model_nb, regions=subsample,
         output_prefix=layout.interpret_subsample("chrombpnet_nobias"),
@@ -203,7 +205,8 @@ def train_bias_pipeline(args):
         model_path=bias_model,
         peaks=filtered_peaks, nonpeaks=filtered_nonpeaks)
 
-    subsample = stages.subsample_peaks_for_interpretation(layout, filtered_peaks)
+    subsample = stages.subsample_peaks_for_interpretation(
+        layout, filtered_peaks, getattr(args, "interpret_subsample", None))
     stages.run_interpret(
         args, layout, model_path=bias_model, regions=subsample,
         output_prefix=layout.interpret_subsample("bias"),
@@ -229,7 +232,8 @@ def bias_model_qc(args):
         model_path=args.bias_model,
         peaks=args.peaks, nonpeaks=args.nonpeaks)
 
-    subsample = stages.subsample_peaks_for_interpretation(layout, args.peaks)
+    subsample = stages.subsample_peaks_for_interpretation(
+        layout, args.peaks, getattr(args, "interpret_subsample", None))
     stages.run_interpret(
         args, layout, model_path=args.bias_model, regions=subsample,
         output_prefix=layout.interpret_subsample("bias"),

@@ -1,5 +1,24 @@
 # Changelog
 
+## Motif-report settings on the command line
+
+- **New `--interpret-subsample`, `--modisco-max-seqlets` and
+  `--modisco-window`** on `pipeline`, `qc`, `bias pipeline` and `bias qc`.
+  The motif reports at the end of these commands are built from contribution
+  scores on 30 000 sampled peaks, with TF-MoDISco limited to 50 000 seqlets
+  per pattern group and a 500 bp window, all fixed until now. The defaults are
+  unchanged. `modisco_motifs` already has `--max-seqlets` and `--window`.
+- The values are checked when parsed: positive integers, and an even window.
+  In `pipeline` and `bias pipeline` a window wider than `--inputlen` is
+  refused at startup rather than after training.
+- The sample keeps its `auxiliary/30K_subsample_peaks.bed` name whatever its
+  size.
+- Off by default and dropped from the namespace when absent, so `args.json`
+  is unchanged unless they are given. `tests/cli_surface.json` gains exactly
+  their twelve entries. The names are kundajelab/chrombpnet#284's. Reusing
+  `modisco_motifs`' short flags was not an option: `-n` is `--nonpeaks` in
+  these commands. No artifact changes (regression harness).
+
 ## Bias report: negative patterns removed whole rows at a time
 
 - **Behaviour change: one line of `bias qc`'s `overall_report.html`.** The

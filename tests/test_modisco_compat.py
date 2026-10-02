@@ -255,3 +255,49 @@ def test_negative_pattern_removal_leaves_other_text_alone():
 
     for text in ("<table></table>", "", "no table\nat all"):
         assert modisco_table.drop_negative_patterns(text) == text
+
+
+def test_run_modisco_forwards_only_the_given_settings(monkeypatch, tmp_path):
+    from argparse import Namespace
+    from types import SimpleNamespace
+
+    import chrombpnet.evaluation.modisco.convert_html_to_pdf as convert_html_to_pdf
+    from chrombpnet import stages
+
+    calls = []
+    monkeypatch.setattr(api, "run_motifs", lambda *args, **kwargs: calls.append(kwargs))
+    monkeypatch.setattr(api, "generate_report", lambda *args, **kwargs: None)
+    monkeypatch.setattr(convert_html_to_pdf, "main", lambda *args, **kwargs: None)
+    layout = SimpleNamespace(interpret_subsample=lambda name: str(tmp_path / name),
+                             modisco_dir=lambda kind: str(tmp_path) + "/",
+                             evaluation=lambda name: str(tmp_path / name))
+    stages.run_modisco(Namespace(), layout, "bias", "counts", "bias_counts.pdf")
+    stages.run_modisco(Namespace(modisco_max_seqlets=2000, modisco_window=400),
+                       layout, "bias", "counts", "bias_counts.pdf")
+    assert calls == [{}, {"max_seqlets": 2000, "window": 400}]
+
+
+def test_interpretation_subsample_size(tmp_path):
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    import pandas as pd
+    from chrombpnet import stages
+
+    peaks = pd.DataFrame({"chrom": "chr1", "start": range(0, 5000, 100),
+                          "end": range(100, 5100, 100)})
+    peaks_path = tmp_path / "peaks.bed"
+    peaks.to_csv(peaks_path, sep="\t", header=False, index=False)
+    layout = SimpleNamespace(aux=lambda name: str(tmp_path / name),
+                             create_interpret_subsample_dir=lambda: None)
+
+    def subsample(**kwargs):
+        path = stages.subsample_peaks_for_interpretation(layout, peaks_path, **kwargs)
+        assert Path(path).name == "30K_subsample_peaks.bed"
+        return pd.read_csv(path, sep="\t", header=None, names=list(peaks.columns))
+
+    # fewer peaks than the default size: all of them, in order
+    pd.testing.assert_frame_equal(subsample(), peaks)
+    pd.testing.assert_frame_equal(subsample(size=None), peaks)
+    expected = peaks.sample(20, random_state=stages.INTERPRET_SUBSAMPLE_SEED)
+    pd.testing.assert_frame_equal(subsample(size=20), expected.reset_index(drop=True))

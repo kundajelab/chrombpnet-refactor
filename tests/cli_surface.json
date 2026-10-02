@@ -318,6 +318,16 @@
     "required": false,
     "type": "int"
   },
+  "bias pipeline interpret_subsample": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--interpret-subsample"
+    ],
+    "required": false,
+    "type": "positive_int"
+  },
   "bias pipeline learning_rate": {
     "choices": null,
     "default": "0.001",
@@ -352,6 +362,26 @@
     ],
     "required": false,
     "type": "int"
+  },
+  "bias pipeline modisco_max_seqlets": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--modisco-max-seqlets"
+    ],
+    "required": false,
+    "type": "positive_int"
+  },
+  "bias pipeline modisco_window": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--modisco-window"
+    ],
+    "required": false,
+    "type": "even_positive_int"
   },
   "bias pipeline muon_lr": {
     "choices": null,
@@ -683,6 +713,36 @@
     ],
     "required": false,
     "type": "int"
+  },
+  "bias qc interpret_subsample": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--interpret-subsample"
+    ],
+    "required": false,
+    "type": "positive_int"
+  },
+  "bias qc modisco_max_seqlets": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--modisco-max-seqlets"
+    ],
+    "required": false,
+    "type": "positive_int"
+  },
+  "bias qc modisco_window": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--modisco-window"
+    ],
+    "required": false,
+    "type": "even_positive_int"
   },
   "bias qc nonpeaks": {
     "choices": null,
@@ -2017,6 +2077,16 @@
     "required": false,
     "type": "int"
   },
+  "pipeline interpret_subsample": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--interpret-subsample"
+    ],
+    "required": false,
+    "type": "positive_int"
+  },
   "pipeline learning_rate": {
     "choices": null,
     "default": "0.001",
@@ -2051,6 +2121,26 @@
     ],
     "required": false,
     "type": "int"
+  },
+  "pipeline modisco_max_seqlets": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--modisco-max-seqlets"
+    ],
+    "required": false,
+    "type": "positive_int"
+  },
+  "pipeline modisco_window": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--modisco-window"
+    ],
+    "required": false,
+    "type": "even_positive_int"
   },
   "pipeline muon_lr": {
     "choices": null,
@@ -2970,6 +3060,36 @@
     ],
     "required": false,
     "type": "int"
+  },
+  "qc interpret_subsample": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--interpret-subsample"
+    ],
+    "required": false,
+    "type": "positive_int"
+  },
+  "qc modisco_max_seqlets": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--modisco-max-seqlets"
+    ],
+    "required": false,
+    "type": "positive_int"
+  },
+  "qc modisco_window": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--modisco-window"
+    ],
+    "required": false,
+    "type": "even_positive_int"
   },
   "qc nonpeaks": {
     "choices": null,

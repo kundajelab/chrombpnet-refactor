@@ -235,3 +235,57 @@ def test_only_motif_reports_need_tomtom():
     for cmd, sub in (("train", None), ("bias", "train"), ("pred_bw", None),
                      ("contribs_bw", None), ("prep", None)):
         assert not runs_motif_report(Namespace(cmd=cmd, cmd_bias=sub))
+
+
+_BIAS_QC = ["bias", "qc", "-bw", "obs.bw", "-bm", "bias.pt", "-g", "genome.fa",
+            "-c", "chrom.sizes", "-o", "out", "-d", "ATAC", "-p", "peaks.bed",
+            "-n", "nonpeaks.bed", "-fl", "fold.json"]
+_INTERPRETATION_SETTINGS = ("interpret_subsample", "modisco_max_seqlets", "modisco_window")
+
+
+def test_interpretation_settings_are_absent_unless_given():
+    """Dropped when absent, so <prefix>.args.json is unchanged."""
+    import chrombpnet.parsers as parsers
+
+    args = parsers.read_parser(_BIAS_QC)
+    parsers.drop_absent(args)
+    assert not any(hasattr(args, name) for name in _INTERPRETATION_SETTINGS)
+    args = parsers.read_parser(_BIAS_QC + [
+        "--interpret-subsample", "100", "--modisco-max-seqlets", "2000",
+        "--modisco-window", "400"])
+    parsers.drop_absent(args)
+    assert [getattr(args, name) for name in _INTERPRETATION_SETTINGS] == [100, 2000, 400]
+
+
+@pytest.mark.parametrize("flag, value", [
+    ("--modisco-window", "401"), ("--modisco-window", "0"),
+    ("--modisco-max-seqlets", "-5"), ("--interpret-subsample", "0"),
+    ("--interpret-subsample", "ten"),
+])
+def test_interpretation_settings_are_validated(flag, value, capsys):
+    import chrombpnet.parsers as parsers
+
+    with pytest.raises(SystemExit):
+        parsers.read_parser(_BIAS_QC + [flag, value])
+    assert flag in capsys.readouterr().err
+
+
+def test_modisco_motifs_keeps_its_own_settings():
+    """It has -n/--max-seqlets and -w/--window, and no peaks to subsample."""
+    import chrombpnet.parsers as parsers
+
+    with pytest.raises(SystemExit):
+        parsers.read_parser(["modisco_motifs", "-i", "s.h5", "-op", "out",
+                             "--modisco-window", "400"])
+
+
+def test_modisco_window_must_fit_the_input_length():
+    from argparse import Namespace
+    from chrombpnet.CHROMBPNET import check_modisco_window
+
+    with pytest.raises(SystemExit, match="--modisco-window 2200 is wider"):
+        check_modisco_window(Namespace(modisco_window=2200, inputlen=2114))
+    check_modisco_window(Namespace(modisco_window=2114, inputlen=2114))
+    check_modisco_window(Namespace(inputlen=2114))
+    # qc takes the input length from the model; run_motifs checks it there
+    check_modisco_window(Namespace(modisco_window=2200))
