@@ -1,10 +1,16 @@
 FROM pytorch/pytorch:2.12.0-cuda13.0-cudnn9-runtime
 
+# Apptainer/Singularity passes the host's environment into the container, and
+# with it the user's ~/.local site-packages and any PYTHONPATH/PYTHONHOME; the
+# image's own values below win, so host packages cannot shadow the image's.
 ENV DEBIAN_FRONTEND=noninteractive \
     LC_ALL=C.UTF-8 \
     LANG=C.UTF-8 \
     MPLCONFIGDIR=/tmp/matplotlib \
-    LD_LIBRARY_PATH=/opt/conda/envs/chrombpnet-pytorch/lib
+    LD_LIBRARY_PATH=/opt/conda/envs/chrombpnet-pytorch/lib \
+    PYTHONNOUSERSITE=1 \
+    PYTHONPATH="" \
+    PYTHONHOME=""
 
 RUN apt-get update --fix-missing && \
     apt-get install -y --no-install-recommends ca-certificates git libcairo2 \
