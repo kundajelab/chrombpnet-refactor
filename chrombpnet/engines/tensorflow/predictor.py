@@ -25,10 +25,32 @@ def custom_objects():
     return {"tf": tf, "multinomial_nll": losses.multinomial_nll}
 
 
+def refuse_keras3(path):
+    """Fail clearly on a Keras 3 ``.h5`` (ChromBPNet 2.0's format).
+
+    TF 2.8's Keras 2 cannot deserialize Keras 3 model configs and would fail
+    deep inside its loader; the JAX engine reads these files.
+    """
+    import h5py
+
+    try:
+        with h5py.File(path, "r") as handle:
+            version = handle.attrs.get("keras_version", "")
+    except OSError:
+        return
+    if isinstance(version, bytes):
+        version = version.decode("utf-8")
+    if str(version).startswith("3."):
+        raise ValueError(
+            f"{path} was written by Keras {version} (e.g. ChromBPNet 2.0) and "
+            f"cannot be loaded by the TensorFlow engine's Keras 2.8; use --engine jax")
+
+
 def load_model(path, compile=True):
     from tensorflow.keras.models import load_model as keras_load_model
     from tensorflow.keras.utils import get_custom_objects
 
+    refuse_keras3(path)
     get_custom_objects().update(custom_objects())
     return keras_load_model(path, compile=compile)
 

@@ -38,6 +38,7 @@ def test_the_default_is_pytorch():
     ("models/bias.h5", "tensorflow"),
     ("models/BIAS.H5", "tensorflow"),
     ("models/bias.hdf5", "tensorflow"),
+    ("models/bias.keras", "jax"),
     ("models/bias.ckpt", None),
     ("None", None),
     (None, None),
@@ -50,13 +51,27 @@ def test_an_omitted_engine_follows_the_input_models():
     args = Namespace(engine=None, chrombpnet_model="a.h5", chrombpnet_model_nb="b.h5")
     assert engines.resolve_name(args) == "tensorflow"
     assert engines.resolve_name(Namespace(engine=None, bias_model_path="b.pt")) == "pytorch"
+    assert engines.resolve_name(Namespace(engine=None, model_h5="m.keras")) == "jax"
 
 
 def test_an_explicit_engine_must_agree_with_the_input_models():
     with pytest.raises(ValueError, match="--model-h5 'm.pt' is a pytorch checkpoint"):
         engines.resolve_name(Namespace(engine="tensorflow", model_h5="m.pt"))
+    with pytest.raises(ValueError, match="--model-h5 'm.keras' is a jax checkpoint"):
+        engines.resolve_name(Namespace(engine="tensorflow", model_h5="m.keras"))
     # An unrecognised suffix is trusted to the explicit engine.
-    assert engines.resolve_name(Namespace(engine="tensorflow", model_h5="m.keras")) == "tensorflow"
+    assert engines.resolve_name(Namespace(engine="tensorflow", model_h5="m.ckpt")) == "tensorflow"
+
+
+def test_an_explicit_engine_may_read_another_engines_checkpoints():
+    """The JAX engine loads the original ChromBPNet's .h5 models."""
+    args = Namespace(engine="jax", bias_model_path="original_bias.h5")
+    assert engines.resolve_name(args) == "jax"
+
+
+def test_mixed_input_models_go_to_the_engine_that_reads_them_all():
+    args = Namespace(bias_model="original_bias.h5", chrombpnet_model="chrombpnet.keras")
+    assert engines.resolve_name(args) == "jax"
 
 
 def test_input_models_from_two_engines_are_refused():
@@ -92,15 +107,25 @@ def test_pytorch_only_flags_are_refused_for_other_engines():
 def test_model_loading_follows_the_checkpoint_not_the_configured_engine():
     engines.configure("tensorflow")
     assert engines.for_model("bias.pt").name == "pytorch"
+    assert engines.for_model("bias.keras").name == "jax"
     assert engines.for_model("bias.unknown").name == "tensorflow"
 
 
-def test_jax_is_a_placeholder():
-    with pytest.raises(engines.EngineNotImplemented, match="placeholder"):
-        engines.get("jax").require()
+def test_the_configured_engine_loads_what_it_can_read():
+    engines.configure("jax")
+    assert engines.for_model("original_bias.h5").name == "jax"
+    assert engines.for_model("bias.pt").name == "pytorch"
+    engines.configure("pytorch")
+    assert engines.for_model("original_bias.h5").name == "tensorflow"
 
 
-def test_jax_fails_before_creating_any_output(tmp_path):
+def _jax_installed():
+    import importlib.util
+    return all(importlib.util.find_spec(m) is not None for m in ("jax", "keras"))
+
+
+@pytest.mark.skipif(_jax_installed(), reason="the JAX engine is available here")
+def test_an_unavailable_engine_fails_before_creating_any_output(tmp_path):
     output_dir = tmp_path / "out"
     completed = subprocess.run(
         [sys.executable, "-m", "chrombpnet.CHROMBPNET", "bias", "train",
@@ -110,7 +135,7 @@ def test_jax_fails_before_creating_any_output(tmp_path):
          "--engine", "jax"],
         capture_output=True, text=True, cwd=tmp_path)
     assert completed.returncode != 0
-    assert "JAX engine is a placeholder" in completed.stderr
+    assert "chrombpnet-jax conda environment" in completed.stderr
     assert not output_dir.exists()
 
 

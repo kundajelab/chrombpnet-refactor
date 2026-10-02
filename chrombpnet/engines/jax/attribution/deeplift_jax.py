@@ -1,3 +1,5 @@
+# JAX engine. From kundajelab/chrombpnet#284 (NNFC-GMD/chrombpnet@14ca773),
+# chrombpnet/evaluation/interpret/deeplift_jax.py.
 """DeepLIFT / DeepSHAP rules in JAX, reproducing chrombpnet 1.x (kundajelab-shap ``TFDeepExplainer``).
 
 Batch layout: a joint batch ``[x_1 .. x_P, r_1 .. r_P]`` of 2P rows in which row p (an input) pairs with row

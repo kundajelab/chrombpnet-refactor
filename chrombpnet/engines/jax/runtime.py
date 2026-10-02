@@ -1,11 +1,13 @@
-"""Process-wide runtime settings for training: matmul precision, mixed precision and the device check."""
+# JAX engine. From kundajelab/chrombpnet#284 (NNFC-GMD/chrombpnet@14ca773),
+# chrombpnet/training/runtime.py, except that assert_gpu_if_requested (--device auto|gpu|cpu)
+# is replaced by configure_device for this package's --device values (cpu, cuda, cuda:N).
+"""Process-wide runtime settings: matmul precision, mixed precision and the device."""
 import contextlib
 import warnings
 
 import keras
 
 PRECISIONS = ("default", "highest", "bf16")
-DEVICES = ("auto", "gpu", "cpu")
 MIXED_BF16 = "mixed_bfloat16"
 
 
@@ -83,39 +85,40 @@ def log_backend():
     return backend
 
 
-def assert_gpu_if_requested(device="auto", initialize=False):
-    """Apply --device and return the JAX backend name.
+def configure_device(device=None):
+    """Apply a --device value (this package's spelling) and return it.
 
-    gpu   fails unless JAX runs on a GPU
-    cpu   restricts JAX to the CPU platform (jax_platforms='cpu') before any backend is created, so no CUDA
-          context is opened on the GPUs; if the backends exist already, makes the CPU the default JAX device
-    auto  leaves the choice to JAX; the backends are only created (and logged) when first used, or here with
-          initialize=True. Returns None if they do not exist yet.
+    None       leaves the choice to JAX (a GPU when the CUDA build sees one)
+    cpu        restricts JAX to the CPU platform (jax_platforms='cpu') before any backend is created, so no CUDA
+               context is opened on the GPUs; if the backends exist already, makes the CPU the default device
+    cuda[:N]   makes GPU N (default 0) the default JAX device, failing if JAX has no such GPU
     """
     import jax
-    device = device or "auto"
-    if device not in DEVICES:
-        raise ValueError("device must be one of {}, got {!r}".format(DEVICES, device))
-    if device == "cpu":
+    if device is None:
+        return None
+    text = str(device).strip().lower()
+    if text == "cpu":
         if not backends_initialized():
             jax.config.update("jax_platforms", "cpu")
         elif jax.default_backend() != "cpu":
             warnings.warn("--device cpu: the JAX {!r} backend was initialised already; running on the CPU as the "
                           "default device instead.".format(jax.default_backend()))
             jax.config.update("jax_default_device", jax.devices("cpu")[0])
-            print("jax backend: cpu (default device), devices: {}".format(jax.devices("cpu")))
-            return "cpu"
-        return log_backend()
-    if device == "auto" and not initialize and not backends_initialized():
-        print("jax backend: chosen by JAX on first use (--device auto)")
-        return None
-    backend = log_backend()
-    if device == "gpu" and backend not in GPU_BACKENDS:
-        raise RuntimeError(
-            "--device gpu was requested but JAX is running on {!r} (devices: {}). Check that the CUDA build of "
-            "jax is installed (pixi -e cuda13) and that a GPU is visible (nvidia-smi).".format(
-                backend, jax.devices()))
-    return backend
+        return text
+    if text == "cuda" or text.startswith("cuda:"):
+        index = int(text.split(":", 1)[1]) if ":" in text else 0
+        try:
+            gpus = jax.devices("gpu")
+        except RuntimeError:
+            gpus = []
+        if index >= len(gpus):
+            raise RuntimeError(
+                "CUDA was requested but is not available: JAX sees {} GPU(s) (devices: {}). Check that the CUDA "
+                "build of jax is installed (envs/chrombpnet-jax.yml) and that a GPU is visible (nvidia-smi)."
+                .format(len(gpus), jax.devices()))
+        jax.config.update("jax_default_device", gpus[index])
+        return text
+    raise ValueError("Unknown device {!r}; expected cpu, cuda or cuda:N".format(device))
 
 
 def runtime_info():

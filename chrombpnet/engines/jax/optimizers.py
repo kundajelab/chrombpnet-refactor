@@ -1,3 +1,5 @@
+# JAX engine. From kundajelab/chrombpnet#284 (NNFC-GMD/chrombpnet@14ca773),
+# chrombpnet/training/optimizers.py.
 """Optimizer factory for the architecture files (--optimizer, --muon-lr, --ema, --lr-schedule).
 
 The defaults reproduce chrombpnet 1.x: Adam(learning_rate=args.learning_rate), constant learning rate, no EMA.

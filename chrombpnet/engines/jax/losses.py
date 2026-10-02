@@ -1,3 +1,5 @@
+# JAX engine. From kundajelab/chrombpnet#284 (NNFC-GMD/chrombpnet@14ca773),
+# chrombpnet/training/utils/losses.py.
 import keras
 from keras import ops
 

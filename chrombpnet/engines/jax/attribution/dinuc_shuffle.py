@@ -1,3 +1,5 @@
+# JAX engine. From kundajelab/chrombpnet#284 (NNFC-GMD/chrombpnet@14ca773),
+# chrombpnet/evaluation/interpret/dinuc_shuffle.py.
 """Dinucleotide-preserving shuffles used as DeepSHAP references.
 
 The algorithm is a verbatim port of deeplift 0.6.13 ``deeplift/dinuc_shuffle.py``

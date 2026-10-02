@@ -14,6 +14,9 @@ Usage::
     # The TensorFlow engine, from the chrombpnet-tensorflow environment:
     python -m tests.regression.harness capture --engine tensorflow --out DIR
 
+    # The JAX engine, from the chrombpnet-jax environment:
+    python -m tests.regression.harness capture --engine jax --out DIR
+
 Baselines are captured locally rather than committed. The artifacts depend on
 the installed PyTorch build, so a committed digest would be a per-environment
 constant that goes stale on every dependency bump -- and the question this
@@ -68,7 +71,7 @@ PINNED_ENV = {
 }
 
 #: Engines the sweep can run, and the checkpoint suffix each one writes.
-ENGINE_SUFFIXES = {"pytorch": ".pt", "tensorflow": ".h5"}
+ENGINE_SUFFIXES = {"pytorch": ".pt", "tensorflow": ".h5", "jax": ".keras"}
 
 #: TensorFlow sizes its own thread pools rather than following OMP_NUM_THREADS;
 #: with one thread each its CPU kernels reduce in a fixed order. Added only for
@@ -82,6 +85,15 @@ ENGINE_PINNED_ENV = {
         # subsets whose `head.modified` is the time of writing, so every PDF
         # differs run to run by a few bytes. fontTools takes that timestamp
         # from SOURCE_DATE_EPOCH when it is set.
+        "SOURCE_DATE_EPOCH": "0",
+    },
+    # JAX on the CPU platform only (no CUDA context even where a GPU is
+    # visible), with XLA's CPU thread pool at one thread, so reductions run in
+    # a fixed order.
+    "jax": {
+        "KERAS_BACKEND": "jax",
+        "JAX_PLATFORMS": "cpu",
+        "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1",
         "SOURCE_DATE_EPOCH": "0",
     },
 }

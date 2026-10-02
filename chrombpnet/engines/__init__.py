@@ -15,8 +15,10 @@ namespaces those stages deep-copy and dump to ``<prefix>.args.json``.
 work starts.
 
 Loading is the exception. A checkpoint's suffix names the engine that wrote it,
-so :func:`for_model` and :func:`load_model_wrapper` pick the engine from the
-path and fall back to the configured one only for an unrecognised suffix.
+so :func:`for_model` and :func:`load_model_wrapper` load with the configured
+engine when it can read the file, and otherwise with the engine whose suffix
+it has. The JAX engine, for one, also reads the original ChromBPNet's ``.h5``
+models.
 """
 
 from __future__ import annotations
@@ -38,12 +40,12 @@ _MODULES = {
     "jax": "chrombpnet.engines.jax",
 }
 
-#: Checkpoint suffix -> engine that writes it. JAX has no checkpoint format
-#: yet, so nothing maps to it.
+#: Checkpoint suffix -> engine that writes it.
 _SUFFIX_TO_ENGINE = {
     ".pt": "pytorch",
     ".h5": "tensorflow",
     ".hdf5": "tensorflow",
+    ".keras": "jax",
 }
 
 #: Argument-namespace attributes that hold an input model path. Their suffixes
@@ -108,17 +110,22 @@ def infer_from_path(path):
 
 
 def for_model(path):
-    """The engine that loads ``path``: by suffix, else the configured one."""
+    """The engine that loads ``path``: the configured one if it can read it,
+    else the one whose suffix it has, else the configured one."""
+    engine = current()
+    if engine.can_read(path):
+        return engine
     name = infer_from_path(path)
-    return get(name) if name else current()
+    return get(name) if name else engine
 
 
 def resolve_name(args):
     """Decide the engine for one command from its parsed arguments.
 
-    An explicit ``--engine`` wins, but every input model must then agree with
-    it. Otherwise the input models' suffixes decide, and they must agree with
-    each other. With neither, :data:`DEFAULT_ENGINE`.
+    An explicit ``--engine`` wins, but it must be able to read every input
+    model. Otherwise the input models' suffixes decide; when they name more
+    than one engine, the one engine that reads them all (JAX reads ``.h5`` as
+    well as ``.keras``) is chosen. With neither, :data:`DEFAULT_ENGINE`.
     """
     explicit = getattr(args, "engine", None)
     inferred = {}
@@ -127,7 +134,9 @@ def resolve_name(args):
         if name:
             inferred[attribute] = name
     if explicit:
-        conflicts = {a: n for a, n in inferred.items() if n != explicit}
+        engine = get(explicit)
+        conflicts = {a: n for a, n in inferred.items()
+                     if n != explicit and not engine.can_read(getattr(args, a))}
         if conflicts:
             detail = ", ".join(
                 f"--{a.replace('_', '-')} {getattr(args, a)!r} is a {n} checkpoint"
@@ -136,6 +145,10 @@ def resolve_name(args):
         return explicit
     names = sorted(set(inferred.values()))
     if len(names) > 1:
+        readers = [name for name in ENGINE_NAMES
+                   if all(get(name).can_read(getattr(args, a)) for a in inferred)]
+        if readers:
+            return readers[0]
         raise ValueError(
             "Input models come from different engines: "
             + ", ".join(f"{a}={getattr(args, a)!r} ({n})" for a, n in inferred.items()))

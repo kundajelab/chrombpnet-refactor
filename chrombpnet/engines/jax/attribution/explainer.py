@@ -1,3 +1,7 @@
+# JAX engine. From kundajelab/chrombpnet#284 (NNFC-GMD/chrombpnet@14ca773),
+# chrombpnet/evaluation/interpret/explainer.py,
+# except that it imports from this engine and an error message names
+# this engine's no-bias checkpoint.
 """Native DeepSHAP explainer for ChromBPNet / BPNet Keras 3 models on the JAX backend.
 
 Usage::
@@ -18,9 +22,9 @@ import jax.numpy as jnp
 import keras
 import numpy as np
 
-from chrombpnet.evaluation.interpret import deeplift_jax
-from chrombpnet.evaluation.interpret.dinuc_shuffle import NUM_SHUFFLES, make_references
-from chrombpnet.training.utils.layers import LogSumExp
+from chrombpnet.engines.jax.attribution import deeplift_jax
+from chrombpnet.engines.jax.attribution.dinuc_shuffle import NUM_SHUFFLES, make_references
+from chrombpnet.engines.jax.layers import LogSumExp
 
 HEADS = ("counts", "profile")
 PRECISIONS = ("auto", "highest", "high", "default")
@@ -87,7 +91,7 @@ def check_model(model, heads):
     if has_logsumexp and "counts" in heads:
         raise NotImplementedError(
             "counts-head DeepSHAP of a full chrombpnet model (logsumexp of the bias and no-bias counts) is not "
-            "supported: interpret the bias-corrected *_nobias.h5 model instead (as the chrombpnet pipeline does). "
+            "supported: interpret the bias-corrected *_nobias.keras model instead (as the chrombpnet pipeline does). "
             "The profile head of the full model is supported.")
 
 

@@ -1,9 +1,12 @@
+# JAX engine. From kundajelab/chrombpnet#284 (NNFC-GMD/chrombpnet@14ca773),
+# chrombpnet/training/models/bpnet_model.py,
+# except that it imports from this engine.
 import keras
 from keras.layers import Input, Cropping1D, add, Conv1D, GlobalAvgPool1D, Dense, Flatten
 from keras.models import Model
-from chrombpnet.training.utils.losses import multinomial_nll
-from chrombpnet.training.optimizers import make_optimizer
-from chrombpnet.training.runtime import head_dtype
+from chrombpnet.engines.jax.losses import multinomial_nll
+from chrombpnet.engines.jax.optimizers import make_optimizer
+from chrombpnet.engines.jax.runtime import head_dtype
 import os 
 
 os.environ['PYTHONHASHSEED'] = '0'

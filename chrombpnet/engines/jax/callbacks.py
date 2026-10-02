@@ -1,3 +1,5 @@
+# JAX engine. From kundajelab/chrombpnet#284 (NNFC-GMD/chrombpnet@14ca773),
+# chrombpnet/training/utils/callbacks.py.
 import keras
 
 class LossHistory(keras.callbacks.Callback):

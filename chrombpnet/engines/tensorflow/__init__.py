@@ -37,6 +37,9 @@ def _input_length_from_h5(path):
     """The model's sequence length, read without building a TensorFlow graph."""
     import h5py
 
+    from chrombpnet.engines.tensorflow.predictor import refuse_keras3
+
+    refuse_keras3(path)
     with h5py.File(path, "r") as handle:
         config = handle.attrs["model_config"]
     if isinstance(config, bytes):
@@ -51,6 +54,7 @@ def _input_length_from_h5(path):
 class TensorFlowEngine(Engine):
     name = "tensorflow"
     checkpoint_suffix = ".h5"
+    readable_suffixes = (".h5", ".hdf5")
     environment = "chrombpnet-tensorflow"
 
     def require(self):

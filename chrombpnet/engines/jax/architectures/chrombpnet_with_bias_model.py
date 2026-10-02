@@ -1,11 +1,15 @@
+# JAX engine. From kundajelab/chrombpnet#284 (NNFC-GMD/chrombpnet@14ca773),
+# chrombpnet/training/models/chrombpnet_with_bias_model.py,
+# except that it imports from this engine and writes the no-bias model as
+# <prefix>_nobias.keras, this engine's checkpoint format, not .h5.
 import keras
 from keras.layers import Input, Cropping1D, add, Conv1D, GlobalAvgPool1D, Dense, Add, Concatenate, Flatten
 from keras.models import Model
-from chrombpnet.training.utils.losses import multinomial_nll
-from chrombpnet.training.utils.layers import LogSumExp
-from chrombpnet.training.utils import model_io
-from chrombpnet.training.optimizers import make_optimizer
-from chrombpnet.training.runtime import head_dtype
+from chrombpnet.engines.jax.losses import multinomial_nll
+from chrombpnet.engines.jax.layers import LogSumExp
+from chrombpnet.engines.jax import model_io
+from chrombpnet.engines.jax.optimizers import make_optimizer
+from chrombpnet.engines.jax.runtime import head_dtype
 import os 
 
 os.environ['PYTHONHASHSEED'] = '0'
@@ -144,4 +148,4 @@ def save_model_without_bias(model, output_prefix):
     # the nested model is the no-bias graph itself (same layers and weights, keeps the name model_wo_bias)
     model_without_bias = model.get_layer("model_wo_bias")
     print('save model without bias') 
-    model_without_bias.save(output_prefix+"_nobias.h5")
+    model_without_bias.save(output_prefix+"_nobias.keras")

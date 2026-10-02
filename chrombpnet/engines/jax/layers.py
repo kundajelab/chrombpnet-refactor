@@ -1,3 +1,6 @@
+# JAX engine. From kundajelab/chrombpnet#284 (NNFC-GMD/chrombpnet@14ca773),
+# chrombpnet/training/utils/layers.py,
+# except that an error message names this module.
 import base64
 
 import keras
@@ -75,7 +78,7 @@ class LogSumExpCompat(LogSumExp):
             raise ValueError(
                 "Cannot load Lambda layer {!r}: only the logsumexp count head of chrombpnet 1.x models "
                 "(`logcount_predictions`) is supported. Rebuild custom architectures without Lambda layers "
-                "(see chrombpnet.training.utils.layers).".format(name))
+                "(see chrombpnet.engines.jax.layers).".format(name))
         for key in _LAMBDA_ONLY_KEYS:
             config.pop(key, None)
         return LogSumExp(**config)

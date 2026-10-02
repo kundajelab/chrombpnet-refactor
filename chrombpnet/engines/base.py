@@ -37,8 +37,20 @@ class Engine:
     name = None
     #: Suffix of the checkpoints this engine writes, e.g. ``".pt"``.
     checkpoint_suffix = None
+    #: Suffixes of the checkpoints this engine can load, if more than the one
+    #: it writes.
+    readable_suffixes = None
     #: The conda environment that provides this engine.
     environment = None
+
+    def can_read(self, path):
+        """Whether this engine can load the checkpoint at ``path``."""
+        import os
+
+        if not path or not isinstance(path, str):
+            return False
+        suffixes = self.readable_suffixes or (self.checkpoint_suffix,)
+        return os.path.splitext(path)[1].lower() in suffixes
 
     # -- availability ------------------------------------------------------
     def require(self):

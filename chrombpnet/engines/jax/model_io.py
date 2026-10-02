@@ -1,3 +1,6 @@
+# JAX engine. From kundajelab/chrombpnet#284 (NNFC-GMD/chrombpnet@14ca773),
+# chrombpnet/training/utils/model_io.py,
+# except that it imports from this engine.
 """Single entry point for loading ChromBPNet models (chrombpnet 1.x TF-Keras .h5 files and Keras 3 files)."""
 import io
 import json
@@ -5,8 +8,8 @@ import warnings
 
 import keras
 
-from chrombpnet.training.utils.layers import LogSumExp, LogSumExpCompat
-from chrombpnet.training.utils.losses import multinomial_nll
+from chrombpnet.engines.jax.layers import LogSumExp, LogSumExpCompat
+from chrombpnet.engines.jax.losses import multinomial_nll
 
 _NESTED_MODEL_CLASSES = ("Functional", "Model", "Sequential")
 

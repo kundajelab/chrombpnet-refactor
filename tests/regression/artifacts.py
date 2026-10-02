@@ -126,7 +126,44 @@ def hdf5_digest(path: Path) -> str:
     return digest.hexdigest()
 
 
-_CONTENT_DIGESTS = {".h5": hdf5_digest, ".hdf5": hdf5_digest}
+def keras_archive_digest(path: Path) -> str:
+    """Digest a Keras 3 ``.keras`` archive (the JAX engine's checkpoints).
+
+    The archive is a zip of ``config.json``, ``metadata.json`` and
+    ``model.weights.h5``. Keras stamps the time of saving into the metadata
+    (``date_saved``) and zip entries carry modification times, so the raw
+    bytes differ between two saves of the same model. Hashed instead: each
+    member's name, the weights' HDF5 content (:func:`hdf5_digest`), the
+    metadata without ``date_saved``, and every other member's bytes.
+    """
+    import os
+    import tempfile
+    import zipfile
+
+    digest = hashlib.sha256()
+    with zipfile.ZipFile(path) as archive:
+        for name in sorted(archive.namelist()):
+            data = archive.read(name)
+            digest.update(name.encode())
+            if name.endswith((".h5", ".hdf5")):
+                handle, temporary = tempfile.mkstemp(suffix=".h5")
+                try:
+                    with os.fdopen(handle, "wb") as stream:
+                        stream.write(data)
+                    digest.update(hdf5_digest(Path(temporary)).encode())
+                finally:
+                    os.remove(temporary)
+            elif name == "metadata.json":
+                metadata = json.loads(data)
+                metadata.pop("date_saved", None)
+                digest.update(json.dumps(metadata, sort_keys=True).encode())
+            else:
+                digest.update(data)
+    return digest.hexdigest()
+
+
+_CONTENT_DIGESTS = {".h5": hdf5_digest, ".hdf5": hdf5_digest,
+                    ".keras": keras_archive_digest}
 
 #: Text artifacts that embed absolute paths and so need substitution.
 _SUBSTITUTED_SUFFIXES = {".json", ".tsv", ".html"}
