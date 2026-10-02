@@ -126,15 +126,42 @@ def hdf5_digest(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _renumber_shared_objects(config):
+    """Replace Keras's ``shared_object_id`` values by their order of first appearance.
+
+    Keras marks an object several layers share (their dtype policy) with the
+    ``id()`` of the Python object -- a memory address, different in every
+    process. Renumbering keeps which layers share what, and drops the address.
+    """
+    numbers = {}
+
+    def walk(node):
+        if isinstance(node, dict):
+            out = {}
+            for key, value in node.items():
+                if key == "shared_object_id":
+                    out[key] = numbers.setdefault(value, len(numbers))
+                else:
+                    out[key] = walk(value)
+            return out
+        if isinstance(node, list):
+            return [walk(item) for item in node]
+        return node
+
+    return walk(config)
+
+
 def keras_archive_digest(path: Path) -> str:
     """Digest a Keras 3 ``.keras`` archive (the JAX engine's checkpoints).
 
     The archive is a zip of ``config.json``, ``metadata.json`` and
-    ``model.weights.h5``. Keras stamps the time of saving into the metadata
-    (``date_saved``) and zip entries carry modification times, so the raw
-    bytes differ between two saves of the same model. Hashed instead: each
-    member's name, the weights' HDF5 content (:func:`hdf5_digest`), the
-    metadata without ``date_saved``, and every other member's bytes.
+    ``model.weights.h5``. Three things in it change between two saves of the
+    same model: Keras stamps the time of saving into the metadata
+    (``date_saved``), marks shared objects in the config with a memory address
+    (``shared_object_id``), and zip entries carry modification times. Hashed
+    instead: each member's name, the weights' HDF5 content
+    (:func:`hdf5_digest`), the metadata without ``date_saved``, the config with
+    shared-object ids renumbered, and every other member's bytes.
     """
     import os
     import tempfile
@@ -157,6 +184,9 @@ def keras_archive_digest(path: Path) -> str:
                 metadata = json.loads(data)
                 metadata.pop("date_saved", None)
                 digest.update(json.dumps(metadata, sort_keys=True).encode())
+            elif name == "config.json":
+                digest.update(json.dumps(_renumber_shared_objects(json.loads(data)),
+                                         sort_keys=True).encode())
             else:
                 digest.update(data)
     return digest.hexdigest()

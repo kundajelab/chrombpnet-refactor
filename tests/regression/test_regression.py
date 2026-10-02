@@ -207,6 +207,35 @@ def test_keras_lambda_bytecode_is_compared_without_its_origin():
     assert artifacts._attr_text("model_config", here) != artifacts._attr_text("model_config", other)
 
 
+def test_keras_archives_digest_by_content(tmp_path):
+    """Two saves of one model differ in date_saved and in shared_object_id
+    (a memory address); neither may move the digest, a real change must."""
+    import json
+    import zipfile
+
+    import h5py
+    import numpy as np
+
+    weights = tmp_path / "w.h5"
+    with h5py.File(weights, "w") as handle:
+        handle["layers/dense/vars/0"] = np.arange(4, dtype=np.float32)
+
+    def archive(name, saved, shared_id, units=1):
+        config = {"config": {"layers": [
+            {"config": {"units": units, "dtype": {"shared_object_id": shared_id}}},
+            {"config": {"units": units, "dtype": {"shared_object_id": shared_id}}}]}}
+        path = tmp_path / name
+        with zipfile.ZipFile(path, "w") as zf:
+            zf.writestr("metadata.json", json.dumps({"keras_version": "3", "date_saved": saved}))
+            zf.writestr("config.json", json.dumps(config))
+            zf.write(weights, "model.weights.h5")
+        return artifacts.keras_archive_digest(path)
+
+    first = archive("a.keras", "2026-10-02@01:03:39", 140113296471872)
+    assert first == archive("b.keras", "2026-10-02@01:22:10", 140177627356176)
+    assert first != archive("c.keras", "2026-10-02@01:03:39", 140113296471872, units=2)
+
+
 @pytest.mark.regression
 @pytest.mark.skipif(
     not os.environ.get("CHROMBPNET_REGRESSION_BASELINE"),
