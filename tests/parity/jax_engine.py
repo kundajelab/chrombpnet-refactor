@@ -96,6 +96,16 @@ def _tf_engine():
     return tf_engine
 
 
+def _import_this_package():
+    """Import chrombpnet from this checkout, and fail if an editable install
+    elsewhere answered instead."""
+    sys.path.insert(0, str(REPO_ROOT))
+    import chrombpnet
+    if not str(Path(chrombpnet.__file__).resolve()).startswith(str(REPO_ROOT)):
+        raise RuntimeError("worker imported chrombpnet from {}, not {}".format(
+            chrombpnet.__file__, REPO_ROOT))
+
+
 # --------------------------------------------------------------------------
 # Shared by both workers
 # --------------------------------------------------------------------------
@@ -217,8 +227,7 @@ def golden_shap(workdir, out, original_repo):
 # --------------------------------------------------------------------------
 
 def jax_side(workdir, golden_dir, out):
-    sys.path.insert(0, str(REPO_ROOT))
-    import chrombpnet  # noqa: F401
+    _import_this_package()
     from chrombpnet import engines
     tf_engine = _tf_engine()
 
@@ -331,8 +340,7 @@ def _predict_exports(load, workdir, jax_dir, name):
 
 def tf_export(workdir, jax_dir):
     """This package's TensorFlow engine loads the exports."""
-    sys.path.insert(0, str(REPO_ROOT))
-    import chrombpnet  # noqa: F401
+    _import_this_package()
     from chrombpnet import engines
     _tf_engine()._pin_tensorflow()
     engine = engines.get("tensorflow")
