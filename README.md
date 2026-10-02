@@ -63,6 +63,14 @@ checkout named in `envs/requirements-pytorch.txt` and in the `[reports]` extra o
 `pyproject.toml`. It is optional: everything except `modisco_motifs` and the
 motif section of the `qc` reports works without it.
 
+The motif reports match each motif against a motif database with MEME's
+`tomtom`, which every environment installs from conda (`meme`). The commands
+that end with a report check for it before doing any work. With
+`--tomtom-lite` they use TOMTOM-lite (memelite) instead, so MEME is not
+needed, and the report lists uncorrected p-values instead of q-values.
+TOMTOM-lite needs TF-MoDISco 2.5 or later, so the TensorFlow environment,
+whose newest TF-MoDISco is 2.3.2, refuses the flag.
+
 ## QuickStart
 
 ### Training a bias-factorized ChromBPNet model
@@ -326,6 +334,19 @@ chrombpnet export            a JAX-engine model in the original's .h5 layout
 
 Run `chrombpnet <command> --help` for the full argument list.
 
+`pipeline`, `qc`, `bias pipeline` and `bias qc` end with TF-MoDISco motif
+reports, built from contribution scores on a fixed-seed sample of the peaks.
+Four options control them, all off by default:
+
+| option | default |
+|---|---|
+| `--interpret-subsample N` | 30 000 peaks scored (all of them if there are fewer) |
+| `--modisco-max-seqlets N` | 50 000 seqlets per positive/negative pattern group |
+| `--modisco-window BP` | 500 bp centred window; even, at most the input length |
+| `--tomtom-lite` | match motifs with TOMTOM-lite instead of MEME's `tomtom` (also on `modisco_motifs`) |
+
+`modisco_motifs` takes its own `--max-seqlets` and `--window`.
+
 ## Optimizations
 
 `pred_bw` runs about **47 % faster** than the code this package started from,
@@ -518,6 +539,10 @@ python -m tests.regression.harness capture --engine tensorflow --out DIR
 CHROMBPNET_JAX_ENGINE_PARITY=1 pytest tests/parity/test_jax_engine.py
 # ... and the golden-artifact sweep, from the chrombpnet-jax environment.
 python -m tests.regression.harness capture --engine jax --out DIR
+
+# DeepSHAP across engines: the TensorFlow and JAX engines against PyTorch,
+# whose semantics are the reference (needs all three environments; opt-in).
+CHROMBPNET_DEEPSHAP_ENGINES=1 pytest tests/parity/test_deepshap_engines.py
 ```
 
 `pytest` runs in every engine's environment; tests that need a framework the

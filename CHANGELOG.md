@@ -1,5 +1,22 @@
 # Changelog
 
+## Smaller fixes, no output changes
+
+- `density_scatter` (the counts scatter in the reports) crashed whenever
+  predictions and observations had different NaN counts: the mask
+  concatenated both `np.where` tuples. It now drops a point that is NaN in
+  either.
+- Matplotlib figures are closed once saved (counts scatter, histograms,
+  marginal footprints, loss curves, the QC PWM), instead of accumulating for
+  the life of the process. The saved images are byte-identical.
+- `viz_sequence.plot_weights` returns the figure it draws.
+- The Docker image sets `PYTHONNOUSERSITE=1` and empties `PYTHONPATH` and
+  `PYTHONHOME`. Apptainer passes the host's `~/.local` and `PYTHONPATH` into
+  the container, where they can shadow the image's packages. The image was
+  not rebuilt to test this.
+- All four follow kundajelab/chrombpnet#284. The PR closes the metrics
+  plots only; the footprint, loss-curve and PWM figures are closed here too.
+
 ## TensorFlow and JAX engines: DeepSHAP honours the profile target's stop_gradient
 
 - **Behaviour change: profile contribution scores, TensorFlow and JAX
@@ -35,6 +52,12 @@
 - With the TensorFlow or JAX engine, the profile motif reports of
   `pipeline`, `qc`, `bias pipeline` and `bias qc` change with the scores.
   The counts reports do not. Nothing changes in the PyTorch engine.
+- In the regression sweeps only profile-derived artifacts change: the
+  profile scores, the profile MoDISco results, logos and reports, and the
+  profile contribution bigwig. Models, predictions, counts scores and
+  footprints are identical. The profile reports find different patterns,
+  so the TensorFlow sweep now captures 149 artifacts (was 146) and the JAX
+  sweep 149 (was 152).
 
 ## Motif-report settings on the command line
 

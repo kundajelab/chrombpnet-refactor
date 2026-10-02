@@ -58,7 +58,7 @@ that: not even an explicit
 `--engine pytorch`, which `<prefix>.args.json` would record. A baseline
 records its engine in `engine.txt`, and `compare` refuses a mismatch.
 
-A healthy TensorFlow sweep captures **146 artifacts across 10 scenarios**
+A healthy TensorFlow sweep captures **149 artifacts across 10 scenarios**
 (PyTorch: 150). The difference is all in the qc scenarios' motif logos, whose
 number depends on which patterns TF-MoDISco finds for each engine's model --
 and the TensorFlow environment runs TF-MoDISco 2.3.2, the newest release that
@@ -73,7 +73,7 @@ as before.
 For `--engine jax` the `.pt` paths become `.keras`, and JAX runs on the CPU
 platform only (`JAX_PLATFORMS=cpu`, so no CUDA context even where a GPU is
 visible) with XLA's CPU thread pool at one thread. A healthy JAX sweep
-captures **152 artifacts across 10 scenarios**, reproducibly; again only the
+captures **149 artifacts across 10 scenarios**, reproducibly; again only the
 motif-logo count differs. `.keras` archives are digested by content
 (`artifacts.keras_archive_digest`): Keras stamps the time of saving into each
 one and marks shared objects with a memory address, so their bytes differ
