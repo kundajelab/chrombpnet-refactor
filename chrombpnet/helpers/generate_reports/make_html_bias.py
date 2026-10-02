@@ -71,29 +71,6 @@ def qc_report(fpx,prefix):
 
 	## TFModisco motifs learnt by bias model (bias.pt) model 
 	
-	def remove_negs(tables):
-		new_lines=[]
-		set_flag = True
-		lines = tables.split("\n")
-		jdx=0
-		for idx in range(len(lines)-1):
-			
-			if jdx==15:
-				set_flag = True
-				jdx=0
-	
-			if "neg_" in lines[idx+1]:
-				set_flag=False
-				jdx = 0
-		
-			if set_flag:
-				new_lines.append(lines[idx])
-			else:
-				jdx+=1
-		new_lines.append(lines[-1])
-		return  "\n".join(new_lines)
-				
-		
 	tf_hed = "TFModisco motifs learnt from bias model (bias.pt) model"
 	
 	
@@ -150,8 +127,9 @@ def qc_report(fpx,prefix):
 	tf_text_counts = tf_text_counts.replace(
 		"The qvals should", "The {} should".format(modisco_table.stat_name(stat_counts)))
 
-	table_profile = remove_negs(table_profile)
-	table_counts = remove_negs(table_counts)
+	# Whole rows, however many columns they have; </tbody> is kept.
+	table_profile = modisco_table.drop_negative_patterns(table_profile)
+	table_counts = modisco_table.drop_negative_patterns(table_counts)
 
 	# 2. Combine them together using a long f-string
 

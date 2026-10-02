@@ -9,11 +9,53 @@ Adapted from kundajelab/chrombpnet#284's
 ``chrombpnet/helpers/generate_reports/modisco_table.py``: ``match_stat``,
 ``stat_name`` and ``stat_description`` are its, and for a q-value table they
 reproduce the wording the reports have always used, byte for byte.
+``drop_negative_patterns`` takes its name and whole-row approach, but works
+line by line so that pandas' layout is kept.
 """
 
 import re
 
 _HEADER_CELL = re.compile(r"<th(?:\s[^>]*)?>(.*?)</th>", re.S)
+_CELL = re.compile(r"\s*<t[dh](?:\s[^>]*)?>(.*?)</t[dh]>")
+
+
+def _is_row_start(line):
+	stripped = line.strip()
+	return stripped == "<tr>" or stripped.startswith("<tr ")
+
+
+def _first_cell(row_lines):
+	for line in row_lines[1:]:
+		match = _CELL.match(line)
+		if match:
+			return match.group(1).strip()
+	return ""
+
+
+def drop_negative_patterns(html):
+	"""Remove the rows of negative patterns (first cell starting ``neg_``).
+
+	Works on pandas' layout one row at a time -- every line from ``<tr>``
+	through ``</tr>`` -- so it does not depend on how many columns a row has
+	(13 with a motif database and three matches, 4 without one), and it leaves
+	the table's structure, ``</tbody>`` included, as pandas wrote it.
+	"""
+	out, row = [], None
+	for line in html.split("\n"):
+		if row is None:
+			if _is_row_start(line):
+				row = [line]
+			else:
+				out.append(line)
+			continue
+		row.append(line)
+		if line.strip() == "</tr>":
+			if not _first_cell(row).startswith("neg_"):
+				out.extend(row)
+			row = None
+	if row is not None:
+		out.extend(row)
+	return "\n".join(out)
 
 
 def table_columns(html):

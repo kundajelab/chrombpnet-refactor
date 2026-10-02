@@ -205,3 +205,53 @@ def test_report_wording_follows_the_table():
     assert modisco_table.stat_name("qval") == "qvals"
     assert modisco_table.stat_name("pval") == "p-values"
     assert "not corrected for multiple testing" in modisco_table.stat_description("pval")
+
+
+def _motifs_table(patterns, matches=3):
+    """motifs.html as modiscolite writes it (pandas, no index), with the pattern
+    names shortened the way make_html_bias does (``>neg_patterns.pattern`` ->
+    ``>neg_``). The logo paths still contain ``neg_patterns``."""
+    import pandas as pd
+
+    def logo(path):
+        return '<img src="{}" width="240" >'.format(path)
+
+    columns = {"pattern": [], "num_seqlets": [], "modisco_cwm_fwd": [], "modisco_cwm_rev": []}
+    for i in range(matches):
+        columns.update({"match{}".format(i): [], "qval{}".format(i): [], "match{}_logo".format(i): []})
+    for name in patterns:
+        tag = name.replace("_", "_patterns.pattern_", 1)
+        columns["pattern"].append(tag)
+        columns["num_seqlets"].append(100 + int(name.split("_")[1]))
+        for strand in ("fwd", "rev"):
+            columns["modisco_cwm_" + strand].append("./trimmed_logos/{}.cwm.{}.png".format(tag, strand))
+        for i in range(matches):
+            columns["match{}".format(i)].append("TN5_{}".format(i))
+            columns["qval{}".format(i)].append(0.01 * (i + 1))
+            columns["match{}_logo".format(i)].append("./TN5_{}.png".format(i))
+    html = pd.DataFrame(columns).to_html(
+        escape=False, index=False,
+        formatters={c: logo for c in columns if c.startswith("modisco_cwm") or c.endswith("_logo")})
+    return html.replace(">pos_patterns.pattern", ">pos_").replace(">neg_patterns.pattern", ">neg_")
+
+
+@pytest.mark.parametrize("matches", [3, 1, 0], ids=["13-columns", "7-columns", "no-database"])
+@pytest.mark.parametrize("patterns", [
+    ["pos_0", "pos_1"],
+    ["neg_0", "neg_1"],
+    ["pos_0", "neg_0", "pos_1", "neg_1", "neg_2", "pos_2"],
+], ids=["positive-only", "negative-only", "mixed"])
+def test_negative_pattern_rows_are_removed_whole(patterns, matches):
+    from chrombpnet.helpers.generate_reports import modisco_table
+
+    positive = [name for name in patterns if name.startswith("pos_")]
+    kept = modisco_table.drop_negative_patterns(_motifs_table(patterns, matches))
+    assert kept == _motifs_table(positive, matches)
+    assert "  </tbody>" in kept and ">neg_" not in kept
+
+
+def test_negative_pattern_removal_leaves_other_text_alone():
+    from chrombpnet.helpers.generate_reports import modisco_table
+
+    for text in ("<table></table>", "", "no table\nat all"):
+        assert modisco_table.drop_negative_patterns(text) == text

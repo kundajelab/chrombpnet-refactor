@@ -1,5 +1,23 @@
 # Changelog
 
+## Bias report: negative patterns removed whole rows at a time
+
+- **Behaviour change: one line of `bias qc`'s `overall_report.html`.** The
+  bias report leaves the negative TF-MoDISco patterns out of its motif tables.
+  It did so by dropping 15 lines from each `neg_` line, i.e. it assumed a
+  13-column row. The logo paths in a row contain `neg_` as well and restart
+  the count, so it also dropped the two lines after each negative row. With
+  the negative rows last, as modiscolite writes them, that lost the table's
+  `</tbody>`. Followed by a positive row, or with another row length (no motif
+  database, other `top_n`), it would have cut rows in half.
+- `modisco_table.drop_negative_patterns` now removes each row, `<tr>` through
+  `</tr>`, whose first cell starts `neg_`, and leaves the rest of pandas'
+  table as written. On the regression fixture the report gains its
+  `  </tbody>` line and nothing else changes.
+- The function's name and the whole-row approach are from
+  kundajelab/chrombpnet#284. Its regex version puts `</tbody>` at the wrong
+  indentation, so this one works line by line on pandas' layout.
+
 ## `--tomtom-lite`: motif reports without MEME
 
 - **New `--tomtom-lite`** on `pipeline`, `qc`, `bias pipeline`, `bias qc` and
