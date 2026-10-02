@@ -497,6 +497,16 @@
     "required": false,
     "type": "str"
   },
+  "bias pipeline tomtom_lite": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--tomtom-lite"
+    ],
+    "required": false,
+    "type": "None"
+  },
   "bias pipeline trackables": {
     "choices": null,
     "default": "['logcount_predictions_loss', 'loss', 'logits_profile_predictions_loss', 'val_logcount_predictions_loss', 'val_loss', 'val_logits_profile_predictions_loss']",
@@ -713,6 +723,16 @@
     "nargs": "0",
     "options": [
       "--predict-fk"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "bias qc tomtom_lite": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--tomtom-lite"
     ],
     "required": false,
     "type": "None"
@@ -1647,6 +1667,16 @@
     "required": true,
     "type": "str"
   },
+  "modisco_motifs tomtom_lite": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--tomtom-lite"
+    ],
+    "required": false,
+    "type": "None"
+  },
   "modisco_motifs verbose": {
     "choices": null,
     "default": "False",
@@ -2176,6 +2206,16 @@
     ],
     "required": false,
     "type": "str"
+  },
+  "pipeline tomtom_lite": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--tomtom-lite"
+    ],
+    "required": false,
+    "type": "None"
   },
   "pipeline trackables": {
     "choices": null,
@@ -2970,6 +3010,16 @@
     "nargs": "0",
     "options": [
       "--predict-fk"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "qc tomtom_lite": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--tomtom-lite"
     ],
     "required": false,
     "type": "None"

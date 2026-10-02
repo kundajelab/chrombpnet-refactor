@@ -32,13 +32,22 @@ def check_tomtom(args):
 	looks tomtom up on PATH only then. shutil.which("tomtom") is exactly its
 	lookup.
 	"""
-	if not runs_motif_report(args) or getattr(args, "tomtom_lite", None):
+	if not runs_motif_report(args):
+		return
+	if getattr(args, "tomtom_lite", None):
+		from chrombpnet.evaluation.modisco.api import supports_tomtom_lite
+		if not supports_tomtom_lite():
+			raise SystemExit(
+				"chrombpnet: error: --tomtom-lite needs TF-MoDISco 2.5 or later, "
+				"which this environment does not have (the TensorFlow engine's "
+				"modisco-lite 2.3.2 is the newest release for Python 3.8). Leave out "
+				"--tomtom-lite to match motifs with MEME's tomtom.")
 		return
 	if shutil.which("tomtom") is None:
 		raise SystemExit(
 			"chrombpnet: error: the motif report needs MEME's `tomtom`, which is "
 			"not on PATH. Install MEME (it is in every envs/chrombpnet-*.yml, as "
-			"`meme`) or activate the environment that has it.")
+			"`meme`), activate the environment that has it, or pass --tomtom-lite.")
 
 
 # invoke pipeline modules based on command
@@ -57,6 +66,7 @@ def main():
 	        engines.EngineNotImplemented) as error:
 		raise SystemExit(f"chrombpnet: error: {error}")
 	check_tomtom(args)
+	parsers.drop_absent(args)
 	
 	if args.cmd == "pipeline" or args.cmd == "train":
 		RunLayout.from_args(args).create_training_dirs()
@@ -143,7 +153,8 @@ def main():
 			max_seqlets=args.max_seqlets, window=args.window,
 			n_leiden_runs=args.n_leiden, verbose=args.verbose)
 		generate_report(args.output_prefix+"_modisco.h5",
-			args.output_prefix+"_reports", meme_file)
+			args.output_prefix+"_reports", meme_file,
+			tomtom_lite=bool(getattr(args, "tomtom_lite", None)))
 		
 		import chrombpnet.evaluation.modisco.convert_html_to_pdf as convert_html_to_pdf
 		convert_html_to_pdf.main(args.output_prefix+"_reports/motifs.html",args.output_prefix+"_reports/motifs.pdf")

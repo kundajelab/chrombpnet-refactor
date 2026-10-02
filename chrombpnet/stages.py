@@ -211,11 +211,12 @@ def run_interpret(args, layout, model_path, regions, output_prefix,
     interpret.main(args_copy)
 
 
-def run_modisco(layout, scores_name, kind, pdf_name):
+def run_modisco(args, layout, scores_name, kind, pdf_name):
     """Discover motifs from one contribution track and render its report.
 
     ``kind`` is "profile" or "counts" and selects both the results filename and
-    the ``evaluation/modisco_<kind>/`` report directory.
+    the ``evaluation/modisco_<kind>/`` report directory. ``args`` supplies the
+    report options (``--tomtom-lite``), each absent unless given.
     """
     from chrombpnet.evaluation.modisco.api import generate_report, run_motifs
     import chrombpnet.evaluation.modisco.convert_html_to_pdf as convert_html_to_pdf
@@ -227,7 +228,8 @@ def run_modisco(layout, scores_name, kind, pdf_name):
 
     run_motifs(layout.interpret_subsample(f"{scores_name}.{kind}_scores.h5"),
                results)
-    generate_report(results, report_dir, meme_file)
+    generate_report(results, report_dir, meme_file,
+                    tomtom_lite=bool(getattr(args, "tomtom_lite", None)))
     convert_html_to_pdf.main(report_dir + "motifs.html",
                              layout.evaluation(pdf_name))
 

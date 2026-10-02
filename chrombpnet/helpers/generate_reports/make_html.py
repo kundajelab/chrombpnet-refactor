@@ -3,6 +3,7 @@ import pandas as pd
 import os
 import argparse
 from chrombpnet.helpers.generate_reports import report_shell
+from chrombpnet.helpers.generate_reports import modisco_table
 
 
 def read_args():
@@ -134,6 +135,11 @@ def qc_report(fpx,prefix,data_type):
 	#tf_text_counts = "TFModisco on Counts head. cwm_fwd, cwm_rev should have only TF motifs.  The motifs top matches in TOMTOM are shown (match_0, match_1, match_2)"
 
 	table_profile = open(os.path.join(prefix,"evaluation/modisco_profile/motifs.html")).read().replace("./","./modisco_profile/").replace("width=\"240\"","width=\"240\", class=\"cover\"").replace(">pos_patterns.pattern",">pos_").replace(">neg_patterns.pattern",">neg_").replace("modisco_cwm_fwd","cwm_fwd").replace("modisco_cwm_rev","cwm_rev").replace("num_seqlets","NumSeqs").replace("dataframe","new")
+	# q-values with MEME's tomtom, p-values with --tomtom-lite; the q-value
+	# wording is unchanged.
+	stat = modisco_table.match_stat(table_profile)
+	tf_text_profile = tf_text_profile.replace(
+		"qvals (qval0,qval1,qval2)", modisco_table.stat_description(stat))
 	#table_profile = open(os.path.join(prefix,"evaluation/modisco_profile/motifs.html")).read().replace("./","./modisco_profile/").replace("width=\"240\"","class=\"cover\"").replace("border=\"1\" class=\"dataframe\"","").replace(">pos_patterns.pattern",">pos_").replace(">neg_patterns.pattern",">neg_").replace("modisco_cwm_fwd","cwm_fwd").replace("modisco_cwm_rev","cwm_rev").replace("num_seqlets","NumSeqs").replace("dataframe","new")
 	#table_counts = open(os.path.join(prefix,"auxiliary/interpret_subsample/modisco_counts/motifs.html")).read().replace("./","./modisco_counts/").replace("width=\"240\"","class=\"cover\"").replace("border=\"1\" class=\"dataframe\"","").replace(">pos_patterns.pattern",">pos_").replace(">neg_patterns.pattern",">neg_").replace("modisco_cwm_fwd","cwm_fwd").replace("modisco_cwm_rev","cwm_rev").replace("num_seqlets","NumSeqs")
 

@@ -8,6 +8,7 @@ drifting apart again.
 
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
@@ -134,17 +135,53 @@ def run_arrays(sequences, attributions, output_path, max_seqlets=50000, window=N
     return pos_patterns, neg_patterns
 
 
-def generate_report(input_path, output_dir, motif_file=None, image_suffix="./"):
-    """Generate the latest supported compact HTML report (``motifs.html``)."""
+def supports_tomtom_lite():
+    """Whether the installed TF-MoDISco can match motifs with TOMTOM-lite.
+
+    That is ``report_motifs(..., ttl=True)``, in tfmodisco-lite 2.5 and
+    later. modisco-lite 2.3.2, the newest release that runs on Python 3.8
+    (the TensorFlow engine's environment), does not have it.
+    """
+    try:
+        *_, report = _modisco_modules()
+    except ImportError:
+        return False
+    return "ttl" in inspect.signature(report.report_motifs).parameters
+
+
+def _has_patterns(path):
+    with h5py.File(path, "r") as handle:
+        return any(group in handle and len(handle[group]) for group in PATTERN_GROUPS)
+
+
+def generate_report(input_path, output_dir, motif_file=None, image_suffix="./",
+                    tomtom_lite=False):
+    """Generate the latest supported compact HTML report (``motifs.html``).
+
+    ``tomtom_lite`` matches the motifs with TOMTOM-lite (memelite) instead of
+    MEME's ``tomtom``: no MEME needed, and the table reports uncorrected
+    p-values (``pval0..``) instead of q-values. ``ttl`` is passed to
+    ``report_motifs`` only then, so the default call is what it always was.
+    """
+    if tomtom_lite and not supports_tomtom_lite():
+        raise RuntimeError(
+            "tomtom_lite needs TF-MoDISco 2.5 or later (report_motifs(ttl=...)); "
+            "the installed release does not have it")
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     *_, report = _modisco_modules()
+    options = {}
+    # memelite's tomtom fails on an empty pattern list; with no patterns there
+    # is nothing to match, and MEME's tomtom is not called either.
+    if tomtom_lite and motif_file is not None and _has_patterns(input_path):
+        options["ttl"] = True
     report.report_motifs(
         Path(input_path),
         str(output_dir),
         image_suffix,
         motif_file,
         is_writing_tomtom_matrix=False,
+        **options,
     )
     return output_dir / "motifs.html"
 

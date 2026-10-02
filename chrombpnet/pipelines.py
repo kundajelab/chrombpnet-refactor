@@ -106,7 +106,7 @@ def chrombpnet_train_pipeline(args):
         args, layout, model_path=nobias_model, regions=subsample,
         output_prefix=layout.interpret_subsample("chrombpnet_nobias"),
         profile_or_counts=["profile"])
-    stages.run_modisco(layout, "chrombpnet_nobias", "profile",
+    stages.run_modisco(args, layout, "chrombpnet_nobias", "profile",
                        "chrombpnet_nobias_profile.pdf")
 
     stages.render_report(args, layout, make_html, args.cmd)
@@ -146,7 +146,7 @@ def chrombpnet_qc(args):
         args, layout, model_path=args.chrombpnet_model_nb, regions=subsample,
         output_prefix=layout.interpret_subsample("chrombpnet_nobias"),
         profile_or_counts=["profile"])
-    stages.run_modisco(layout, "chrombpnet_nobias", "profile",
+    stages.run_modisco(args, layout, "chrombpnet_nobias", "profile",
                        "chrombpnet_nobias_profile.pdf")
 
     import chrombpnet.helpers.generate_reports.make_html as make_html
@@ -208,8 +208,8 @@ def train_bias_pipeline(args):
         args, layout, model_path=bias_model, regions=subsample,
         output_prefix=layout.interpret_subsample("bias"),
         profile_or_counts=["counts", "profile"])
-    stages.run_modisco(layout, "bias", "profile", "bias_profile.pdf")
-    stages.run_modisco(layout, "bias", "counts", "bias_counts.pdf")
+    stages.run_modisco(args, layout, "bias", "profile", "bias_profile.pdf")
+    stages.run_modisco(args, layout, "bias", "counts", "bias_counts.pdf")
 
     stages.render_report(args, layout, make_html_bias, args.cmd_bias)
 
@@ -234,8 +234,8 @@ def bias_model_qc(args):
         args, layout, model_path=args.bias_model, regions=subsample,
         output_prefix=layout.interpret_subsample("bias"),
         profile_or_counts=["counts", "profile"])
-    stages.run_modisco(layout, "bias", "profile", "bias_profile.pdf")
-    stages.run_modisco(layout, "bias", "counts", "bias_counts.pdf")
+    stages.run_modisco(args, layout, "bias", "profile", "bias_profile.pdf")
+    stages.run_modisco(args, layout, "bias", "counts", "bias_counts.pdf")
 
     import chrombpnet.helpers.generate_reports.make_html_bias as make_html_bias
     stages.render_report(args, layout, make_html_bias, args.cmd_bias)

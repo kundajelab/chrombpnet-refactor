@@ -40,9 +40,12 @@ def test_training_cli_exposes_benchmark_mode():
         assert "--benchmark" in completed.stdout
         # Three levels plus an opt-out, with a bare --benchmark still accepted.
         assert "{pytorch,tensorflow,medium,max}" in completed.stdout.replace("\n", "")
-        # "lite" is gone from the command line; argparse must reject it and
-        # say what is valid, rather than silently accepting a stale script.
-        assert "lite" not in completed.stdout
+        # The "lite" benchmark level is gone; argparse must reject it and say
+        # what is valid, rather than silently accepting a stale script. (The
+        # word itself may appear: pipeline has --tomtom-lite.)
+        import re
+        choices = re.search(r"--benchmark\[\{([^}]*)\}\]", completed.stdout.replace("\n", "").replace(" ", ""))
+        assert choices is not None and "lite" not in choices.group(1)
 
 
 def test_nonpeak_oversampling_is_bounded_by_available_rows():

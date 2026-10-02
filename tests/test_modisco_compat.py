@@ -127,3 +127,81 @@ def test_adapter_cli_exposes_workflow_commands():
         check=True, capture_output=True, text=True)
     assert "motifs" in completed.stdout
     assert "report" in completed.stdout
+
+
+class _ReportWithTtl:
+    calls = []
+
+    @staticmethod
+    def report_motifs(modisco_h5py, output_dir, img_path_suffix, meme_motif_db,
+                      is_writing_tomtom_matrix, top_n_matches=3, trim_threshold=0.3, ttl=False):
+        _ReportWithTtl.calls.append({"meme": meme_motif_db, "ttl": ttl})
+
+
+class _ReportWithoutTtl:
+    @staticmethod
+    def report_motifs(modisco_h5py, output_dir, img_path_suffix, meme_motif_db,
+                      is_writing_tomtom_matrix, top_n_matches=3, trim_threshold=0.3,
+                      trim_min_length=3):
+        raise AssertionError("must not be called")
+
+
+def _empty_results(path):
+    with h5py.File(path, "w") as handle:
+        handle.attrs["window_size"] = 8
+
+
+def test_tomtom_lite_is_passed_only_when_asked_and_there_are_patterns(monkeypatch, tmp_path):
+    monkeypatch.setattr(api, "_modisco_modules", lambda: (object(), object(), object(), _ReportWithTtl))
+    _ReportWithTtl.calls.clear()
+    results, empty = tmp_path / "results.h5", tmp_path / "empty.h5"
+    _write_results(results)
+    _empty_results(empty)
+    api.generate_report(results, tmp_path / "a", "motifs.meme")
+    api.generate_report(results, tmp_path / "b", "motifs.meme", tomtom_lite=True)
+    # memelite fails on an empty pattern list, and there is nothing to match
+    api.generate_report(empty, tmp_path / "c", "motifs.meme", tomtom_lite=True)
+    assert [call["ttl"] for call in _ReportWithTtl.calls] == [False, True, False]
+
+
+def test_tomtom_lite_is_refused_without_ttl_support(monkeypatch, tmp_path):
+    """modisco-lite 2.3.2 (the TensorFlow environment) has no ttl."""
+    monkeypatch.setattr(api, "_modisco_modules", lambda: (object(), object(), object(), _ReportWithoutTtl))
+    assert not api.supports_tomtom_lite()
+    results = tmp_path / "results.h5"
+    _write_results(results)
+    with pytest.raises(RuntimeError, match="TF-MoDISco 2.5"):
+        api.generate_report(results, tmp_path / "out", "motifs.meme", tomtom_lite=True)
+
+
+def test_the_cli_refuses_tomtom_lite_without_ttl_support(monkeypatch):
+    from argparse import Namespace
+    from chrombpnet import CHROMBPNET
+
+    monkeypatch.setattr(api, "_modisco_modules", lambda: (object(), object(), object(), _ReportWithoutTtl))
+    with pytest.raises(SystemExit, match="--tomtom-lite needs TF-MoDISco 2.5"):
+        CHROMBPNET.check_tomtom(Namespace(cmd="qc", tomtom_lite=True))
+    # and nothing is checked for commands without a report
+    CHROMBPNET.check_tomtom(Namespace(cmd="train", tomtom_lite=True))
+
+
+def _table(stat):
+    header = "".join("<th>{}</th>".format(c) for c in
+                     ["pattern", "num_seqlets", "modisco_cwm_fwd", "modisco_cwm_rev",
+                      "match0", stat + "0", "match0_logo"])
+    return '<table border="1" class="dataframe">\n  <thead>\n    <tr style="text-align: right;">\n      ' \
+           + header + "\n    </tr>\n  </thead>\n</table>"
+
+
+def test_report_wording_follows_the_table():
+    from chrombpnet.helpers.generate_reports import modisco_table
+
+    assert modisco_table.match_stat(_table("qval")) == "qval"
+    assert modisco_table.match_stat(_table("pval")) == "pval"
+    assert modisco_table.match_stat("<table></table>") is None
+    # q-values (and no database): the wording the reports have always used
+    assert modisco_table.stat_description("qval") == "qvals (qval0,qval1,qval2)"
+    assert modisco_table.stat_description(None) == "qvals (qval0,qval1,qval2)"
+    assert modisco_table.stat_name("qval") == "qvals"
+    assert modisco_table.stat_name("pval") == "p-values"
+    assert "not corrected for multiple testing" in modisco_table.stat_description("pval")

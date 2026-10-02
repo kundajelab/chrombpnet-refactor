@@ -3,6 +3,7 @@ import pandas as pd
 import os
 import argparse
 from chrombpnet.helpers.generate_reports import report_shell
+from chrombpnet.helpers.generate_reports import modisco_table
 
 def read_args():
 	parser = argparse.ArgumentParser(description="Make summary reports")
@@ -138,6 +139,16 @@ def qc_report(fpx,prefix):
 
 	table_profile = open(os.path.join(prefix,"evaluation/modisco_profile/motifs.html")).read().replace("./","./modisco_profile/").replace("width=\"240\"","width=\"240\", class=\"cover\"").replace(">pos_patterns.pattern",">pos_").replace(">neg_patterns.pattern",">neg_").replace("modisco_cwm_fwd","cwm_fwd").replace("modisco_cwm_rev","cwm_rev").replace("num_seqlets","NumSeqs").replace("dataframe","new")
 	table_counts = open(os.path.join(prefix,"evaluation/modisco_counts/motifs.html")).read().replace("./","./modisco_counts/").replace("width=\"240\"","width=\"240\", class=\"cover\"").replace(">pos_patterns.pattern",">pos_").replace(">neg_patterns.pattern",">neg_").replace("modisco_cwm_fwd","cwm_fwd").replace("modisco_cwm_rev","cwm_rev").replace("num_seqlets","NumSeqs").replace("dataframe","new")
+
+	# q-values with MEME's tomtom, p-values with --tomtom-lite; the q-value
+	# wording is unchanged.
+	stat_profile = modisco_table.match_stat(table_profile)
+	stat_counts = modisco_table.match_stat(table_counts)
+	tf_text_profile = tf_text_profile.replace(
+		"qvals (qval0,qval1,qval2)", modisco_table.stat_description(stat_profile)).replace(
+		"The qvals should", "The {} should".format(modisco_table.stat_name(stat_profile)))
+	tf_text_counts = tf_text_counts.replace(
+		"The qvals should", "The {} should".format(modisco_table.stat_name(stat_counts)))
 
 	table_profile = remove_negs(table_profile)
 	table_counts = remove_negs(table_counts)

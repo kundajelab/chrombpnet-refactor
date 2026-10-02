@@ -1,5 +1,20 @@
 # Changelog
 
+## `--tomtom-lite`: motif reports without MEME
+
+- **New `--tomtom-lite`** on `pipeline`, `qc`, `bias pipeline`, `bias qc` and
+  `modisco_motifs` (not `train`/`bias train`, which never run reports).
+  TF-MoDISco then matches motifs with TOMTOM-lite (memelite) instead of MEME's
+  `tomtom`, so MEME is not needed. The report gives uncorrected p-values
+  (`pval0..2`) instead of q-values, and its text says so.
+- It needs TF-MoDISco 2.5 or later, so the TensorFlow environment
+  (modisco-lite 2.3.2, the newest for Python 3.8) refuses it at startup.
+- Off by default and dropped from the namespace when absent: `args.json`
+  and every report are unchanged unless it is given (regression harness).
+  `tests/cli_surface.json` gains exactly its five entries.
+- From kundajelab/chrombpnet#284 (`modisco report-simple -l` there; here
+  `report_motifs(ttl=True)`), including its report-wording helpers.
+
 ## A missing MEME `tomtom` fails at startup, not hours later
 
 - `pipeline`, `qc`, `bias pipeline`, `bias qc` and `modisco_motifs` end with

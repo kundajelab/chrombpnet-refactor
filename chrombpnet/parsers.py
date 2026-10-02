@@ -211,6 +211,24 @@ def _add_jax_training_options(optional):
     optional.add_argument("--precision", type=str, default=None, choices=["default", "highest", "bf16"], help="JAX engine only. Training numerics: default (TF32 matmuls/convolutions on GPUs that have them, like TensorFlow), highest (full float32) or bf16 (mixed bfloat16; faster but less accurate)")
 
 
+#: Options of the motif report that pipeline, qc, bias pipeline, bias qc and
+#: modisco_motifs end with. Each defaults to None, meaning absent, and an
+#: absent one is removed from the namespace (drop_absent) before any stage
+#: sees it, so <prefix>.args.json is unchanged unless it was given.
+REPORT_OPTIONS = ("tomtom_lite",)
+
+
+def drop_absent(args):
+    """Remove report options that were not given (see REPORT_OPTIONS)."""
+    for name in REPORT_OPTIONS:
+        if hasattr(args, name) and getattr(args, name) is None:
+            delattr(args, name)
+
+
+def _add_report_options(optional):
+    optional.add_argument("--tomtom-lite", action="store_true", default=None, help="Match the TF-MoDISco motifs with TOMTOM-lite (memelite) instead of MEME's tomtom: MEME is not needed, and the report gives uncorrected p-values (pval0..2) instead of q-values. Needs TF-MoDISco 2.5 or later, so not in the TensorFlow environment")
+
+
 def _add_architecture_options(optional, *, filters, dilations, jitter):
     optional.add_argument("-fil", "--filters", type=int, default=filters, help="Number of filters to use in chrombpnet mode")
     optional.add_argument("-dil", "--n-dilation-layers", type=int, default=dilations, help="Number of dilation layers to use in chrombpnet model")
@@ -245,10 +263,12 @@ def _add_qc_arguments(parser, model_arguments):
     _add_data_aug(optional)
     _add_device(optional)
     _add_predict_fk(optional)
+    _add_report_options(optional)
 
 
-def _add_chrombpnet_training_arguments(parser):
-    """`train` and `pipeline`, whose surfaces were byte-identical."""
+def _add_chrombpnet_training_arguments(parser, reports=False):
+    """`train` and `pipeline`; only `pipeline` (``reports``) ends with the
+    motif report and takes its options."""
     required, optional = _required_optional(parser)
     _add_genomics_inputs(required)
     _add_training_options(optional)
@@ -259,9 +279,11 @@ def _add_chrombpnet_training_arguments(parser):
     _add_architecture_options(optional, filters=512, dilations=8, jitter=500)
     _add_batch_sizes(optional)
     _add_jax_training_options(optional)
+    if reports:
+        _add_report_options(optional)
 
 
-def _add_bias_training_arguments(parser):
+def _add_bias_training_arguments(parser, reports=False):
     """`bias pipeline` and `bias train`.
 
     These differed only in a truncated help string -- "0.8 for DNase." against
@@ -276,6 +298,8 @@ def _add_bias_training_arguments(parser):
     _add_architecture_options(optional, filters=128, dilations=4, jitter=0)
     _add_batch_sizes(optional)
     _add_jax_training_options(optional)
+    if reports:
+        _add_report_options(optional)
 
 
 def build_parser():
@@ -332,14 +356,14 @@ def build_parser():
     required_splits_parser.add_argument("-vcr", "--valid-chroms", nargs="*", type=str, required=True, help="Chromosomes to use for validation")
 
     _add_chrombpnet_training_arguments(train_parser)
-    _add_chrombpnet_training_arguments(pipeline_parser)
+    _add_chrombpnet_training_arguments(pipeline_parser, reports=True)
 
     _add_qc_arguments(qc_parser, [
         (("-cm", "--chrombpnet-model"), "Path to combined ChromBPNet checkpoint (.pt PyTorch, .h5 TensorFlow)"),
         (("-cmb", "--chrombpnet-model-nb"), "Path to no-bias ChromBPNet checkpoint (.pt PyTorch, .h5 TensorFlow)"),
     ])
 
-    _add_bias_training_arguments(bias_parser)
+    _add_bias_training_arguments(bias_parser, reports=True)
     _add_bias_training_arguments(bias_parser_train)
 
     _add_qc_arguments(bias_parser_qc, [
@@ -406,6 +430,7 @@ def build_parser():
     optional_tfm.add_argument("-l", "--n-leiden", type=int, default=2, help="Number of Leiden clustering runs.")
     optional_tfm.add_argument("-w", "--window", type=int, default=500, help="Centered contribution-score window used for discovery (must be even).")
     optional_tfm.add_argument("-v", "--verbose", action="store_true", default=False)
+    _add_report_options(optional_tfm)
 
     return parser
 
