@@ -1,6 +1,22 @@
 import argparse
-import deepdish
+import h5py
 import chrombpnet.evaluation.make_bigwigs.bigwig_helper as bigwig_helper
+
+
+def read_projected_shap(path):
+	"""The ``/projected_shap/seq`` dataset of a contribution-score file.
+
+	Read with h5py rather than ``deepdish.io.load``, which returns the same
+	array but no longer imports on NumPy 2 (it references the removed
+	``np.ComplexWarning``). ``hdf5plugin``, when installed, registers the Blosc
+	filter that score files written by the original package's deepdish use.
+	"""
+	try:
+		import hdf5plugin  # noqa: F401
+	except ImportError:
+		pass
+	with h5py.File(path, "r") as handle:
+		return handle["projected_shap"]["seq"][()]
 
 def import_parser():
 
@@ -19,7 +35,7 @@ def import_parser():
 
 def main(args):
 
-	d = deepdish.io.load(args.hdf5, '/projected_shap/seq')
+	d = read_projected_shap(args.hdf5)
 
 	SEQLEN = d.shape[2]
 	if SEQLEN % 2:

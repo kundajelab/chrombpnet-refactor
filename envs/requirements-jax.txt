@@ -14,7 +14,6 @@ pydyf==0.12.1
 # stack for motif discovery and the motif reports.
 igraph==0.11.9
 leidenalg==0.10.2
-deepdish>=0.3
 modisco @ git+https://github.com/kundajelab/tfmodisco.git
 
 pytest>=8

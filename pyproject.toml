@@ -17,7 +17,6 @@ authors = [{name = "Kundaje Lab"}]
 # newest releases that still support Python 3.8; each engine's environment
 # file (envs/chrombpnet-<engine>.yml) pins its own versions on top.
 dependencies = [
-  "deepdish>=0.3",
   "h5py>=3.10",
   "matplotlib>=3.7",
   "numpy>=1.23,<3",

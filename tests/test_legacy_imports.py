@@ -28,8 +28,8 @@ LEGACY_MODULES = {
     "legacy/modisco/run_modisco.py": ("modiscolite",),
     "legacy/modisco/visualize_motif_matches.py": ("modiscolite",),
     "legacy/modisco/fetch_tomtom.py": ("modiscolite",),
-    "legacy/invivo_footprints/run_tfmodisco.py": ("modiscolite", "click"),
-    "legacy/invivo_footprints/tf_modiscohits.py": ("modiscolite", "click"),
+    "legacy/invivo_footprints/run_tfmodisco.py": ("modiscolite", "click", "deepdish"),
+    "legacy/invivo_footprints/tf_modiscohits.py": ("modiscolite", "click", "deepdish"),
     "legacy/figure_notebooks/subsampling/viz_sequence.py": (),
 }
 
@@ -49,7 +49,12 @@ def _import_by_path(relative: str):
 @pytest.mark.parametrize("relative", sorted(LEGACY_MODULES))
 def test_archived_module_still_imports(relative):
     for requirement in LEGACY_MODULES[relative]:
-        pytest.importorskip(requirement)
+        # Not importorskip: deepdish is installed but fails to import on
+        # NumPy 2 with an AttributeError, which importorskip does not catch.
+        try:
+            importlib.import_module(requirement)
+        except Exception as error:
+            pytest.skip(f"{requirement} cannot be imported here: {error}")
     _import_by_path(relative)
 
 
