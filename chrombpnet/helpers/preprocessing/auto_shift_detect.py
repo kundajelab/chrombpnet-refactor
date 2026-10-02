@@ -1,4 +1,5 @@
 import argparse
+import os
 import pyfaidx
 import subprocess
 import pandas as pd
@@ -36,6 +37,43 @@ def convolve(to_scan, longer_seq):
         vals.append(np.sum(to_scan*longer_seq[i:i+len(to_scan)]))
     return vals
     
+#: gzip's exit status when it decompressed the whole compressed stream and
+#: ignored data after it ("decompression OK, trailing garbage ignored"). A
+#: truncated file exits 1 instead.
+GZIP_TRAILING_GARBAGE = 2
+
+
+def check_stream(process):
+    """Wait for one input process; raise if it failed.
+
+    gzip's trailing-garbage status is only a warning: everything up to the
+    garbage was decompressed and written, and chrombpnet 1.x accepted such
+    files. Any other non-zero status -- a truncated file among them -- raises,
+    naming the command.
+    """
+    code = process.wait()
+    if code == 0:
+        return
+    command = process.args if isinstance(process.args, (list, tuple)) else [process.args]
+    if code == GZIP_TRAILING_GARBAGE and os.path.basename(str(command[0])) == "gzip":
+        warnings.warn(
+            "{}: gzip read the whole compressed stream and ignored trailing data "
+            "after it (exit status 2)".format(command[-1]), RuntimeWarning)
+        return
+    raise subprocess.CalledProcessError(code, command)
+
+
+def check_input_streams(process):
+    """check_stream for an input process and the decompressor feeding it."""
+    upstream = getattr(process, "_chrombpnet_upstream", None)
+    process.wait()
+    if upstream is not None:
+        upstream.wait()
+    check_stream(process)
+    if upstream is not None:
+        check_stream(upstream)
+
+
 def stream_filtered_tagaligns(src_tagaligns_stream, genome_file, out_stream):
     '''
     Given a tagalign subprocess stream and reference genome file, filters
@@ -55,13 +93,7 @@ def stream_filtered_tagaligns(src_tagaligns_stream, genome_file, out_stream):
             else:
                 has_unknown_chroms = True
         src_tagaligns_stream.stdout.close()
-    source_code = src_tagaligns_stream.wait()
-    upstream = getattr(src_tagaligns_stream, "_chrombpnet_upstream", None)
-    upstream_code = upstream.wait() if upstream is not None else 0
-    if source_code != 0:
-        raise subprocess.CalledProcessError(source_code, "input conversion")
-    if upstream_code != 0:
-        raise subprocess.CalledProcessError(upstream.returncode, "input decompression")
+    check_input_streams(src_tagaligns_stream)
     return has_unknown_chroms
 
 def is_gz_file(filepath):
@@ -93,8 +125,11 @@ def tagalign_stream(tagalign_file_path):
     """
     Expected format for tagAlign: tsv with columns chr, start, end, ignored, ignored, strand
     """
-    ta_is_gz = is_gz_file(tagalign_file_path)
-    p = subprocess.Popen(["zcat" if ta_is_gz else "cat", tagalign_file_path], stdout=subprocess.PIPE)
+    # gzip -cd rather than zcat: the same bytes (zcat runs gzip -cd), and on
+    # macOS/BSD zcat only reads .Z files.
+    command = (["gzip", "-cd", tagalign_file_path] if is_gz_file(tagalign_file_path)
+               else ["cat", "--", tagalign_file_path])
+    p = subprocess.Popen(command, stdout=subprocess.PIPE)
     return p
 
 def sample_reads(bam_path, fragment_file_path, tagalign_file_path, num_samples, genome_fasta_path):

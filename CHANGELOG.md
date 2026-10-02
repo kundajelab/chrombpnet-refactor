@@ -1,5 +1,21 @@
 # Changelog
 
+## gzip inputs with trailing garbage are accepted, with a warning
+
+- **Behaviour change, input acceptance only.** A gzipped tagAlign or fragment
+  file with data after its compressed stream makes gzip exit with status 2
+  ("decompression OK, trailing garbage ignored") after writing the whole
+  stream. chrombpnet 1.x accepted such files; this package raised. They are
+  accepted again, with a `RuntimeWarning`, and give the same bigwig as the
+  clean file. A truncated file (exit 1) still fails, and the error now names
+  the command (`gzip -cd <file>`) rather than "input decompression".
+- tagAlign inputs are decompressed with `gzip -cd` instead of `zcat`. The
+  bytes are the same, since zcat runs `gzip -cd`, and on macOS/BSD `zcat`
+  only reads `.Z` files.
+- From kundajelab/chrombpnet#284; its tests are ported to
+  `tests/test_preprocessing_streams.py`. No artifact changes (regression
+  harness).
+
 ## The JAX engine: Keras 3 on JAX, from ChromBPNet 2.0
 
 - **`--engine jax`** is no longer a placeholder. It is the Keras 3 / JAX port

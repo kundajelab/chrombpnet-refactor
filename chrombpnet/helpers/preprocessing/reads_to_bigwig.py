@@ -114,11 +114,8 @@ def generate_bigwig(input_bam_file, input_fragment_file, input_tagalign_file, ou
         return_codes = [p_final.wait(), p_cov.wait(), p_sort.wait(), p_awk.wait()]
         if any(code != 0 for code in return_codes):
             raise subprocess.CalledProcessError(1, "BedGraph generation pipeline")
-        if no_st and p1.wait() != 0:
-            raise subprocess.CalledProcessError(p1.returncode, "input conversion")
-        upstream = getattr(p1, "_chrombpnet_upstream", None)
-        if no_st and upstream is not None and upstream.wait() != 0:
-            raise subprocess.CalledProcessError(upstream.returncode, "input decompression")
+        if no_st:
+            auto_shift_detect.check_input_streams(p1)
 
     print("Making Bigwig")
     subprocess.run(["bedGraphToBigWig", tmp_bedgraph.name, chrom_sizes_file,
