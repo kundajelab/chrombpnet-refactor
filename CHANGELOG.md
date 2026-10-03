@@ -1,5 +1,19 @@
 # Changelog
 
+## JAX environment: CUDA 12 wheels by default
+
+- `envs/requirements-jax.txt` installs `jax[cuda12]==0.11.2` instead of
+  `jax[cuda13]==0.11.2`. CUDA 13 dropped Maxwell, Pascal and Volta GPUs and
+  needs an NVIDIA driver >= 580. The dnase-rc runs on Sherlock's
+  `<partitions>` partitions landed on TITAN Xp nodes (Pascal), where the
+  JAX engine could not have used the GPU at all. CUDA 12 supports those GPUs
+  and needs only a CUDA 12 driver (>= 525). `jax[cuda13]==0.11.2` still works
+  on Turing or newer with driver >= 580.
+- The JAX version, Keras and everything else are unchanged. The JAX engine
+  agreement harness runs on the CPU and is unaffected. With CUDA 12 wheels,
+  a system CUDA 12 on LD_LIBRARY_PATH shares every library name with them;
+  the engine handles that (previous entry).
+
 ## JAX engine: its CUDA libraries win over a system CUDA on LD_LIBRARY_PATH
 
 - **Behaviour change, JAX engine start-up.** jax brings CUDA and cuDNN as pip

@@ -48,10 +48,12 @@ editable mode with its engine's extra (`-e ..[pytorch]` and so on) and applies
 the supplemental pip requirements in `envs/requirements-<engine>.txt`.
 
 The PyTorch environment installs a CUDA-enabled build that falls back to CPU
-automatically; the JAX environment installs `jax[cuda13]` (CUDA as pip wheels,
-NVIDIA driver >= 580; use `jax[cuda12]==0.11.2` on older drivers). A system
-cuDNN on `LD_LIBRARY_PATH` would shadow the cuDNN those wheels bring, so the
-JAX engine preloads the bundled one when it finds another there. Every command accepts `--device cpu`, `--device cuda`, or a
+automatically; the JAX environment installs `jax[cuda12]` (CUDA 12 as pip
+wheels: any CUDA 12 driver, >= 525, and also the Pascal and Volta GPUs that
+CUDA 13 dropped; `jax[cuda13]==0.11.2` works on Turing or newer with driver
+>= 580). A system CUDA or cuDNN on `LD_LIBRARY_PATH` would shadow the
+libraries those wheels bring, so the JAX engine loads the bundled ones first
+when it finds namesakes there. Every command accepts `--device cpu`, `--device cuda`, or a
 specific device such as `--device cuda:1`.
 
 Conda also supplies the command-line tools the preprocessing step shells out to
