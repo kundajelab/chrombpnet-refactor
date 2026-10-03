@@ -189,9 +189,10 @@ def _add_engine(optional):
         help="Deep-learning engine. pytorch (the default): this package's "
              "PyTorch implementation. tensorflow: the original Keras "
              "implementation, byte-identical to it given the same inputs. "
-             "jax: a placeholder, not implemented yet. When omitted, the "
-             "input models' suffixes decide (.pt PyTorch, .h5 TensorFlow), "
-             "else pytorch. Each engine runs in its own conda environment, "
+             "jax: the Keras 3 / JAX port from kundajelab/chrombpnet#284 "
+             "(ChromBPNet 2.0). When omitted, the input models' suffixes "
+             "decide (.pt PyTorch, .h5 TensorFlow, .keras JAX), else "
+             "pytorch. Each engine runs in its own conda environment, "
              "envs/chrombpnet-<engine>.yml.")
 
 

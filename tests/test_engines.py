@@ -4,6 +4,7 @@ None of these tests needs a deep-learning framework, so they run in every
 engine's environment.
 """
 
+import re
 import subprocess
 import sys
 from argparse import Namespace
@@ -163,3 +164,18 @@ def test_importing_the_package_imports_no_framework():
             "loaded = [m for m in ('torch', 'tensorflow', 'jax') if m in sys.modules]; "
             "assert not loaded, loaded")
     subprocess.run([sys.executable, "-c", code], check=True)
+
+
+def test_engine_help_describes_every_engine_and_its_suffix(capsys):
+    """It once still called the JAX engine a placeholder after it shipped."""
+    import chrombpnet.parsers as parsers
+
+    with pytest.raises(SystemExit):
+        parsers.read_parser(["pred_bw", "--help"])
+    text = " ".join(capsys.readouterr().out.split())
+    help_text = text[text.index("--engine"):]
+    assert "placeholder" not in help_text and "not implemented" not in help_text
+    for name in engines.ENGINE_NAMES:
+        assert re.search(rf"\b{name}\b", help_text), name
+        suffix = engines.get(name).checkpoint_suffix
+        assert f"{suffix} " in help_text, (name, suffix)

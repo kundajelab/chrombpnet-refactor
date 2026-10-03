@@ -1,5 +1,13 @@
 # Changelog
 
+## `--engine` help describes the JAX engine
+
+- The help still called `jax` "a placeholder, not implemented yet", and listed
+  only `.pt` and `.h5` among the checkpoint suffixes that choose the engine
+  when `--engine` is omitted. It now describes the JAX engine and lists
+  `.keras`. A test checks the help against the engine registry: every engine
+  and its checkpoint suffix. Help text only; no artifact changes.
+
 ## Smaller fixes, no output changes
 
 - `density_scatter` (the counts scatter in the reports) crashed whenever
