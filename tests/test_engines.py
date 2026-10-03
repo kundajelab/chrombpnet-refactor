@@ -179,3 +179,19 @@ def test_engine_help_describes_every_engine_and_its_suffix(capsys):
         assert re.search(rf"\b{name}\b", help_text), name
         suffix = engines.get(name).checkpoint_suffix
         assert f"{suffix} " in help_text, (name, suffix)
+
+
+@pytest.mark.parametrize("given, expected", [(None, "true"), ("false", "false")])
+def test_the_tensorflow_engine_allocates_gpu_memory_as_needed(given, expected):
+    """Its DeepSHAP child process shares the GPU with the process that
+    trained; an explicit setting still wins."""
+    import os
+
+    env = {k: v for k, v in os.environ.items() if k != "TF_FORCE_GPU_ALLOW_GROWTH"}
+    if given is not None:
+        env["TF_FORCE_GPU_ALLOW_GROWTH"] = given
+    code = ("import os, chrombpnet.engines.tensorflow; "
+            "print(os.environ['TF_FORCE_GPU_ALLOW_GROWTH'])")
+    completed = subprocess.run([sys.executable, "-c", code], env=env,
+                               capture_output=True, text=True, check=True)
+    assert completed.stdout.strip() == expected

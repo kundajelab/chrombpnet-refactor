@@ -25,6 +25,15 @@ _ARCHITECTURES = {
     "chrombpnet": "chrombpnet_with_bias_model.py",
 }
 
+# GPU memory is allocated as needed instead of reserved whole when TensorFlow
+# starts. DeepSHAP runs in a spawned child process (attribution.py) while
+# this one still holds the GPU it trained or predicted on; under TensorFlow's
+# default the child finds the device already taken. Set when the engine is
+# imported, before TensorFlow can initialize a GPU, so that the child
+# inherits it too. An explicit TF_FORCE_GPU_ALLOW_GROWTH still wins. It
+# changes how memory is reserved, not what is computed.
+os.environ.setdefault("TF_FORCE_GPU_ALLOW_GROWTH", "true")
+
 
 @dataclass(frozen=True)
 class AttributionModel:

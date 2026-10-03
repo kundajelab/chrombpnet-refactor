@@ -1,5 +1,19 @@
 # Changelog
 
+## TensorFlow engine: GPU memory is allocated as needed
+
+- **Behaviour change, GPU memory only.** The engine sets
+  `TF_FORCE_GPU_ALLOW_GROWTH=true` when it is imported, unless it is already
+  set. TensorFlow otherwise reserves nearly the whole GPU when it starts:
+  43.9 GB of a 46 GB L40S for one small op, against 586 MB with the
+  setting. The engine's DeepSHAP runs in a spawned child process while the
+  pipeline process still holds the GPU it trained or predicted on, so with
+  TensorFlow's default the child found the device taken. The child inherits
+  the setting. The JAX engine already did the same
+  (`XLA_PYTHON_CLIENT_PREALLOCATE=false`).
+- What is computed does not change: the byte-identity harness
+  (`tests/parity/tf_engine.py`) still passes.
+
 ## `--engine` help describes the JAX engine
 
 - The help still called `jax` "a placeholder, not implemented yet", and listed
