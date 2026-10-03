@@ -1,5 +1,25 @@
 # Changelog
 
+## JAX engine: its CUDA libraries win over a system CUDA on LD_LIBRARY_PATH
+
+- **Behaviour change, JAX engine start-up.** jax brings CUDA and cuDNN as pip
+  wheels, which find one another through RUNPATH, and the loader searches
+  that only after LD_LIBRARY_PATH. With a system CUDA 12 there (common on
+  clusters: on the lab GPU host, `~/.bashrc` puts CUDA 12.4 and cuDNN 9.2 on it) and
+  jax[cuda12], the jax plugin's own cuSPARSE linked against the system's
+  nvJitLink, failed to load, and JAX fell back to the CPU without an error
+  ("Unable to load cuSPARSE" among its warnings). A training run would then
+  have gone on, on the CPU.
+- The engine already loaded the bundled cuDNN by path when a system cuDNN
+  could shadow it. It now does the same for every bundled CUDA library with
+  a namesake on LD_LIBRARY_PATH, dependencies first (nvJitLink before
+  cuSPARSE and cuSOLVER, libcudnn_graph before the other cuDNN libraries).
+  Later lookups by name then find the bundled copies. Nothing is loaded for
+  CPU-only runs or when nothing is shadowed.
+- Measured on the lab GPU host with CUDA 12.4 / cuDNN 9.2 on LD_LIBRARY_PATH: without
+  the engine, JAX sees only the CPU; with it, it sees the L40S and runs a
+  cuDNN convolution.
+
 ## TensorFlow engine: GPU memory is allocated as needed
 
 - **Behaviour change, GPU memory only.** The engine sets

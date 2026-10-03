@@ -37,18 +37,45 @@ if "keras" not in sys.modules:
 os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
 
 
-def _prefer_bundled_cudnn():
-    """Load jax's pip-installed cuDNN in full when a system cuDNN could shadow it.
+#: Load order for bundled CUDA libraries that need loading: each before those
+#: that link against it (cuSPARSE and cuSOLVER need nvJitLink, the cuDNN
+#: libraries resolve libcudnn_graph's symbols). Others follow.
+_CUDA_LOAD_ORDER = ("libcudart", "libnvJitLink", "libnvrtc", "libcublasLt", "libcublas",
+                    "libcusparse", "libcusolver", "libcufft", "libcupti", "libnccl",
+                    "libnvshmem_host", "libcudnn_graph", "libcudnn")
 
-    jax[cuda13] brings cuDNN 9 as pip wheels. Its libcudnn_graph loads the
-    engine libraries (libcudnn_engines_*.so.9) by name, and the RUNPATH that
-    points at its own directory is searched *after* LD_LIBRARY_PATH. A system
-    cuDNN on LD_LIBRARY_PATH -- common on clusters -- then supplies engines
-    built for another cuDNN, and every GPU convolution fails with
-    CUDNN_STATUS_SUBLIBRARY_LOADING_FAILED. A library already loaded is found
-    by its SONAME before any search, so loading the bundled ones by path here
-    makes those lookups resolve to them. Only done where JAX is installed, the
-    run is not CPU-only, and LD_LIBRARY_PATH holds another libcudnn_graph.
+
+def _cuda_load_rank(name):
+    stem = name.split(".so")[0]
+    if stem in _CUDA_LOAD_ORDER:
+        return _CUDA_LOAD_ORDER.index(stem)
+    if stem.startswith("libcudnn"):
+        return _CUDA_LOAD_ORDER.index("libcudnn")
+    return len(_CUDA_LOAD_ORDER)
+
+
+def _prefer_bundled_cuda():
+    """Load jax's pip-installed CUDA libraries where a system CUDA could shadow them.
+
+    jax[cuda12] and jax[cuda13] bring CUDA and cuDNN as pip wheels (the
+    ``nvidia`` packages). They find one another through RUNPATH, which the
+    loader searches *after* LD_LIBRARY_PATH, so a system CUDA or cuDNN there --
+    common on clusters -- supplies libraries of another release under the
+    same names:
+
+    * The jax plugin loads cuSPARSE by path but not the nvJitLink it links
+      against, which then comes from the system. Too old for the bundled
+      cuSPARSE, it fails to load, and JAX reports "Unable to load cuSPARSE"
+      and falls back to the CPU.
+    * cuDNN 9's libcudnn_graph loads its engine libraries by name, gets the
+      system's, and every convolution fails with
+      CUDNN_STATUS_SUBLIBRARY_LOADING_FAILED.
+
+    A library already loaded is found by its SONAME before any search, so
+    loading each shadowed bundled library by path here, dependencies first,
+    makes those lookups resolve to it. Only done where JAX is installed, the
+    run is not CPU-only, and a directory on LD_LIBRARY_PATH holds a library
+    with the name of a bundled one.
     """
     import ctypes
     import glob
@@ -59,21 +86,26 @@ def _prefer_bundled_cudnn():
     if importlib.util.find_spec("jax") is None:
         return
     try:
-        spec = importlib.util.find_spec("nvidia.cudnn")
-    except ModuleNotFoundError:
+        spec = importlib.util.find_spec("nvidia")
+    except (ModuleNotFoundError, ValueError):
         return
     if spec is None or not spec.submodule_search_locations:
         return
-    bundled = os.path.realpath(os.path.join(list(spec.submodule_search_locations)[0], "lib"))
-    foreign = [d for d in os.environ.get("LD_LIBRARY_PATH", "").split(os.pathsep)
-               if d and os.path.realpath(d) != bundled
-               and glob.glob(os.path.join(d, "libcudnn_graph.so*"))]
-    if not foreign:
-        return
-    # libcudnn_graph first: the others resolve its symbols; retry the rest
-    # until nothing more loads.
-    pending = sorted(glob.glob(os.path.join(bundled, "libcudnn*.so.9")),
-                     key=lambda p: (not p.endswith("libcudnn_graph.so.9"), p))
+    bundled = {}
+    for root in spec.submodule_search_locations:
+        for path in glob.glob(os.path.join(root, "*", "lib", "lib*.so*")):
+            bundled.setdefault(os.path.basename(path), path)
+    own_dirs = {os.path.realpath(os.path.dirname(path)) for path in bundled.values()}
+    shadowed = set()
+    for directory in os.environ.get("LD_LIBRARY_PATH", "").split(os.pathsep):
+        if not directory or not os.path.isdir(directory) or os.path.realpath(directory) in own_dirs:
+            continue
+        try:
+            shadowed.update(name for name in os.listdir(directory) if name in bundled)
+        except OSError:
+            continue
+    # Dependencies first; retry what failed until nothing more loads.
+    pending = [bundled[name] for name in sorted(shadowed, key=lambda n: (_cuda_load_rank(n), n))]
     while pending:
         failed = []
         for path in pending:
@@ -86,7 +118,7 @@ def _prefer_bundled_cudnn():
         pending = failed
 
 
-_prefer_bundled_cudnn()
+_prefer_bundled_cuda()
 
 
 class JaxEngine(Engine):

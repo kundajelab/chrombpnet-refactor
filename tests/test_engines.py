@@ -195,3 +195,58 @@ def test_the_tensorflow_engine_allocates_gpu_memory_as_needed(given, expected):
     completed = subprocess.run([sys.executable, "-c", code], env=env,
                                capture_output=True, text=True, check=True)
     assert completed.stdout.strip() == expected
+
+
+def test_jax_engine_loads_shadowed_cuda_libraries_dependencies_first(tmp_path, monkeypatch):
+    """A system CUDA on LD_LIBRARY_PATH would shadow the CUDA wheels jax
+    brings; the engine loads the shadowed ones by path, dependencies first,
+    and nothing else."""
+    import ctypes
+    import importlib.util
+    import os
+    import types
+
+    from chrombpnet.engines import jax as jax_engine
+
+    nvidia = tmp_path / "nvidia"
+    for package, libraries in {
+            "cusparse": ["libcusparse.so.12"], "nvjitlink": ["libnvJitLink.so.12"],
+            "cublas": ["libcublas.so.12", "libcublasLt.so.12"],
+            "cudnn": ["libcudnn.so.9", "libcudnn_graph.so.9", "libcudnn_ops.so.9"]}.items():
+        (nvidia / package / "lib").mkdir(parents=True)
+        for library in libraries:
+            (nvidia / package / "lib" / library).write_bytes(b"")
+    system = tmp_path / "system"
+    system.mkdir()
+    for library in ["libcusparse.so.12", "libnvJitLink.so.12", "libcudnn_ops.so.9",
+                    "libcudnn_graph.so.9", "libcudart.so.12"]:
+        (system / library).write_bytes(b"")
+
+    real_find_spec = importlib.util.find_spec
+
+    def find_spec(name, *args, **kwargs):
+        if name == "jax":
+            return object()
+        if name == "nvidia":
+            return types.SimpleNamespace(submodule_search_locations=[str(nvidia)])
+        return real_find_spec(name, *args, **kwargs)
+
+    loaded = []
+    monkeypatch.setattr(importlib.util, "find_spec", find_spec)
+    monkeypatch.setattr(ctypes, "CDLL", lambda path, mode=0: loaded.append(os.path.basename(path)))
+    monkeypatch.delenv("JAX_PLATFORMS", raising=False)
+
+    monkeypatch.setenv("LD_LIBRARY_PATH", f"{system}:{nvidia / 'cublas' / 'lib'}")
+    jax_engine._prefer_bundled_cuda()
+    # nvJitLink before the cuSPARSE that links against it, libcudnn_graph
+    # before the other cuDNN libraries; cuBLAS is not shadowed, and the
+    # system's libcudart is not bundled.
+    assert loaded == ["libnvJitLink.so.12", "libcusparse.so.12",
+                      "libcudnn_graph.so.9", "libcudnn_ops.so.9"]
+
+    for ld_library_path, platforms in ((str(tmp_path / "elsewhere"), ""), (str(system), "cpu")):
+        loaded.clear()
+        monkeypatch.setenv("LD_LIBRARY_PATH", ld_library_path)
+        monkeypatch.setenv("JAX_PLATFORMS", platforms)
+        jax_engine._prefer_bundled_cuda()
+        assert loaded == [], (ld_library_path, platforms)
