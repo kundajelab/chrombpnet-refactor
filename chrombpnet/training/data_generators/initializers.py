@@ -29,8 +29,8 @@ def fetch_data_and_model_params_based_on_mode(mode, args, parameters, nonpeak_re
         negative_sampling_ratio=1.0 # already subsampled
         # do not jitter at valid time - we are testing only at summits
         max_jitter=0
-        # normally no reverse complementation at valid time; the rc-only arm
-        # deliberately flips every split, which is the whole point of it
+        # normally no reverse complementation at valid time; --data-aug
+        # revcomp-only deliberately flips every split, which is the whole point of it
         add_revcomp=convention.reverse_complements(mode)
         # no need to shuffle
         shuffle_at_epoch_start=False
@@ -66,9 +66,9 @@ def get_bed_regions_for_fold_split(bed_regions, mode, splits_dict):
 def initialize_generators(args, mode, parameters, return_coords):
 
     # Resolved once, here, so preprocessing and training cannot disagree about
-    # what an arm means, and so an arm undefined for the assay raises before
+    # what the flags mean, and so a flag undefined for the assay raises before
     # any data is read rather than quietly doing nothing.
-    convention = conventions.resolve(args.data_type, getattr(args, "data_aug", None))
+    convention = conventions.from_args(args)
 
     # defaults
     peak_regions=None

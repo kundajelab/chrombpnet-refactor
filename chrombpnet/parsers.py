@@ -113,38 +113,48 @@ def _add_training_options(optional):
 
 
 def _add_data_aug(optional):
-    """Register ``--data-aug`` on a command that preprocesses or trains.
+    """Register ``--data-aug`` and ``--dnase-convention`` on a command that
+    preprocesses, trains or scores.
 
     DNase records a cut as the *bond* between two bases and ATAC records it
     as a base, so reverse-complement augmentation owes them different things.
-    See :mod:`chrombpnet.conventions` for the geometry.
+    See :mod:`chrombpnet.conventions` for the geometry. ``--dnase-convention``
+    picks where a DNase cut is recorded (and the shift reversal needs);
+    ``--data-aug`` picks which examples are reverse complemented, the same
+    for either assay.
 
-    The default is ``None``, meaning *absent*, which
-    :func:`conventions.resolve` resolves per assay --- ``both-half`` for
-    DNASE, ``standard`` for ATAC. It has to be resolved there rather than
-    here, because argparse cannot see ``--data-type`` and the DNase default
-    is an arm that raises for ATAC. Recording ``None`` rather than the
-    resolved name also keeps ``<prefix>.args.json`` a faithful record of what
-    was typed, as ``--benchmark`` already does.
+    Both default to ``None``, meaning *absent*, which
+    :func:`conventions.resolve` resolves --- ``augment``, and ``both-half``
+    for DNASE. It has to be resolved there rather than here, because argparse
+    cannot see ``--data-type``, and ``--dnase-convention`` given for ATAC
+    must raise. Recording ``None`` rather than the resolved name keeps
+    ``<prefix>.args.json`` a faithful record of what was typed;
+    ``--dnase-convention`` is also dropped from it when absent
+    (:data:`ABSENT_WHEN_OMITTED`), so a run without it records exactly what
+    it did before the flag existed.
     """
     optional.add_argument(
         "--data-aug", type=str, default=None,
         choices=list(conventions.DATA_AUG_CHOICES),
-        help="How cuts are recorded and how reverse complementation handles "
-             "them (default: both-half for DNASE, standard for ATAC). "
-             "standard: the behaviour this package shipped before --data-aug "
-             "-- DNase 0/+1, reverse complement half of training, no "
-             "re-registration. "
-             "fr-only / rc-only: never / always reverse complement, in every "
-             "split; the only two arms that also apply to ATAC. "
-             "right: DNase 0/+1 with the +1 post-reversal shift that puts the "
-             "bond back on its mirrored base. "
-             "left: the -1/0 mirror of it. "
+        help="Which examples are reverse complemented, for either assay "
+             "(default: augment). augment: half of the training examples, "
+             "never validation or test. forward-only: none. revcomp-only: "
+             "every example of every split. Where a DNase cut lands under "
+             "reversal is --dnase-convention's business.")
+    optional.add_argument(
+        "--dnase-convention", type=str, default=None,
+        choices=list(conventions.DNASE_CONVENTION_CHOICES),
+        help="DNASE only (an error for ATAC): where a cut is recorded and how "
+             "reverse complementation keeps it registered (default: "
+             "both-half). right: 0/+1 with the +1 post-reversal shift that puts "
+             "the bond back on its mirrored base. left: the -1/0 mirror of it. "
              "both-half / both-full: deposit 0.5 / 1.0 on both bases flanking "
              "the cut, which is symmetric about the bond and so needs no "
-             "shift; both-half is the DNASE default and preserves the track "
-             "total exactly. right/left/both-* are DNASE-only and raise for "
-             "ATAC.")
+             "shift; both-half preserves the track total exactly. "
+             "right-deprecated: 0/+1 without the shift, which misregisters "
+             "reverse-complemented examples by one base -- the behaviour "
+             "before this flag (and chrombpnet 1.x's), kept for "
+             "reproducibility only.")
 
 
 def _add_ignore_bias_flag(optional):
@@ -239,9 +249,15 @@ REPORT_OPTIONS = ("tomtom_lite", "interpret_subsample", "modisco_max_seqlets",
                   "modisco_window")
 
 
+#: Other options removed from ``args`` when not given, so ``args.json``
+#: records exactly what it did before they existed.
+ABSENT_WHEN_OMITTED = ("dnase_convention",)
+
+
 def drop_absent(args):
-    """Remove report options that were not given (see REPORT_OPTIONS)."""
-    for name in REPORT_OPTIONS:
+    """Remove options that were not given (see REPORT_OPTIONS and
+    ABSENT_WHEN_OMITTED)."""
+    for name in REPORT_OPTIONS + ABSENT_WHEN_OMITTED:
         if hasattr(args, name) and getattr(args, name) is None:
             delattr(args, name)
 

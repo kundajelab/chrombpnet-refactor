@@ -1,4 +1,4 @@
-"""The cut convention, the reverse-complement shift, and the arms.
+"""The cut convention, the reverse-complement shift, and the augmentation modes.
 
 The geometric claim -- DNase records a *bond* and ATAC records a *base* -- is
 derived in `chrombpnet/conventions.py`. Derivations can be wrong, so
@@ -24,7 +24,7 @@ def _one_hot(width, count=1):
 def _flip_one(index, width, rc_shift, pad_left, pad_right):
     """Reverse-complement a profile holding a single count at `index`.
 
-    The array handed to the augmenter is the *widened* one when the arm
+    The array handed to the augmenter is the *widened* one when the convention
     shifts, exactly as the generator will hand it over.
     """
     stored = np.zeros((1, width + pad_left + pad_right))
@@ -62,7 +62,7 @@ def test_the_left_convention_lands_on_the_mirrored_left_base(width, index):
 
 @pytest.mark.parametrize("index", [0, 3, 7])
 def test_no_shift_is_plain_reversal(index):
-    """standard, both-* and every ATAC arm: `i -> W-1-i`."""
+    """right-deprecated, both-* and every ATAC run: `i -> W-1-i`."""
     out = _flip_one(index, 8, rc_shift=0, pad_left=0, pad_right=0)
     assert out.argmax() == 8 - 1 - index
     assert out.sum() == 1.0
@@ -102,59 +102,112 @@ def test_a_shifted_flip_is_not_an_involution():
     assert not np.array_equal(twice[0], once[0, :8])
 
 
-# -- The arms ---------------------------------------------------------------
+# -- The conventions and augmentation modes --------------------------------
 
-@pytest.mark.parametrize("arm,shift", [
-    ("standard", 0), ("fr-only", 0), ("rc-only", 0),
+@pytest.mark.parametrize("dnase_convention,shift", [
     ("right", +1), ("left", -1), ("both-half", 0), ("both-full", 0),
+    ("right-deprecated", 0),
 ])
-def test_dnase_shifts(arm, shift):
-    assert resolve("DNASE", arm).rc_shift == shift
+@pytest.mark.parametrize("data_aug", conventions.DATA_AUG_CHOICES)
+def test_dnase_shifts(dnase_convention, shift, data_aug):
+    """The shift is the convention's; the augmentation mode does not move it."""
+    assert resolve("DNASE", data_aug, dnase_convention).rc_shift == shift
 
 
-@pytest.mark.parametrize("arm", conventions.ASSAY_AGNOSTIC)
-def test_atac_never_shifts(arm):
+@pytest.mark.parametrize("data_aug", conventions.DATA_AUG_CHOICES)
+def test_atac_never_shifts(data_aug):
     """+4/-4 centres the cut on a base, whose mirror is itself."""
-    convention = resolve("ATAC", arm)
+    convention = resolve("ATAC", data_aug)
     assert convention.rc_shift == 0
     assert convention.deposit == BASE
+    assert convention.dnase_convention is None
 
 
-@pytest.mark.parametrize("arm", ["right", "left", "both-half", "both-full"])
-def test_the_bond_arms_are_refused_for_atac(arm):
+@pytest.mark.parametrize("dnase_convention", conventions.DNASE_CONVENTION_CHOICES)
+def test_a_dnase_convention_is_refused_for_atac(dnase_convention):
     """A silent no-op would return five identical ATAC numbers with nothing
     to say why."""
     with pytest.raises(ValueError, match="defined only for DNASE"):
-        resolve("ATAC", arm)
+        resolve("ATAC", None, dnase_convention)
 
 
-def test_which_splits_are_augmented():
-    assert resolve("DNASE", "standard").rc_modes == frozenset({"train"})
-    assert resolve("DNASE", "fr-only").rc_modes == frozenset()
-    assert resolve("DNASE", "rc-only").rc_modes == frozenset(
+def test_unknown_values_are_refused():
+    with pytest.raises(ValueError, match="unknown --data-aug"):
+        resolve("DNASE", "standard")
+    with pytest.raises(ValueError, match="unknown --dnase-convention"):
+        resolve("DNASE", None, "standard")
+
+
+@pytest.mark.parametrize("data_type", ["ATAC", "DNASE"])
+def test_which_splits_are_augmented(data_type):
+    """The same for either assay."""
+    assert resolve(data_type, "augment").rc_modes == frozenset({"train"})
+    assert resolve(data_type, "augment").rc_frac == 0.5
+    assert resolve(data_type, "forward-only").rc_modes == frozenset()
+    assert resolve(data_type, "revcomp-only").rc_modes == frozenset(
         {"train", "valid", "test"})
-    assert resolve("DNASE", "rc-only").rc_frac == 1.0
-    assert resolve("DNASE", "standard").rc_frac == 0.5
+    assert resolve(data_type, "revcomp-only").rc_frac == 1.0
 
 
-def test_only_the_shifted_arms_widen_the_label_window():
-    """Everything else stays on the original get_cts code path."""
-    widen = {a for a in conventions.DATA_AUG_CHOICES
-             if resolve("DNASE", a).widens_label_window}
-    assert widen == {"right", "left"}
+def test_only_the_shifted_conventions_widen_the_label_window():
+    """Everything else stays on the original get_cts code path -- and the
+    shifted ones too when nothing is reverse complemented."""
+    widen = {(a, c) for a in conventions.DATA_AUG_CHOICES
+             for c in conventions.DNASE_CONVENTION_CHOICES
+             if resolve("DNASE", a, c).widens_label_window}
+    assert widen == {(a, c) for a in ("augment", "revcomp-only") for c in ("right", "left")}
 
 
-def test_the_default_is_assay_dependent():
-    """An omitted flag means ``both-half`` on DNASE, ``standard`` on ATAC.
+def test_the_defaults():
+    """An omitted --data-aug means ``augment``, for either assay; an omitted
+    --dnase-convention means ``both-half`` on DNASE and nothing on ATAC.
 
-    It cannot be one name for both: the DNase default is an arm that raises
-    for ATAC, which is also why argparse carries ``default=None`` and the
-    resolution happens here, where ``data_type`` is known.
+    That is why argparse carries ``default=None`` for both and the resolution
+    happens here, where ``data_type`` is known.
     """
     assert conventions.default_for("DNASE") == "both-half"
-    assert conventions.default_for("ATAC") == "standard"
-    assert resolve("DNASE", None) == resolve("DNASE", "both-half")
-    assert resolve("ATAC", None) == resolve("ATAC", "standard")
+    assert conventions.default_for("ATAC") is None
+    assert resolve("DNASE") == resolve("DNASE", "augment", "both-half")
+    assert resolve("ATAC") == resolve("ATAC", "augment")
+
+
+def test_from_args_reads_either_flag_or_neither():
+    from argparse import Namespace
+    assert conventions.from_args(Namespace(data_type="DNASE")) == resolve("DNASE")
+    assert conventions.from_args(Namespace(data_type="DNASE", data_aug="forward-only",
+                                           dnase_convention="left")) \
+        == resolve("DNASE", "forward-only", "left")
+    with pytest.raises(ValueError, match="defined only for DNASE"):
+        conventions.from_args(Namespace(data_type="ATAC", data_aug=None,
+                                        dnase_convention="right"))
+
+
+def test_the_cli_refuses_a_dnase_convention_for_atac_before_any_work():
+    from argparse import Namespace
+    from chrombpnet import CHROMBPNET
+
+    with pytest.raises(SystemExit, match="defined only for DNASE"):
+        CHROMBPNET.check_conventions(Namespace(data_type="ATAC", data_aug=None,
+                                               dnase_convention="both-half"))
+    CHROMBPNET.check_conventions(Namespace(data_type="DNASE", data_aug="revcomp-only",
+                                           dnase_convention="right"))
+    CHROMBPNET.check_conventions(Namespace(data_type="ATAC", data_aug="forward-only"))
+    # commands without the flags (prep, modisco_motifs, ...) are not checked
+    CHROMBPNET.check_conventions(Namespace(cmd="prep"))
+
+
+def test_the_parser_refuses_the_old_values(capsys):
+    from chrombpnet import parsers
+
+    base = ["pipeline", "-ibam", "x.bam", "-d", "DNASE", "-g", "g.fa", "-c", "c.sizes",
+            "-p", "p.bed", "-n", "n.bed", "-fl", "f.json", "-b", "b.h5", "-o", "out"]
+    for old in (["--data-aug", "standard"], ["--data-aug", "rc-only"],
+                ["--dnase-convention", "standard"]):
+        with pytest.raises(SystemExit):
+            parsers.read_parser(base + old)
+    args = parsers.read_parser(base + ["--data-aug", "revcomp-only",
+                                       "--dnase-convention", "right-deprecated"])
+    assert (args.data_aug, args.dnase_convention) == ("revcomp-only", "right-deprecated")
 
 
 def test_the_dnase_default_preserves_the_track_total_and_needs_no_shift():
@@ -162,49 +215,62 @@ def test_the_dnase_default_preserves_the_track_total_and_needs_no_shift():
 
     ``scale == 0.5`` over two deposits per read is the same total as one
     deposit of 1.0, so ``counts_loss_weight`` and the ``-oth``/``-b`` ratios
-    carry over from ``standard`` unchanged. ``rc_shift == 0`` means the
-    default never widens the label window, so it cannot drop an edge base.
+    carry over from the single-deposit conventions unchanged.
+    ``rc_shift == 0`` means the default never widens the label window, so it
+    cannot drop an edge base.
     """
-    default = resolve("DNASE", None)
+    default = resolve("DNASE")
     pairs = shift_delta_pairs(default, 0, 0)
     assert len(pairs) == 2 and default.scale == 0.5
     assert len(pairs) * default.scale == 1.0 * len(
-        shift_delta_pairs(resolve("DNASE", "standard"), 0, 0))
+        shift_delta_pairs(resolve("DNASE", None, "right-deprecated"), 0, 0))
     assert default.rc_shift == 0 and not default.widens_label_window
 
 
-def test_standard_still_names_the_pre_data_aug_behaviour():
-    """``standard`` is now opt-in, but it still has to mean what it meant."""
-    convention = resolve("DNASE", "standard")
+def test_right_deprecated_is_the_behaviour_before_the_flags():
+    """Kept to reproduce earlier runs, so it has to mean exactly what
+    ``--data-aug standard`` (and the package before that flag) meant: the 0/+1
+    deposit, one count per cut, reversal without the +1 re-registration."""
+    convention = resolve("DNASE", None, "right-deprecated")
     assert convention.deposit == BOND_RIGHT and convention.scale == 1.0
+    assert convention.rc_shift == 0 and not convention.widens_label_window
+    assert convention.rc_modes == frozenset({"train"}) and convention.rc_frac == 0.5
     assert shift_delta_pairs(convention, 0, 0) == [(0, 1)]
-    assert shift_delta_pairs(resolve("ATAC", "standard"), 0, 0) == [(4, -4)]
+    assert shift_delta_pairs(resolve("ATAC"), 0, 0) == [(4, -4)]
+
+
+def test_right_and_right_deprecated_differ_only_in_the_shift():
+    right = resolve("DNASE", None, "right")
+    old = resolve("DNASE", None, "right-deprecated")
+    assert shift_delta_pairs(right, 0, 0) == shift_delta_pairs(old, 0, 0)
+    assert (right.rc_shift, old.rc_shift) == (+1, 0)
 
 
 def test_an_omitted_flag_never_raises_for_either_assay():
     """The regression fixture is ATAC-only, so the harness cannot catch an
     assay-dependent default going wrong. Assert it directly instead."""
     for data_type in ("ATAC", "DNASE"):
-        resolve(data_type, None)
+        resolve(data_type, None, None)
 
 
 def test_both_is_the_union_of_left_and_right():
     """Depositing on both flanking bases *is* applying both single-base
     conventions at once, which is why the awk emits two rows."""
-    left = shift_delta_pairs(resolve("DNASE", "left"), 0, 0)
-    right = shift_delta_pairs(resolve("DNASE", "right"), 0, 0)
-    both = shift_delta_pairs(resolve("DNASE", "both-half"), 0, 0)
+    left = shift_delta_pairs(resolve("DNASE", None, "left"), 0, 0)
+    right = shift_delta_pairs(resolve("DNASE", None, "right"), 0, 0)
+    both = shift_delta_pairs(resolve("DNASE", None, "both-half"), 0, 0)
     assert both == left + right
-    assert resolve("DNASE", "both-half").scale == 0.5
-    assert resolve("DNASE", "both-full").scale == 1.0
+    assert resolve("DNASE", None, "both-half").scale == 0.5
+    assert resolve("DNASE", None, "both-full").scale == 1.0
 
 
 @pytest.mark.parametrize("plus_shift,minus_shift", [(0, 0), (4, -5), (-2, 3)])
 def test_the_deltas_cancel_a_pre_applied_enzyme_shift(plus_shift, minus_shift):
     """An already-shifted input must land in the same place as a raw one."""
-    for arm in ("standard", "left", "both-full"):
-        raw = shift_delta_pairs(resolve("DNASE", arm), 0, 0)
-        pre = shift_delta_pairs(resolve("DNASE", arm), plus_shift, minus_shift)
+    for dnase_convention in ("right-deprecated", "left", "both-full"):
+        convention = resolve("DNASE", None, dnase_convention)
+        raw = shift_delta_pairs(convention, 0, 0)
+        pre = shift_delta_pairs(convention, plus_shift, minus_shift)
         assert [(p - plus_shift, m - minus_shift) for p, m in raw] == pre
 
 
@@ -259,7 +325,7 @@ def test_the_reference_pwms_agree_with_the_resolved_shift(assay, expected_lag):
         assert best - runner > 0.3, f"{name}: lag {lag} is not decisive"
         lags.add(lag)
     assert lags == {expected_lag}
-    assert resolve(assay, "right" if assay == "DNASE" else "standard").rc_shift \
+    assert resolve(assay, None, "right" if assay == "DNASE" else None).rc_shift \
         == expected_lag + 1
 
 
@@ -280,10 +346,11 @@ def _tiny_workspace(tmp_path, cut_at, chrom_len=2000):
     return tmp_path
 
 
-@pytest.mark.parametrize("arm,expected_shift", [
-    ("standard", 0), ("right", +1), ("left", -1),
+@pytest.mark.parametrize("dnase_convention,expected_shift", [
+    ("right-deprecated", 0), ("right", +1), ("left", -1),
 ])
-def test_the_generator_applies_the_arms_shift_end_to_end(tmp_path, arm, expected_shift):
+def test_the_generator_applies_the_conventions_shift_end_to_end(tmp_path, dnase_convention,
+                                                                expected_shift):
     """The whole chain: padded get_cts -> random_crop -> trim -> flip.
 
     The unit tests above pin `random_rev_comp` alone. This pins the plumbing
@@ -304,7 +371,7 @@ def test_the_generator_applies_the_arms_shift_end_to_end(tmp_path, arm, expected
     peaks = pd.read_csv(workspace / "peaks.bed", sep="\t", header=None,
                         names=NARROWPEAK_SCHEMA)
 
-    convention = resolve("DNASE", arm)
+    convention = resolve("DNASE", None, dnase_convention)
     assert convention.rc_shift == expected_shift
 
     generator = ChromBPNetBatchGenerator(
@@ -318,13 +385,13 @@ def test_the_generator_applies_the_arms_shift_end_to_end(tmp_path, arm, expected
     assert generator.cur_cts.shape == (1, outputlen), "the trim did not happen"
     assert generator.cur_cts.sum() == 1.0, "the count was dropped or duplicated"
     landed = int(generator.cur_cts[0].argmax())
-    # reverse (W-1-i), then the arm's shift
+    # reverse (W-1-i), then the convention's shift
     assert landed == outputlen - 1 - slot + expected_shift
     assert generator.cur_coords[0][2] == "r"
 
 
-def test_an_unshifted_arm_fetches_exactly_the_old_window(tmp_path):
-    """`standard` must not read the extra base at all."""
+def test_an_unshifted_convention_fetches_exactly_the_old_window(tmp_path):
+    """`right-deprecated` (and both-*) must not read the extra base at all."""
     import pandas as pd
     from chrombpnet.regions import NARROWPEAK_SCHEMA
     from chrombpnet.training.data_generators.batchgen_generator import (
@@ -344,7 +411,7 @@ def test_an_unshifted_arm_fetches_exactly_the_old_window(tmp_path):
     assert generator.peak_cts.shape == (1, 20)
 
 
-# -- Half-integer counts, which the both-half arm produces ------------------
+# -- Half-integer counts, which the both-half convention produces ----------
 
 def test_half_integer_counts_train_on_the_same_objective():
     """`both-half` deposits 0.5 per base, so counts stop being integers.
@@ -358,7 +425,7 @@ def test_half_integer_counts_train_on_the_same_objective():
     That is why `both-half` and `both-full` converge to the same place: they
     optimize the same objective, and Adam normalizes per parameter, so the
     factor of two is largely absorbed. If this ever stops holding, the two
-    arms stop being each other's control.
+    conventions stop being each other's control.
     """
     torch = pytest.importorskip("torch")  # the PyTorch engine's loss
 

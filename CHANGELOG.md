@@ -1,5 +1,39 @@
 # Changelog
 
+## `--data-aug` split in two: `--dnase-convention` and `--data-aug`
+
+- **Behaviour change, command line.** The one `--data-aug` flag with seven
+  values mixed two independent choices. It is now two flags, on `pipeline`,
+  `train`, `qc`, their `bias` counterparts and `predict`:
+  - `--dnase-convention {right, left, both-half, both-full,
+    right-deprecated}`, DNASE only: where a DNase cut is recorded and the
+    shift reverse complementation needs. Default `both-half`, as before.
+    `right-deprecated` is the 0/+1 convention without the +1
+    re-registration, i.e. the old `standard` (and chrombpnet 1.x): it
+    misregisters reverse-complemented DNase examples by one base and is kept
+    to reproduce earlier runs only. Given for ATAC it is an error, as the
+    DNase-only `--data-aug` values were.
+  - `--data-aug {augment, forward-only, revcomp-only}`, either assay: which
+    examples are reverse complemented. Default `augment` (half of training,
+    as `standard` and the conventions did); `forward-only` is the old
+    `fr-only` and `revcomp-only` the old `rc-only`.
+- The old values map exactly: `standard` -> `--dnase-convention
+  right-deprecated` on DNASE (nothing on ATAC); `fr-only` / `rc-only` ->
+  `--data-aug forward-only` / `revcomp-only`, plus `--dnase-convention
+  right-deprecated` on DNASE, where they used the old geometry;
+  `right`/`left`/`both-half`/`both-full` -> `--dnase-convention` of the same
+  name. The old names are refused, so a script still passing them fails at
+  once instead of training under another meaning.
+- One combination is new: a convention with `forward-only` or
+  `revcomp-only`, e.g. `--data-aug revcomp-only --dnase-convention right`
+  flips every split *with* the re-registration (the old `rc-only` could not).
+- `reads_to_bigwig` takes `--dnase-convention`; its own `--data-aug` is gone,
+  since the bigwig never depended on the augmentation.
+- **No artifact moves with neither flag given.** Both default to absent;
+  `--data-aug` is still recorded as `null` in `<prefix>.args.json`, and
+  `--dnase-convention` is left out of it when absent, so an existing
+  invocation records what it did before.
+
 ## `pipeline` and `qc` keep both heads' contribution scores
 
 - **Behaviour change, one new artifact.** `chrombpnet pipeline` and

@@ -1,4 +1,4 @@
-"""What each --data-aug arm actually writes into the bigwig.
+"""What each --dnase-convention actually writes into the bigwig.
 
 `test_conventions.py` covers the augmentation algebra. This covers the other
 half: that `reads_to_bigwig` deposits where the convention says it should.
@@ -9,7 +9,7 @@ which is the case the 0/+1 convention exists to make agree:
     plus  read [100, 140)   5' base 100   nick between 99 and 100
     minus read [ 60, 100)   5' base  99   nick between 99 and 100
 
-So every arm has one exact expected answer, and the plus/minus convergence is
+So every convention has one exact expected answer, and the plus/minus convergence is
 asserted rather than assumed.
 """
 
@@ -47,10 +47,10 @@ def workspace(tmp_path):
     return tmp_path
 
 
-def _run(workspace, data_type, data_aug):
+def _run(workspace, data_type, dnase_convention, data_aug=None):
     import chrombpnet.helpers.preprocessing.reads_to_bigwig as reads_to_bigwig
 
-    prefix = str(workspace / f"out_{data_aug}")
+    prefix = str(workspace / f"out_{dnase_convention}_{data_aug}")
     reads_to_bigwig.main(SimpleNamespace(
         genome=str(workspace / "genome.fa"),
         input_bam_file=None,
@@ -68,17 +68,16 @@ def _run(workspace, data_type, data_aug):
         DNASE_ref_path=None,
         num_samples=10,
         data_aug=data_aug,
+        dnase_convention=dnase_convention,
     ))
     with pyBigWig.open(prefix + "_unstranded.bw") as bw:
         values = np.nan_to_num(np.array(bw.values("chr1", 0, CHROM_LEN)))
     return {int(i): float(v) for i, v in enumerate(values) if v != 0}
 
 
-@pytest.mark.parametrize("data_aug,expected", [
+@pytest.mark.parametrize("dnase_convention,expected", [
     # Both reads name the bond (99, 100) by its right-hand base.
-    ("standard",  {100: 2.0}),
-    ("fr-only",   {100: 2.0}),
-    ("rc-only",   {100: 2.0}),
+    ("right-deprecated", {100: 2.0}),
     ("right",     {100: 2.0}),
     # ...and by its left-hand base.
     ("left",      {99: 2.0}),
@@ -90,34 +89,37 @@ def _run(workspace, data_type, data_aug):
     # regression fixture is ATAC-only and so cannot see a DNase default move.
     (None,        {99: 1.0, 100: 1.0}),
 ])
-def test_each_arm_deposits_where_its_convention_says(workspace, data_aug, expected):
-    assert _run(workspace, "DNASE", data_aug) == expected
+def test_each_convention_deposits_where_it_says(workspace, dnase_convention, expected):
+    assert _run(workspace, "DNASE", dnase_convention) == expected
 
 
-def test_the_atac_default_is_unchanged_by_the_dnase_default(workspace):
-    """ATAC has no bond to split, so an omitted flag must still be standard."""
-    assert _run(workspace, "ATAC", None) == _run(workspace, "ATAC", "standard")
+@pytest.mark.parametrize("data_aug", ["augment", "forward-only", "revcomp-only"])
+def test_the_bigwig_does_not_depend_on_data_aug(workspace, data_aug):
+    """--data-aug picks which examples are flipped in training; the track
+    is the convention's alone."""
+    assert _run(workspace, "DNASE", "right", data_aug) == {100: 2.0}
+    assert _run(workspace, "ATAC", None, data_aug) == {95: 1.0, 104: 1.0}
 
 
 def test_the_dnase_default_conserves_the_track_total(workspace):
     """The default may change *where* signal sits, never *how much*."""
     omitted = sum(_run(workspace, "DNASE", None).values())
-    standard = sum(_run(workspace, "DNASE", "standard").values())
-    assert omitted == standard
+    single = sum(_run(workspace, "DNASE", "right-deprecated").values())
+    assert omitted == single
 
 
 def test_both_half_conserves_the_track_total(workspace):
-    """The gate that makes `both-half` comparable to the other arms.
+    """The gate that makes `both-half` comparable to the other conventions.
 
     Spreading a cut over two bases must not change how much signal there is,
     or the counts head is being trained against a different target scale for
     reasons that have nothing to do with the bond.
     """
-    standard = sum(_run(workspace, "DNASE", "standard").values())
+    single = sum(_run(workspace, "DNASE", "right-deprecated").values())
     half = sum(_run(workspace, "DNASE", "both-half").values())
     full = sum(_run(workspace, "DNASE", "both-full").values())
-    assert half == pytest.approx(standard)
-    assert full == pytest.approx(2 * standard)
+    assert half == pytest.approx(single)
+    assert full == pytest.approx(2 * single)
 
 
 def test_half_counts_survive_the_bigwig_round_trip(workspace):
@@ -127,12 +129,12 @@ def test_half_counts_survive_the_bigwig_round_trip(workspace):
     assert 0.0 not in _run(workspace, "DNASE", "both-half").values()
 
 
-def test_atac_is_unchanged_and_refuses_the_bond_arms(workspace):
+def test_atac_is_unchanged_and_refuses_a_dnase_convention(workspace):
     """+4/-4: plus 5' + 4, minus 5' - 4. Not a Tn5 pair here, so two bases."""
-    assert _run(workspace, "ATAC", "standard") == {95: 1.0, 104: 1.0}
-    for arm in ("right", "left", "both-half", "both-full"):
+    assert _run(workspace, "ATAC", None) == {95: 1.0, 104: 1.0}
+    for dnase_convention in ("right", "left", "both-half", "both-full", "right-deprecated"):
         with pytest.raises(ValueError, match="defined only for DNASE"):
-            _run(workspace, "ATAC", arm)
+            _run(workspace, "ATAC", dnase_convention)
 
 
 @pytest.mark.parametrize("n_deposits", [1, 2])
@@ -150,7 +152,7 @@ def test_every_deposit_is_guarded(n_deposits):
         assert f"$3+minus{i} >= $2" in program
 
 
-def test_a_read_at_coordinate_zero_survives_the_left_arm(workspace):
+def test_a_read_at_coordinate_zero_survives_the_left_convention(workspace):
     """`left` deposits a plus read at `start - 1`. Without the guard the
     negative coordinate makes bedtools exit 1 and the whole run dies."""
     import gzip

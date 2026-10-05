@@ -36,9 +36,19 @@ asymmetry that causes it, so there is nothing left to correct and no dependence
 on getting the sign right. It also costs no edge base -- a shift leaves one
 label slot with no source (see :attr:`Convention.widens_label_window`) whereas
 a symmetric deposit does not -- at the price of smearing each cut over 2 bp.
-The ``0.5`` scale keeps the track total exactly what ``standard`` would give,
-which is what lets ``counts_loss_weight`` and the ``-oth``/``-b`` ratios carry
-over unchanged. ATAC has no bond to split, so its default stays ``standard``.
+The ``0.5`` scale keeps the track total exactly what the single-deposit
+conventions give, which is what lets ``counts_loss_weight`` and the
+``-oth``/``-b`` ratios carry over unchanged. ATAC has no bond to split, so it
+takes no ``--dnase-convention`` at all.
+
+Two flags select all this. ``--dnase-convention`` (DNASE only) picks where a
+cut is recorded and the shift that goes with it: ``right``, ``left``,
+``both-half`` (the default), ``both-full``, and ``right-deprecated`` -- the
+0/+1 recording *without* the shift, i.e. the misregistration described above,
+which is what the package did before these flags; kept to reproduce earlier
+runs only. ``--data-aug`` picks which examples are reverse complemented, the
+same for either assay: ``augment`` (the default: half of training),
+``forward-only`` (none) or ``revcomp-only`` (every example of every split).
 
 This is not only derived but measured: the plus- and minus-strand cut-context
 PWMs shipped in ``chrombpnet/data/{DNASE,ATAC}.ref.motifs.txt`` align with
@@ -57,38 +67,39 @@ BOND_LEFT = "bond_left"      # DNase -1/0: the bond, named by its left base
 BOND_BOTH = "bond_both"      # both bases flanking the bond
 BASE = "base"                # ATAC +4/-4: a base
 
-#: ``--data-aug`` values.
-DATA_AUG_CHOICES = ("standard", "fr-only", "rc-only", "right", "left",
-                    "both-half", "both-full")
+#: ``--dnase-convention`` values: where a DNase cut is recorded, and what
+#: reverse complementation does about it. ``right-deprecated`` is the 0/+1
+#: convention without the +1 re-registration -- what the package (and
+#: chrombpnet 1.x) did before the flags existed, misregistering every
+#: reverse-complemented DNase example by one base. Kept for reproducing
+#: earlier runs only.
+DNASE_CONVENTION_CHOICES = ("right", "left", "both-half", "both-full",
+                            "right-deprecated")
 
-#: Arms that mean the same thing for either assay. The rest reshape a bond,
-#: which ATAC has not got.
-ASSAY_AGNOSTIC = ("standard", "fr-only", "rc-only")
+#: What an omitted ``--dnase-convention`` means on DNASE. ``both-half``
+#: splits the cut across the two bases flanking the bond: symmetric about the
+#: bond, so reverse complementation needs no shift and cannot misregister,
+#: and scaled by 0.5 so the track total is unchanged. ATAC's cut is already
+#: on a base, so the flag has no meaning there and is refused if given.
+DNASE_CONVENTION_DEFAULT = "both-half"
 
-#: What an omitted ``--data-aug`` means, per assay.
-#:
-#: The default has to be assay-dependent, because the DNase default is an arm
-#: that does not exist for ATAC. ``both-half`` splits the cut across the two
-#: bases flanking the bond: symmetric about the bond, so reverse
-#: complementation needs no shift and cannot misregister, and scaled by 0.5 so
-#: the track total is unchanged. ATAC's cut is already on a base, so there is
-#: no bond to split and ``standard`` is the only thing an omitted flag can
-#: mean there.
-DATA_AUG_DEFAULT_DNASE = "both-half"
-DATA_AUG_DEFAULT_ATAC = "standard"
+#: ``--data-aug`` values: which examples are reverse complemented. They mean
+#: the same for either assay; the geometry comes from the assay (and, for
+#: DNASE, ``--dnase-convention``).
+DATA_AUG_CHOICES = ("augment", "forward-only", "revcomp-only")
 
-#: There is deliberately no bare ``DATA_AUG_DEFAULT``. A single name meaning
-#: "the default" would have to be one assay's, and using it for the other is
-#: the exact mistake this split exists to prevent -- on ATAC it would name an
-#: arm that raises.
+#: What an omitted ``--data-aug`` means: half of the training examples
+#: reverse complemented, validation and test never.
+DATA_AUG_DEFAULT = "augment"
 
 
 def default_for(data_type):
-    """The arm an omitted ``--data-aug`` selects for ``data_type``."""
+    """The ``--dnase-convention`` an omitted flag selects for ``data_type``
+    (``None`` for ATAC, which has no DNase convention)."""
     if data_type == "DNASE":
-        return DATA_AUG_DEFAULT_DNASE
+        return DNASE_CONVENTION_DEFAULT
     if data_type == "ATAC":
-        return DATA_AUG_DEFAULT_ATAC
+        return None
     raise ValueError(
         f"unknown --data-type {data_type!r}; expected ATAC or DNASE")
 
@@ -100,10 +111,11 @@ _NO_MODES = frozenset()
 
 @dataclass(frozen=True)
 class Convention:
-    """What one ``(data_type, data_aug)`` pair means, end to end."""
+    """What one ``(data_type, data_aug, dnase_convention)`` means, end to end."""
 
     data_type: str
     data_aug: str
+    dnase_convention: object    # str for DNASE, None for ATAC
     deposit: str
     scale: float
     rc_shift: int
@@ -122,68 +134,76 @@ class Convention:
         a systematic zero at the same index of every reverse-complemented
         example -- small, but an arm-asymmetric artifact inside the very
         comparison these arms exist to make. Fetching one more base instead
-        costs one column and keeps the totals exact. Only the shifted arms
-        pay it, so every other arm stays on the original code path.
+        costs one column and keeps the totals exact. Only the shifted
+        conventions pay it, and only when something is reverse complemented,
+        so every other combination stays on the original code path.
         """
         return self.rc_shift != 0 and bool(self.rc_modes)
 
 
 # deposit, scale, rc_shift -- for DNASE. ATAC is handled separately: its
-# signal is base-centred whatever the arm, and only the agnostic arms apply.
+# signal is base-centred, so it needs no convention.
 _DNASE = {
-    "standard":  (BOND_RIGHT, 1.0, 0),
-    "fr-only":   (BOND_RIGHT, 1.0, 0),
-    "rc-only":   (BOND_RIGHT, 1.0, 0),
-    "right":     (BOND_RIGHT, 1.0, +1),
-    "left":      (BOND_LEFT,  1.0, -1),
-    "both-half": (BOND_BOTH,  0.5, 0),
-    "both-full": (BOND_BOTH,  1.0, 0),
+    "right":            (BOND_RIGHT, 1.0, +1),
+    "left":             (BOND_LEFT,  1.0, -1),
+    "both-half":        (BOND_BOTH,  0.5, 0),
+    "both-full":        (BOND_BOTH,  1.0, 0),
+    "right-deprecated": (BOND_RIGHT, 1.0, 0),
 }
 
+# rc_modes, rc_frac -- for either assay.
 _RC_MODES = {
-    "standard":  (_TRAIN_ONLY, 0.5),
-    "fr-only":   (_NO_MODES,   0.5),
-    "rc-only":   (_ALL_MODES,  1.0),
-    "right":     (_TRAIN_ONLY, 0.5),
-    "left":      (_TRAIN_ONLY, 0.5),
-    "both-half": (_TRAIN_ONLY, 0.5),
-    "both-full": (_TRAIN_ONLY, 0.5),
+    "augment":      (_TRAIN_ONLY, 0.5),
+    "forward-only": (_NO_MODES,   0.5),
+    "revcomp-only": (_ALL_MODES,  1.0),
 }
 
 
-def resolve(data_type, data_aug=None):
-    """The :class:`Convention` for an assay and an augmentation arm.
+def resolve(data_type, data_aug=None, dnase_convention=None):
+    """The :class:`Convention` for an assay, an augmentation and, for DNASE,
+    a cut convention.
 
-    Raises on an arm that has no meaning for the assay, rather than quietly
-    doing nothing: a silent no-op would let an ATAC sweep return several
-    identical numbers with nothing to say why.
+    Raises on a DNase convention given for ATAC, rather than quietly doing
+    nothing: a silent no-op would let an ATAC sweep return several identical
+    numbers with nothing to say why.
     """
     if data_type not in ("ATAC", "DNASE"):
         raise ValueError(
             f"unknown --data-type {data_type!r}; expected ATAC or DNASE")
-    # An omitted flag resolves per assay, so the message below only ever
-    # fires for an arm the caller actually asked for.
-    data_aug = default_for(data_type) if data_aug is None else str(data_aug)
+    data_aug = DATA_AUG_DEFAULT if data_aug is None else str(data_aug)
     if data_aug not in DATA_AUG_CHOICES:
         raise ValueError(
             f"unknown --data-aug {data_aug!r}; expected one of "
             f"{', '.join(DATA_AUG_CHOICES)}")
-
     rc_modes, rc_frac = _RC_MODES[data_aug]
 
     if data_type == "ATAC":
-        if data_aug not in ASSAY_AGNOSTIC:
+        if dnase_convention is not None:
             raise ValueError(
-                f"--data-aug {data_aug!r} is defined only for DNASE. ATAC's "
-                f"+4/-4 shift centres the cut on a base, not on a bond, so "
-                f"there is no bond to re-index or to split, and plain "
-                f"reversal is already correct. For ATAC use one of: "
-                f"{', '.join(ASSAY_AGNOSTIC)}.")
-        return Convention(data_type, data_aug, BASE, 1.0, 0, rc_modes, rc_frac)
+                f"--dnase-convention {dnase_convention!r} is defined only for "
+                f"DNASE. ATAC's +4/-4 shift centres the cut on a base, not on a "
+                f"bond, so there is no bond to re-index or to split, and plain "
+                f"reversal is already correct. Leave the flag out for ATAC.")
+        return Convention(data_type, data_aug, None, BASE, 1.0, 0,
+                          rc_modes, rc_frac)
 
-    deposit, scale, rc_shift = _DNASE[data_aug]
-    return Convention(data_type, data_aug, deposit, scale, rc_shift,
-                      rc_modes, rc_frac)
+    # An omitted flag resolves to the DNase default, so the message below
+    # only ever fires for a value the caller actually asked for.
+    dnase_convention = (DNASE_CONVENTION_DEFAULT if dnase_convention is None
+                        else str(dnase_convention))
+    if dnase_convention not in DNASE_CONVENTION_CHOICES:
+        raise ValueError(
+            f"unknown --dnase-convention {dnase_convention!r}; expected one of "
+            f"{', '.join(DNASE_CONVENTION_CHOICES)}")
+    deposit, scale, rc_shift = _DNASE[dnase_convention]
+    return Convention(data_type, data_aug, dnase_convention, deposit, scale,
+                      rc_shift, rc_modes, rc_frac)
+
+
+def from_args(args):
+    """:func:`resolve` for a parsed command line (either flag may be absent)."""
+    return resolve(args.data_type, getattr(args, "data_aug", None),
+                   getattr(args, "dnase_convention", None))
 
 
 def shift_delta_pairs(convention, plus_shift, minus_shift):

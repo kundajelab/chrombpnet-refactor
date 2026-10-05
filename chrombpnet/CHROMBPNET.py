@@ -50,6 +50,21 @@ def check_tomtom(args):
 			"`meme`), activate the environment that has it, or pass --tomtom-lite.")
 
 
+def check_conventions(args):
+	"""Fail before any work on a --data-aug / --dnase-convention combination
+	the assay does not have (--dnase-convention on ATAC). Preprocessing and
+	the generators resolve the same thing later, hours in for the latter."""
+	if not hasattr(args, "data_type"):
+		return
+	if not (hasattr(args, "data_aug") or hasattr(args, "dnase_convention")):
+		return
+	from chrombpnet import conventions
+	try:
+		conventions.from_args(args)
+	except ValueError as error:
+		raise SystemExit(f"chrombpnet: error: {error}")
+
+
 def check_modisco_window(args):
 	"""Fail before training if --modisco-window is wider than the scored
 	sequences, which are --inputlen long. qc takes the input length from the
@@ -78,6 +93,7 @@ def main():
 	        engines.EngineNotImplemented) as error:
 		raise SystemExit(f"chrombpnet: error: {error}")
 	check_tomtom(args)
+	check_conventions(args)
 	check_modisco_window(args)
 	parsers.drop_absent(args)
 	

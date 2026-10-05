@@ -112,13 +112,9 @@
   },
   "bias pipeline data_aug": {
     "choices": [
-      "both-full",
-      "both-half",
-      "fr-only",
-      "left",
-      "rc-only",
-      "right",
-      "standard"
+      "augment",
+      "forward-only",
+      "revcomp-only"
     ],
     "default": "None",
     "nargs": "None",
@@ -151,6 +147,22 @@
     ],
     "required": false,
     "type": "None"
+  },
+  "bias pipeline dnase_convention": {
+    "choices": [
+      "both-full",
+      "both-half",
+      "left",
+      "right",
+      "right-deprecated"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--dnase-convention"
+    ],
+    "required": false,
+    "type": "str"
   },
   "bias pipeline early_stop": {
     "choices": null,
@@ -605,13 +617,9 @@
   },
   "bias qc data_aug": {
     "choices": [
-      "both-full",
-      "both-half",
-      "fr-only",
-      "left",
-      "rc-only",
-      "right",
-      "standard"
+      "augment",
+      "forward-only",
+      "revcomp-only"
     ],
     "default": "None",
     "nargs": "None",
@@ -644,6 +652,22 @@
     ],
     "required": false,
     "type": "None"
+  },
+  "bias qc dnase_convention": {
+    "choices": [
+      "both-full",
+      "both-half",
+      "left",
+      "right",
+      "right-deprecated"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--dnase-convention"
+    ],
+    "required": false,
+    "type": "str"
   },
   "bias qc engine": {
     "choices": [
@@ -899,13 +923,9 @@
   },
   "bias train data_aug": {
     "choices": [
-      "both-full",
-      "both-half",
-      "fr-only",
-      "left",
-      "rc-only",
-      "right",
-      "standard"
+      "augment",
+      "forward-only",
+      "revcomp-only"
     ],
     "default": "None",
     "nargs": "None",
@@ -938,6 +958,22 @@
     ],
     "required": false,
     "type": "None"
+  },
+  "bias train dnase_convention": {
+    "choices": [
+      "both-full",
+      "both-half",
+      "left",
+      "right",
+      "right-deprecated"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--dnase-convention"
+    ],
+    "required": false,
+    "type": "str"
   },
   "bias train early_stop": {
     "choices": null,
@@ -1861,13 +1897,9 @@
   },
   "pipeline data_aug": {
     "choices": [
-      "both-full",
-      "both-half",
-      "fr-only",
-      "left",
-      "rc-only",
-      "right",
-      "standard"
+      "augment",
+      "forward-only",
+      "revcomp-only"
     ],
     "default": "None",
     "nargs": "None",
@@ -1900,6 +1932,22 @@
     ],
     "required": false,
     "type": "None"
+  },
+  "pipeline dnase_convention": {
+    "choices": [
+      "both-full",
+      "both-half",
+      "left",
+      "right",
+      "right-deprecated"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--dnase-convention"
+    ],
+    "required": false,
+    "type": "str"
   },
   "pipeline early_stop": {
     "choices": null,
@@ -2556,13 +2604,9 @@
   },
   "predict data_aug": {
     "choices": [
-      "both-full",
-      "both-half",
-      "fr-only",
-      "left",
-      "rc-only",
-      "right",
-      "standard"
+      "augment",
+      "forward-only",
+      "revcomp-only"
     ],
     "default": "None",
     "nargs": "None",
@@ -2595,6 +2639,22 @@
     ],
     "required": false,
     "type": "None"
+  },
+  "predict dnase_convention": {
+    "choices": [
+      "both-full",
+      "both-half",
+      "left",
+      "right",
+      "right-deprecated"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--dnase-convention"
+    ],
+    "required": false,
+    "type": "str"
   },
   "predict engine": {
     "choices": [
@@ -2952,13 +3012,9 @@
   },
   "qc data_aug": {
     "choices": [
-      "both-full",
-      "both-half",
-      "fr-only",
-      "left",
-      "rc-only",
-      "right",
-      "standard"
+      "augment",
+      "forward-only",
+      "revcomp-only"
     ],
     "default": "None",
     "nargs": "None",
@@ -2991,6 +3047,22 @@
     ],
     "required": false,
     "type": "None"
+  },
+  "qc dnase_convention": {
+    "choices": [
+      "both-full",
+      "both-half",
+      "left",
+      "right",
+      "right-deprecated"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--dnase-convention"
+    ],
+    "required": false,
+    "type": "str"
   },
   "qc engine": {
     "choices": [
@@ -3246,13 +3318,9 @@
   },
   "train data_aug": {
     "choices": [
-      "both-full",
-      "both-half",
-      "fr-only",
-      "left",
-      "rc-only",
-      "right",
-      "standard"
+      "augment",
+      "forward-only",
+      "revcomp-only"
     ],
     "default": "None",
     "nargs": "None",
@@ -3285,6 +3353,22 @@
     ],
     "required": false,
     "type": "None"
+  },
+  "train dnase_convention": {
+    "choices": [
+      "both-full",
+      "both-half",
+      "left",
+      "right",
+      "right-deprecated"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--dnase-convention"
+    ],
+    "required": false,
+    "type": "str"
   },
   "train early_stop": {
     "choices": null,

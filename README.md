@@ -384,13 +384,16 @@ rather than speed.
 
 ## Cut conventions and reverse complementation
 
-`--data-aug` selects how a cut is recorded and what reverse-complement
-augmentation does about it. Omitting it selects **`both-half` on DNASE** and
-**`standard` on ATAC**. The default is assay-dependent because the DNase
-default is an arm that has no meaning for ATAC; pass `--data-aug standard`
-for the behaviour this package shipped before the flag existed.
+Two flags. `--dnase-convention` (DNASE only) selects how a DNase cut is
+recorded and what reverse complementation does about it; omitting it
+selects **`both-half`**. `--data-aug` selects which examples are reverse
+complemented, the same for either assay; omitting it selects **`augment`**
+(half of the training examples). An explicit `--dnase-convention` on an ATAC
+run is an error rather than a silent no-op. Pass `--dnase-convention
+right-deprecated` for the DNase behaviour this package shipped before the
+flags existed (deprecated: kept to reproduce earlier runs only).
 
-It exists because the two assays record different things. DNase I is a
+They exist because the two assays record different things. DNase I is a
 nuclease: it cuts the backbone *between* two bases, so the 0/+1 shift records
 the event at a **bond**, named by that bond's right-hand base — the `+1` on
 minus reads is exactly what makes both strands name the same bond the same
@@ -402,20 +405,32 @@ wrong base, so a reverse-complemented DNase profile is misregistered by one.
 The correction is to reverse and then shift one position — `i → W-i` rather
 than `i → W-1-i`.
 
-| value | preprocessing | RC shift | splits flipped |
-|---|---|---|---|
-| `standard` | DNase 0/+1, ATAC +4/−4 | 0 | train, 50 % |
-| `fr-only` | unchanged | — | none |
-| `rc-only` | unchanged | 0 | train, valid and test, 100 % |
-| `right` | unchanged | **+1** | train, 50 % |
-| `left` | DNase −1/0 | **−1** | train, 50 % |
-| **`both-half`** *(DNASE default)* | 0.5 on both bases flanking the cut | 0 | train, 50 % |
-| `both-full` | 1.0 on both bases flanking the cut | 0 | train, 50 % |
+| `--dnase-convention` | preprocessing | RC shift |
+|---|---|---|
+| `right` | DNase 0/+1 | **+1** |
+| `left` | DNase −1/0 | **−1** |
+| **`both-half`** *(default)* | 0.5 on both bases flanking the cut | 0 |
+| `both-full` | 1.0 on both bases flanking the cut | 0 |
+| `right-deprecated` | DNase 0/+1 | 0 — misregistered by one; deprecated |
 
-`standard`, `fr-only` and `rc-only` apply to either assay. `right`, `left`
-and `both-*` reshape a bond, which ATAC has not got, so they raise for ATAC
-rather than silently doing nothing — which is why an omitted flag means
-`standard` there.
+| `--data-aug` | splits flipped |
+|---|---|
+| **`augment`** *(default)* | train, 50 % |
+| `forward-only` | none |
+| `revcomp-only` | train, valid and test, 100 % |
+
+ATAC (+4/−4) records a base, so plain reversal is already right and it takes
+no `--dnase-convention`; `--data-aug` applies to it unchanged.
+
+The flags replace the earlier single `--data-aug` with seven values. Its old
+values map exactly onto them:
+
+| old `--data-aug` | now |
+|---|---|
+| `standard` | `--dnase-convention right-deprecated` on DNASE; nothing on ATAC |
+| `fr-only` | `--data-aug forward-only` (on DNASE also `--dnase-convention right-deprecated`) |
+| `rc-only` | `--data-aug revcomp-only` (on DNASE also `--dnase-convention right-deprecated`) |
+| `right`, `left`, `both-half`, `both-full` | `--dnase-convention` of the same name |
 
 `both-half` is the DNase default in preference to the `right` shift. A shift
 corrects the misregistration; splitting the cut across both bases flanking
@@ -423,11 +438,12 @@ the bond removes the asymmetry that causes it, so there is nothing left to
 correct and no dependence on getting the sign right. It also leaves no label
 slot without a source, so the label window is not widened. The cost is that
 each cut is smeared over 2 bp; the `0.5` scale keeps the track total exactly
-what `standard` gives, so `counts_loss_weight` and the `-oth`/`-b` ratios
-carry over unchanged.
+what one deposit per cut gives, so `counts_loss_weight` and the `-oth`/`-b`
+ratios carry over unchanged.
 
-Available on `pipeline`, `train`, `qc`, their `bias` counterparts, `predict`,
-and `reads_to_bigwig`.
+Both flags are on `pipeline`, `train`, `qc`, their `bias` counterparts and
+`predict`; `reads_to_bigwig` takes `--dnase-convention` (the bigwig does not
+depend on `--data-aug`).
 
 The geometry is measured, not just derived: the plus- and minus-strand cut
 PWMs in `chrombpnet/data/{DNASE,ATAC}.ref.motifs.txt` align with each other's

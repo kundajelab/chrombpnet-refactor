@@ -25,10 +25,11 @@ def parse_args():
     parser.add_argument('--ATAC-ref-path', type=str, default=None, help="Path to ATAC reference motifs (chrombpnet/data/ATAC.ref.motifs.txt used by default)")
     parser.add_argument('--DNASE-ref-path', type=str, default=None, help="Path to DNASE reference motifs (chrombpnet/data/DNASE.ref.motifs.txt used by default)")
     parser.add_argument('--num-samples', type=int, default=10000, help="Number of reads to sample from BAM/fragment/tagAlign file for shift estimation")
-    parser.add_argument('--data-aug', type=str, default=None,
-                        choices=list(conventions.DATA_AUG_CHOICES),
-                        help="Where a cut is recorded; see chrombpnet.conventions. "
-                             "Default: both-half for DNASE, standard for ATAC.")
+    parser.add_argument('--dnase-convention', type=str, default=None,
+                        choices=list(conventions.DNASE_CONVENTION_CHOICES),
+                        help="DNASE only: where a cut is recorded; see chrombpnet.conventions. "
+                             "Default: both-half. right-deprecated is the convention before "
+                             "this flag, kept for reproducibility only.")
     args = parser.parse_args()
 
     return args
@@ -170,7 +171,7 @@ def main(args):
         print("The specified shift is: {:+}/{:+}".format(plus_shift, minus_shift))
 
     # Where each cut is recorded, and on how many bases.
-    convention = conventions.resolve(args.data_type, getattr(args, "data_aug", None))
+    convention = conventions.from_args(args)
     delta_pairs = conventions.shift_delta_pairs(convention, plus_shift, minus_shift)
 
     generate_bigwig(args.input_bam_file,
