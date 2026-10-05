@@ -192,7 +192,9 @@ auxiliary/
     30K_subsample_peaks.bed        peaks used for contribution scoring
     chrombpnet_nobias_footprints.h5
     interpret_subsample/
-        chrombpnet_nobias.profile_scores.h5
+        chrombpnet_nobias.interpreted_regions.bed   the regions scored, in row order
+        chrombpnet_nobias.counts_scores.h5          DeepSHAP scores, counts head
+        chrombpnet_nobias.profile_scores.h5         DeepSHAP scores, profile head
         modisco_results_profile_scores.h5
 evaluation/
     chrombpnet_metrics.json        the headline count and profile metrics

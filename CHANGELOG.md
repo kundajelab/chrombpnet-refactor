@@ -1,5 +1,23 @@
 # Changelog
 
+## `pipeline` and `qc` keep both heads' contribution scores
+
+- **Behaviour change, one new artifact.** `chrombpnet pipeline` and
+  `chrombpnet qc` now score the 30K peak subsample with DeepSHAP on the
+  counts head as well as the profile head, and keep both:
+  `auxiliary/interpret_subsample/chrombpnet_nobias.counts_scores.h5` is new
+  beside `chrombpnet_nobias.profile_scores.h5`. Each holds `raw`, `shap`
+  (hypothetical) and `projected_shap`, one row per line of
+  `chrombpnet_nobias.interpreted_regions.bed`. The bias pipelines already
+  scored both heads.
+- Before, only the profile head was scored, so a run's counts-head
+  contributions on the subsample could not be compared with another run's,
+  or with the original package's genome-wide scores, without scoring again.
+- TF-MoDISco and the report are unchanged: MoDISco still runs on the
+  profile scores only, and every other artifact is identical. Contribution
+  scoring takes about twice as long, the counts head costing what the
+  profile head does.
+
 ## JAX environment: CUDA 12 wheels by default
 
 - `envs/requirements-jax.txt` installs `jax[cuda12]==0.11.2` instead of

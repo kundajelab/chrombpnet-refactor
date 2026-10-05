@@ -101,12 +101,14 @@ def chrombpnet_train_pipeline(args):
 
     subsample = stages.subsample_peaks_for_interpretation(
         layout, filtered_peaks, getattr(args, "interpret_subsample", None))
-    # Profile only, deliberately: make_html renders just the profile MoDISco
-    # table for ChromBPNet models. The bias pipelines score both.
+    # Both heads are scored and kept, as the bias pipelines do, so the
+    # subsample's contribution scores can be compared across runs. MoDISco
+    # stays profile-only: make_html renders just the profile table for
+    # ChromBPNet models.
     stages.run_interpret(
         args, layout, model_path=nobias_model, regions=subsample,
         output_prefix=layout.interpret_subsample("chrombpnet_nobias"),
-        profile_or_counts=["profile"])
+        profile_or_counts=["counts", "profile"])
     stages.run_modisco(args, layout, "chrombpnet_nobias", "profile",
                        "chrombpnet_nobias_profile.pdf")
 
@@ -147,7 +149,7 @@ def chrombpnet_qc(args):
     stages.run_interpret(
         args, layout, model_path=args.chrombpnet_model_nb, regions=subsample,
         output_prefix=layout.interpret_subsample("chrombpnet_nobias"),
-        profile_or_counts=["profile"])
+        profile_or_counts=["counts", "profile"])
     stages.run_modisco(args, layout, "chrombpnet_nobias", "profile",
                        "chrombpnet_nobias_profile.pdf")
 
