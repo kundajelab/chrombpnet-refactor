@@ -13,11 +13,11 @@ Three properties are load-bearing and easy to break by accident:
    sequence does not satisfy this, so the Tn5 consensus is planted at the
    offsets that make every ATAC reference motif report +0/-0. See
    ``PLUS_OFFSET`` / ``MINUS_OFFSET``.
-2. ``auto_shift_detect.sample_reads`` pipes reads through ``shuf`` with no
-   ``--random-source``, so the shift estimate is only reproducible when every
-   read survives sampling. ``shuf -n`` is called with ``2 * num_samples``
-   (default 10000), so the fixture must stay under 20000 reads. See
-   :data:`MAX_REPRODUCIBLE_READS`.
+2. ``auto_shift_detect.sample_reads`` estimates the shift from a sample of
+   ``2 * num_samples`` reads (default 20000), seeded by ``--seed``. Under that
+   every read is used, which keeps the fixture's estimate independent of the
+   sampler, so the fixture stays under 20000 reads. See
+   :data:`MAX_UNSAMPLED_READS`.
 3. ``find_bias_hyperparams`` keeps nonpeaks below
    ``quantile(peak_counts, 0.01) * bias_threshold_factor``. That threshold is
    degenerate unless peaks are genuinely enriched over nonpeaks, so peak
@@ -40,8 +40,8 @@ import numpy as np
 # REGION_SPAN bases of each. These two needs pull in opposite directions:
 # `prep nonpeaks` slops every peak by inputlen // 2 and excludes it, so it needs
 # a lot of unexcluded sequence to draw GC-matched candidates from, while
-# auto_shift_detect's unseeded shuf caps the usable read count (see
-# MAX_REPRODUCIBLE_READS). Confining the reads keeps both satisfiable, since GC
+# the shift estimate should see every read, which caps the read count (see
+# MAX_UNSAMPLED_READS). Confining the reads keeps both satisfiable, since GC
 # matching reads sequence only and never touches the reads file.
 CHROM_LENGTH = 200_000
 REGION_SPAN = 40_000
@@ -81,7 +81,7 @@ MINUS_MOTIF = "TGCACAGTCCTGGACTGTGC"
 PLUS_OFFSET = 14
 MINUS_OFFSET = 5
 
-MAX_REPRODUCIBLE_READS = 20_000
+MAX_UNSAMPLED_READS = 20_000
 
 # Plus anchors sit every READ_SPACING bases; the minus anchor for each one sits
 # MINUS_ANCHOR_DELTA further along. Both values are constrained by the planted
@@ -240,11 +240,11 @@ def write_reads(directory: Path) -> Path:
             row = (chrom, max(end - READ_LENGTH, 0), end, "N", 1000, "-")
             rows.extend([row] * depth_at(chrom, end))
 
-    if len(rows) > MAX_REPRODUCIBLE_READS:
+    if len(rows) > MAX_UNSAMPLED_READS:
         raise AssertionError(
-            f"{len(rows)} reads exceeds the {MAX_REPRODUCIBLE_READS}-read ceiling "
-            "above which auto_shift_detect's unseeded shuf subsamples and the "
-            "estimated shift stops being reproducible"
+            f"{len(rows)} reads exceeds the {MAX_UNSAMPLED_READS}-read ceiling "
+            "above which auto_shift_detect estimates the shift from a sample "
+            "rather than every read"
         )
 
     # A fixed shuffle, so the file is not already coordinate-sorted.

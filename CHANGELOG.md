@@ -1,5 +1,24 @@
 # Changelog
 
+## The enzyme-shift read sample is seeded
+
+- **Behaviour change, preprocessing.** The enzyme shift is estimated from
+  2 x `--num-samples` reads (20 000 by default). They were sampled with
+  `shuf -n` and no random source, as in the original package, so on any input
+  larger than that two runs estimated the shift from different reads. It was
+  the one unseeded step of a run. The sample is now drawn in Python by
+  reservoir sampling (`auto_shift_detect.ReservoirSample`, Li's Algorithm L)
+  from `np.random.RandomState(--seed)`; `prep bigwig` takes `-s/--seed` too,
+  default 1234 like everywhere else. GNU `shuf` is no longer needed.
+- **What moves:** on real data, the reads the shift is estimated from. The
+  estimate is an integer argmax over an averaged PWM, so it is the same in
+  practice, and the bigwig only changes if it does. Inputs of at most
+  2 x `--num-samples` reads are used whole, as before, which covers the
+  regression fixture: its gate is unchanged.
+- Measured on 2 million reads: about the same time as `shuf` (2.4-3.6 s
+  either way, in fresh processes); the loop that filters every read by
+  chromosome in Python dominates both.
+
 ## Bigwig input: `-ibw` and `chrombpnet prep bigwig`
 
 - **New input, no output changes.** `pipeline`, `train`, `bias pipeline` and

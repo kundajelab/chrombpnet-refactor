@@ -1,4 +1,5 @@
 import argparse
+import math
 import os
 import pyfaidx
 import subprocess
@@ -37,6 +38,11 @@ def convolve(to_scan, longer_seq):
         vals.append(np.sum(to_scan*longer_seq[i:i+len(to_scan)]))
     return vals
     
+#: Seed of the read sample the shift is estimated from when the caller gives
+#: none. The training commands and `prep bigwig` pass --seed, whose default
+#: is the same.
+DEFAULT_SAMPLE_SEED = 1234
+
 #: gzip's exit status when it decompressed the whole compressed stream and
 #: ignored data after it ("decompression OK, trailing garbage ignored"). A
 #: truncated file exits 1 instead.
@@ -74,11 +80,12 @@ def check_input_streams(process):
         check_stream(upstream)
 
 
-def stream_filtered_tagaligns(src_tagaligns_stream, genome_file, out_stream):
+def stream_filtered_tagaligns(src_tagaligns_stream, genome_file, write):
     '''
     Given a tagalign subprocess stream and reference genome file, filters
     out any reads in chromosomes not included in the reference. Reads in the
-    reference chromosomes are sent to the specified output stream.
+    reference chromosomes are passed, one line at a time, to ``write`` (a
+    process's ``stdin.write``, or ReservoirSample.write).
     
     Returns:
         Boolean. Indicates whether any reads not in the reference fasta were 
@@ -89,7 +96,7 @@ def stream_filtered_tagaligns(src_tagaligns_stream, genome_file, out_stream):
         for line in iter(src_tagaligns_stream.stdout.readline, b''):
             tagalign_chrom = line.decode('utf-8').strip().split('\t')[0]
             if tagalign_chrom in g.keys():
-                out_stream.stdin.write(line)
+                write(line)
             else:
                 has_unknown_chroms = True
         src_tagaligns_stream.stdout.close()
@@ -132,7 +139,57 @@ def tagalign_stream(tagalign_file_path):
     p = subprocess.Popen(command, stdout=subprocess.PIPE)
     return p
 
-def sample_reads(bam_path, fragment_file_path, tagalign_file_path, num_samples, genome_fasta_path):
+class ReservoirSample:
+    """A uniform random sample of ``size`` lines from a stream of unknown
+    length, drawn from ``np.random.RandomState(seed)``.
+
+    Li's Algorithm L (ACM TOMS 20(4), 1994): every line is equally likely to
+    be kept, and it draws O(size * log(n / size)) random numbers rather than
+    one per line. A stream of at most ``size`` lines is kept whole, in order.
+    """
+
+    def __init__(self, size, seed):
+        self.size = int(size)
+        self.lines = []
+        self._rng = np.random.RandomState(seed)
+        self._seen = 0
+        self._next = None
+        self._weight = None
+
+    def _uniform(self):
+        # random_sample is in [0, 1); the logarithms below need (0, 1).
+        u = self._rng.random_sample()
+        while u == 0.0:
+            u = self._rng.random_sample()
+        return u
+
+    def _shrink_weight(self):
+        self._weight *= math.exp(math.log(self._uniform()) / self.size)
+
+    def _skip(self):
+        """Index of the next line to keep, after the current one."""
+        # A weight that rounds to 1 skips nothing (log1p(-1) is -inf).
+        denominator = math.log1p(-self._weight) if self._weight < 1.0 else -math.inf
+        self._next += math.floor(math.log(self._uniform()) / denominator) + 1
+
+    def write(self, line):
+        index = self._seen
+        self._seen += 1
+        if index < self.size:
+            self.lines.append(line)
+            if self._seen == self.size:
+                self._weight = 1.0
+                self._shrink_weight()
+                self._next = index
+                self._skip()
+        elif index == self._next:
+            self.lines[self._rng.randint(self.size)] = line
+            self._shrink_weight()
+            self._skip()
+
+
+def sample_reads(bam_path, fragment_file_path, tagalign_file_path, num_samples, genome_fasta_path,
+                 seed=DEFAULT_SAMPLE_SEED):
     # only one of bam, fragment, tagalign is not None
     if bam_path:
         p1 = bam_to_tagalign_stream(bam_path)
@@ -141,12 +198,11 @@ def sample_reads(bam_path, fragment_file_path, tagalign_file_path, num_samples, 
     elif tagalign_file_path:
         p1 = tagalign_stream(tagalign_file_path)
 
-    # num_samples is per strand, so multiply by 2
-    p2 = subprocess.Popen(["shuf", "-n", str(2*num_samples)], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-    has_unknown_chroms = stream_filtered_tagaligns(p1, genome_fasta_path, p2)
-    output = p2.communicate()[0]
-    if p2.returncode != 0:
-        raise subprocess.CalledProcessError(p2.returncode, ["shuf", "-n", str(2*num_samples)])
+    # num_samples is per strand, so multiply by 2. The original sampled with
+    # an unseeded `shuf -n`, so on inputs larger than that the estimate was
+    # not reproducible.
+    sample = ReservoirSample(2 * num_samples, seed)
+    has_unknown_chroms = stream_filtered_tagaligns(p1, genome_fasta_path, sample.write)
     
     if has_unknown_chroms:
         msg = '!!! WARNING: Input reads contain chromosomes not in the reference' \
@@ -155,7 +211,7 @@ def sample_reads(bam_path, fragment_file_path, tagalign_file_path, num_samples, 
             ' genome, you can safely ignore this message.'
         warnings.warn(colored(msg, 'red'))
 
-    output = [x.split("\t") for x in output.decode('utf-8').split("\n")[:-1]]
+    output = [line.decode('utf-8').rstrip("\n").split("\t") for line in sample.lines]
     reads = pd.DataFrame(output)
     reads = reads.rename({0:'chr', 1:'start', 2:'end', 3:'x1', 4:'x2', 5:'strand'}, axis=1)
 
@@ -271,12 +327,14 @@ def compute_shift_DNASE(ref_plus_pwms, ref_minus_pwms, plus_pwm, minus_pwm):
     return plus_shift, minus_shift 
 
 
-def compute_shift(input_bam_file, input_fragment_file, input_tagalign_file, num_samples, genome_fasta_path, data_type, ref_motifs_file):
+def compute_shift(input_bam_file, input_fragment_file, input_tagalign_file, num_samples, genome_fasta_path, data_type, ref_motifs_file,
+                  seed=DEFAULT_SAMPLE_SEED):
     # only one of the 3 inputs should be non None
     if sum(value is not None for value in (input_bam_file, input_fragment_file, input_tagalign_file)) != 1:
         raise ValueError("Exactly one input file must be provided")
 
-    sampled_plus_reads, sampled_minus_reads = sample_reads(input_bam_file, input_fragment_file, input_tagalign_file, num_samples, genome_fasta_path)
+    sampled_plus_reads, sampled_minus_reads = sample_reads(input_bam_file, input_fragment_file, input_tagalign_file, num_samples, genome_fasta_path,
+                                                           seed)
 
     plus_pwm, minus_pwm = get_pwms(sampled_plus_reads, sampled_minus_reads, genome_fasta_path)
     ref_plus_pwms, ref_minus_pwms = get_ref_pwms(ref_motifs_file)

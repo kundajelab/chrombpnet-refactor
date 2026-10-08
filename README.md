@@ -353,10 +353,9 @@ additionally demands `CUBLAS_WORKSPACE_CONFIG=:4096:8` in the environment
 before it will allow deterministic cuBLAS reductions -- the package does not
 set this for you.
 
-One step sits outside this: the enzyme shift is estimated from 20 000 reads
-sampled with an unseeded `shuf`. The estimate is an integer chosen by an argmax
-over an averaged position weight matrix and is stable in practice, but it is
-not seeded.
+Preprocessing is seeded too: the enzyme shift is estimated from a sample of
+2 x `--num-samples` reads (20 000 by default) drawn with `--seed`, which
+`prep bigwig` also takes.
 
 ## Python API
 

@@ -116,7 +116,7 @@ def _add_training_options(optional):
     _add_shift_estimation(optional)
     optional.add_argument("-il", "--inputlen", type=int, default=2114, required=False, help="Sequence input length")
     optional.add_argument("-ol", "--outputlen", type=int, default=1000, required=False, help="Prediction output length")
-    optional.add_argument("-s", "--seed", type=int, default=1234, help="seed to use for model training")
+    optional.add_argument("-s", "--seed", type=int, default=1234, help="seed to use for model training, and for the read sample the enzyme shift is estimated from")
     optional.add_argument("-e", "--epochs", type=int, default=50, help="Maximum epochs to train")
     optional.add_argument("-es", "--early-stop", type=int, default=5, help="Early stop limit, corresponds to 'patience' in callback")
     optional.add_argument("-l", "--learning-rate", type=float, default=0.001, help="Learning rate for model training")
@@ -521,6 +521,7 @@ def _add_prep_bigwig_arguments(parser):
     optional.add_argument('-ps', '--plus-shift', type=int, default=None, help="Plus strand shift applied to reads. Estimated if not specified")
     optional.add_argument('-ms', '--minus-shift', type=int, default=None, help="Minus strand shift applied to reads. Estimated if not specified")
     _add_shift_estimation(optional)
+    optional.add_argument("-s", "--seed", type=int, default=1234, help="seed for the read sample the enzyme shift is estimated from")
     _add_read_sorting(optional)
     _add_dnase_convention(optional)
 

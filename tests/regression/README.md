@@ -144,7 +144,7 @@ elsewhere in the package, and `test_regression.py` guards each one:
 |---|---|
 | `OUTPUTLEN >= 200` | `marginal_footprinting.py:145` plots `footprint[outputlen//2-100 : outputlen//2+100]` against `range(200)` |
 | `INPUTLEN >= 500` | the qc scenarios run motif discovery with the default `--modisco-window`, 500 (`api.run_motifs`), and `centered_slice` rejects any contribution track shorter than the window |
-| under 20 000 reads | `auto_shift_detect.sample_reads` pipes through `shuf` with no `--random-source`; above `2 * num_samples` it really subsamples and the shift estimate stops being reproducible |
+| under 20 000 reads | above `2 * num_samples`, `auto_shift_detect.sample_reads` estimates the shift from a seeded sample rather than every read; staying under keeps the fixture's estimate independent of the sampler |
 
 The genome is long (200 kb/chromosome) but reads and training regions occupy
 only the first 40 kb. `prep nonpeaks` slops and excludes every peak, so it needs

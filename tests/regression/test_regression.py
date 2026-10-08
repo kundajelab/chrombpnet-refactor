@@ -24,9 +24,9 @@ def test_planted_consensus_yields_a_reproducible_standard_shift(tmp_path):
     """The fixture must satisfy auto_shift_detect, or no training scenario runs.
 
     ``compute_shift`` demands that every reference motif agree on one shift and
-    that the shift be standard, and it samples reads through an unseeded
-    ``shuf``. Both properties are fixture responsibilities, so pin them here
-    rather than discovering the breakage six scenarios deep.
+    that the shift be standard, and the estimate must not vary between
+    runs. Both are fixture responsibilities, so pin them here rather than
+    discovering the breakage six scenarios deep.
     """
     from chrombpnet.data import DefaultDataFile, get_default_data_path
     from chrombpnet.helpers.preprocessing import auto_shift_detect
@@ -42,17 +42,17 @@ def test_planted_consensus_yields_a_reproducible_standard_shift(tmp_path):
     assert estimates == {(0, 0)}, (
         f"expected a stable +0/-0 estimate, got {estimates}. A single value "
         "that is not (0, 0) means the planting offsets drifted; several values "
-        "mean the read count crossed MAX_REPRODUCIBLE_READS."
+        "mean the estimate is no longer deterministic."
     )
 
 
-def test_read_count_stays_below_the_shuf_ceiling(tmp_path):
+def test_read_count_stays_below_the_shift_sample_size(tmp_path):
     import gzip
 
     path = fixture.write_reads(tmp_path)
     with gzip.open(path, "rt") as handle:
         count = sum(1 for _ in handle)
-    assert count < fixture.MAX_REPRODUCIBLE_READS, count
+    assert count < fixture.MAX_UNSAMPLED_READS, count
 
 
 def test_fixture_geometry_satisfies_the_packages_hardcoded_limits():

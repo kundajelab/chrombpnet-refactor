@@ -126,7 +126,7 @@ def test_gzip_trailing_garbage_is_only_a_warning(tmp_path, kind):
 
 @pytest.mark.parametrize("kind", ["fragment", "tagalign"])
 def test_truncated_gzip_input_raises_naming_gzip(tmp_path, genome, kind):
-    needs_tools("awk", "gzip", "shuf")
+    needs_tools("awk", "gzip")
     fasta, _ = genome
     truncated = truncated_copy(gzip_file(write_input(tmp_path, kind, 3000)))
     with pytest.raises(subprocess.CalledProcessError, match="gzip"):
@@ -205,3 +205,44 @@ def test_no_reads_left_is_a_clear_error(tmp_path, genome):
     with pytest.raises(RuntimeError, match="bedGraph built from .* is empty"):
         reads_to_bigwig.generate_bigwig(None, None, str(elsewhere), str(tmp_path / "out"), fasta,
                                         False, None, False, sizes, [(4, -4)])
+
+
+def test_reservoir_sample_is_seeded_and_uniform():
+    lines = [b"line%d\n" % i for i in range(200)]
+
+    def sample(seed, size=20, stream=lines):
+        reservoir = auto_shift_detect.ReservoirSample(size, seed)
+        for line in stream:
+            reservoir.write(line)
+        return reservoir.lines
+
+    # A stream no longer than the sample is kept whole, in order.
+    assert sample(0, size=200) == lines and sample(0, size=500) == lines
+    first = sample(7)
+    assert len(first) == len(set(first)) == 20 and set(first) <= set(lines)
+    assert sample(7) == first and sample(8) != first
+
+    # Every line is equally likely to be kept: 2000 samples of 20 of 200
+    # lines keep each line 200 times on average (sd ~13).
+    counts = np.zeros(len(lines))
+    for seed in range(2000):
+        for line in sample(seed):
+            counts[int(line[4:-1])] += 1
+    assert counts.sum() == 2000 * 20
+    assert counts.min() > 140 and counts.max() < 260
+    assert abs(counts[:100].sum() - counts[100:].sum()) < 0.03 * counts.sum()
+
+
+def test_the_shift_read_sample_is_reproducible_above_its_size(tmp_path, genome):
+    """The original sampled with an unseeded `shuf`, so above 2 * num_samples
+    reads two runs estimated the shift from different reads."""
+    fasta, _ = genome
+    reads = write_input(tmp_path, "tagalign", 3000)
+
+    def sample(seed):
+        plus, minus = auto_shift_detect.sample_reads(None, None, str(reads), 50, fasta, seed)
+        return plus.values.tolist(), minus.values.tolist()
+
+    first = sample(7)
+    assert len(first[0]) + len(first[1]) == 100
+    assert sample(7) == first and sample(8) != first

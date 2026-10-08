@@ -2989,6 +2989,17 @@
     "required": false,
     "type": "int"
   },
+  "prep bigwig seed": {
+    "choices": null,
+    "default": "1234",
+    "nargs": "None",
+    "options": [
+      "--seed",
+      "-s"
+    ],
+    "required": false,
+    "type": "int"
+  },
   "prep bigwig tmpdir": {
     "choices": null,
     "default": "None",

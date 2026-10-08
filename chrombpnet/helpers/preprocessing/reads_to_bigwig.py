@@ -111,7 +111,7 @@ def generate_bigwig(input_bam_file, input_fragment_file, input_tagalign_file, ou
         p_final = subprocess.Popen(final_sort, stdin=p_cov.stdout, stdout=output, env=env)
         p_cov.stdout.close()
         if not no_st:
-            auto_shift_detect.stream_filtered_tagaligns(p1, genome_fasta_file, p_awk)
+            auto_shift_detect.stream_filtered_tagaligns(p1, genome_fasta_file, p_awk.stdin.write)
             p_awk.stdin.close()
         return_codes = [p_final.wait(), p_cov.wait(), p_sort.wait(), p_awk.wait()]
         if any(code != 0 for code in return_codes):
@@ -156,6 +156,10 @@ def main(args):
             if ref_motifs_file is None:
                 ref_motifs_file =  get_default_data_path(DefaultDataFile.dnase_ref_motifs)
     
+        # The read sample is seeded by --seed where the command has one.
+        seed = getattr(args, "seed", None)
+        if seed is None:
+            seed = auto_shift_detect.DEFAULT_SAMPLE_SEED
         print("Estimating enzyme shift in input file")
         plus_shift, minus_shift = auto_shift_detect.compute_shift(args.input_bam_file,
                 args.input_fragment_file,
@@ -163,7 +167,8 @@ def main(args):
                 args.num_samples,
                 args.genome,
                 args.data_type,
-                ref_motifs_file)
+                ref_motifs_file,
+                seed)
     
         print("Current estimated shift: {:+}/{:+}".format(plus_shift, minus_shift))
 
