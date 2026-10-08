@@ -333,17 +333,8 @@ Triton forward are adapted from the
 
 ## Reproducibility
 
-Every engine trains with the TensorFlow implementation's settings: Glorot/Xavier
-initialization with zero biases, Adam epsilon 1e-7, sample-weighted epoch
-losses, shuffled batch visit order, a seeded count-threshold draw, and
-restoration of the best-validation checkpoint. Jitter, reverse complements,
-negative subsamples and shuffling still vary from run to run. Two flags hold
-more fixed, on `pipeline`, `train`, `bias pipeline`, `bias train` and
-`predict`, for every engine:
-
 | Flag | Effect |
 |---|---|
-| *(neither)* | the settings above |
 | `--reproducibility` | a pinned example schedule: jitter, reverse complements and negative subsamples come from a stream seeded by `--seed` and shared by every engine instead of the global RNG, epoch-start shuffling is off, and the validation set stops being re-cropped each epoch |
 | `--reproducibility-max` | `--reproducibility` plus identical initial weight arrays in every engine, a replayable augmentation schedule, deterministic kernels, TF32 disabled and scalar Adam dispatch |
 
