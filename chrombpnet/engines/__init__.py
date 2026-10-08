@@ -175,6 +175,7 @@ def configure_from_args(args, require=True):
     """
     engine = configure(resolve_name(args))
     _check_combinations(engine, args)
+    engine.prepare(args)
     if require:
         engine.require()
     for attribute in ("engine",) + JAX_ONLY_OPTIONS:

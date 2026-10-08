@@ -53,6 +53,11 @@ class Engine:
         return os.path.splitext(path)[1].lower() in suffixes
 
     # -- availability ------------------------------------------------------
+    def prepare(self, args):
+        """Settings that must be in place before the framework is imported or
+        starts (environment variables). Called with the parsed command line,
+        before :meth:`require`. Nothing by default."""
+
     def require(self):
         """Import the framework, or raise :class:`EngineUnavailable`."""
         raise NotImplementedError

@@ -121,12 +121,27 @@ def _prefer_bundled_cuda():
 _prefer_bundled_cuda()
 
 
+#: XLA's switch for deterministic GPU kernels. XLA reads XLA_FLAGS once, when
+#: JAX creates its GPU client -- at the first device use, which the bias scaling
+#: and hyperparameter steps reach before training -- so it is set from the
+#: command line, in :meth:`JaxEngine.prepare`.
+DETERMINISTIC_XLA_FLAG = "--xla_gpu_deterministic_ops=true"
+
+
 class JaxEngine(Engine):
     name = "jax"
     checkpoint_suffix = ".keras"
     #: The original ChromBPNet's models are .h5, and so are ChromBPNet 2.0's.
     readable_suffixes = (".keras", ".h5", ".hdf5")
     environment = "chrombpnet-jax"
+
+    def prepare(self, args):
+        from chrombpnet.training.utils.benchmark_utils import benchmark_enables
+
+        if benchmark_enables(args, "deterministic_kernels"):
+            flags = os.environ.get("XLA_FLAGS", "")
+            if DETERMINISTIC_XLA_FLAG not in flags:
+                os.environ["XLA_FLAGS"] = (flags + " " + DETERMINISTIC_XLA_FLAG).strip()
 
     def require(self):
         try:

@@ -4,6 +4,7 @@ None of these tests needs a deep-learning framework, so they run in every
 engine's environment.
 """
 
+import os
 import re
 import subprocess
 import sys
@@ -100,6 +101,27 @@ def test_pytorch_only_flags_are_refused_for_other_engines():
     with pytest.raises(ValueError, match="--predict-fk"):
         engines.configure_from_args(
             Namespace(model_h5="m.h5", predict_fk=True), require=False)
+
+
+def test_reproducibility_max_reaches_xla_before_jax_starts(monkeypatch):
+    """XLA reads XLA_FLAGS once, when JAX creates its GPU client, which the
+    pipelines reach before training; so the flag is set from the command
+    line, before the framework is imported (require=False here: no JAX
+    needed to check it)."""
+    from chrombpnet.engines.jax import DETERMINISTIC_XLA_FLAG
+
+    monkeypatch.setenv("XLA_FLAGS", "--xla_dump_to=/tmp/x")
+    engines.configure_from_args(Namespace(engine="jax", reproducibility=True), require=False)
+    assert DETERMINISTIC_XLA_FLAG not in os.environ["XLA_FLAGS"]
+    engines.configure_from_args(Namespace(engine="jax", reproducibility_max=True), require=False)
+    assert os.environ["XLA_FLAGS"] == "--xla_dump_to=/tmp/x " + DETERMINISTIC_XLA_FLAG
+    # Idempotent, and no other engine touches it.
+    engines.configure_from_args(Namespace(engine="jax", reproducibility_max=True), require=False)
+    assert os.environ["XLA_FLAGS"].count(DETERMINISTIC_XLA_FLAG) == 1
+    monkeypatch.delenv("XLA_FLAGS")
+    engines.configure_from_args(Namespace(engine="tensorflow", reproducibility_max=True), require=False)
+    assert "XLA_FLAGS" not in os.environ
+    engines.configure("pytorch")
 
 
 def test_jax_only_training_options_are_refused_for_other_engines():

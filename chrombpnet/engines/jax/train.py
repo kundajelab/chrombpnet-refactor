@@ -34,6 +34,7 @@ import sys
 import keras
 
 from chrombpnet.engines.jax import callbacks, model_io, runtime
+from chrombpnet.engines.jax import DETERMINISTIC_XLA_FLAG as _DETERMINISTIC_FLAG
 from chrombpnet.engines.jax.optimizers import make_optimizer
 from chrombpnet.engines.jax.sequence_adapter import KerasPyDataset
 from chrombpnet.engines.keras_weights import assign_canonical_weights
@@ -52,8 +53,6 @@ DEFAULT_TRACKABLES = [
 #: Checkpoint suffix this engine writes.
 CHECKPOINT_SUFFIX = ".keras"
 
-_DETERMINISTIC_FLAG = "--xla_gpu_deterministic_ops=true"
-
 #: (dtype policy, matmul precision) to restore when training ends.
 _SAVED_PRECISION = []
 
@@ -69,7 +68,10 @@ def _load_architecture(path):
 
 
 def _enable_deterministic_kernels():
-    """XLA reads XLA_FLAGS when it creates its GPU client, so set it before."""
+    """XLA reads XLA_FLAGS when it creates its GPU client, so set it before.
+
+    From the command line ``JaxEngine.prepare`` already has; this covers
+    library callers that reach ``get_model`` directly."""
     import jax
 
     flags = os.environ.get("XLA_FLAGS", "")

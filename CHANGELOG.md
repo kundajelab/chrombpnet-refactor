@@ -1,5 +1,22 @@
 # Changelog
 
+## JAX engine: `--reproducibility-max` works on a GPU
+
+- **Bug fix.** `--reproducibility-max` (before it, `--benchmark max`) asks XLA
+  for deterministic GPU kernels through `XLA_FLAGS`, which XLA reads once,
+  when JAX creates its GPU client. The engine set it when it built the model
+  for training, but every pipeline has started JAX on the GPU before then
+  (bias scaling, the hyperparameter steps), so a JAX run on a GPU stopped
+  with "needs deterministic GPU kernels, which JAX can only be given before
+  it starts". CPU runs were unaffected.
+- Engines now get a `prepare(args)` hook, called from the command line
+  before the framework is imported; the JAX engine sets the flag there. The
+  setting inside `get_model` stays for library callers that reach it
+  directly.
+- Measured on an L40S: training the regression fixture's bias model twice
+  with `--reproducibility-max` gives identical checkpoints and logs for the
+  JAX engine, as it does for PyTorch and TensorFlow.
+
 ## `--benchmark` replaced by `--reproducibility` and `--reproducibility-max`
 
 - **Behaviour change, command line.** `--benchmark
