@@ -4,7 +4,7 @@ import os
 from chrombpnet.data import DefaultDataFile, get_default_data_path
 import chrombpnet.pipelines as pipelines
 from chrombpnet.layout import RunLayout
-import copy
+from chrombpnet.options import Options
 import pandas as pd
 import logging
 import shutil
@@ -96,6 +96,9 @@ def main():
 	check_conventions(args)
 	check_modisco_window(args)
 	parsers.drop_absent(args)
+	# The command line is complete: from here on it is read-only, and what a
+	# step adds is passed to that step (Options.step).
+	args = Options.from_namespace(args)
 	
 	if args.cmd == "pipeline" or args.cmd == "train":
 		RunLayout.from_args(args).create_training_dirs()
@@ -126,10 +129,9 @@ def main():
 		# model_h5 rather than model.
 		model = load_model_wrapper(args.model, getattr(args, "device", None),
 		                           announce=False)
-		args.inputlen = int(model.input_shape[1])
-		args.outputlen = int(model.output_shape[0][1])
-		args.model_h5 = args.model
-		predict.main(args)
+		predict.main(args.step(inputlen=int(model.input_shape[1]),
+		                       outputlen=int(model.output_shape[0][1]),
+		                       model_h5=args.model))
 
 	elif args.cmd == "export":
 
@@ -154,20 +156,13 @@ def main():
 		import chrombpnet.evaluation.interpret.interpret as interpret
 		interpret.main(args)
 		import chrombpnet.evaluation.make_bigwigs.importance_hdf5_to_bigwig as importance_hdf5_to_bigwig
-		if "counts" in  args.profile_or_counts:
-			args_copy = copy.deepcopy(args)
-			args_copy.hdf5 = args_copy.output_prefix + ".counts_scores.h5"
-			args_copy.output_prefix = args.output_prefix + ".counts_scores"
-			args_copy.regions =  args.output_prefix + ".interpreted_regions.bed"
-
-			importance_hdf5_to_bigwig.main(args_copy)
-		if "profile" in  args.profile_or_counts:
-			args_copy = copy.deepcopy(args)
-			args_copy.hdf5 = args_copy.output_prefix + ".profile_scores.h5"
-			args_copy.output_prefix = args.output_prefix + ".profile_scores"
-			args_copy.regions =  args.output_prefix + ".interpreted_regions.bed"
-	
-			importance_hdf5_to_bigwig.main(args_copy)
+		for head in ("counts", "profile"):
+			if head in args.profile_or_counts:
+				importance_hdf5_to_bigwig.main(args.step(
+					hdf5=f"{args.output_prefix}.{head}_scores.h5",
+					replacing={
+						"output_prefix": f"{args.output_prefix}.{head}_scores",
+						"regions": args.output_prefix + ".interpreted_regions.bed"}))
 			
 	elif args.cmd == "footprints":
 	
@@ -202,10 +197,9 @@ def main():
 	
 			# get gc content in peaks
 			import chrombpnet.helpers.make_gc_matched_negatives.get_gc_content as get_gc_content
-			args_copy = copy.deepcopy(args)
-			args_copy.input_bed = args_copy.peaks
-			args_copy.output_prefix = args.output_prefix+"_auxiliary/foreground.gc"
-			get_gc_content.main(args_copy)
+			get_gc_content.main(args.step(
+				input_bed=args.peaks,
+				replacing={"output_prefix": args.output_prefix+"_auxiliary/foreground.gc"}))
 	
 			# prepare candidate negatives
 	
@@ -238,12 +232,10 @@ def main():
 													
 			# get final negatives
 			import chrombpnet.helpers.make_gc_matched_negatives.get_gc_matched_negatives as get_gc_matched_negatives
-			args_copy = copy.deepcopy(args)
-			args_copy.candidate_negatives = args.output_prefix+"_auxiliary/candidates.bed"
-			args_copy.foreground_gc_bed = args.output_prefix+"_auxiliary/foreground.gc.bed"
-			args_copy.output_prefix = 	args.output_prefix+"_auxiliary/negatives"
-	
-			get_gc_matched_negatives.main(args_copy)
+			get_gc_matched_negatives.main(args.step(
+				candidate_negatives=args.output_prefix+"_auxiliary/candidates.bed",
+				foreground_gc_bed=args.output_prefix+"_auxiliary/foreground.gc.bed",
+				replacing={"output_prefix": args.output_prefix+"_auxiliary/negatives"}))
 	
 			negatives = pd.read_csv(args.output_prefix+"_auxiliary/negatives.bed", sep="\t", header=None)
 			negatives[3]="."

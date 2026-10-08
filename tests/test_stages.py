@@ -119,7 +119,7 @@ def test_ignore_bias_flag_downgrades_it_to_a_warning(tmp_path):
 
 
 def test_the_flag_reaches_the_check_from_the_command_line():
-    """`pipelines.chrombpnet_train_pipeline` reads it off args, so a
+    """`pipelines.chrombpnet_train_pipeline` reads it off its options, so a
     namespace without the attribute must behave as the strict default."""
     import inspect
     from types import SimpleNamespace
@@ -128,7 +128,7 @@ def test_the_flag_reaches_the_check_from_the_command_line():
     from chrombpnet.parsers import read_parser
 
     source = inspect.getsource(pipelines.chrombpnet_train_pipeline)
-    assert 'getattr(args, "ignore_bias_flag", False)' in source
+    assert 'getattr(options, "ignore_bias_flag", False)' in source
     assert getattr(SimpleNamespace(), "ignore_bias_flag", False) is False
 
     base = ["pipeline", "-ibam", "b", "-d", "DNASE", "-g", "g", "-c", "c",

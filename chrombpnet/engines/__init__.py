@@ -9,10 +9,10 @@ The choice is process-global for the same reason ``--predict-fk`` is (see
 :mod:`chrombpnet.fused_kernels`): the code that loads and saves models runs
 several frames below the CLI, in stages shared by every pipeline, and threading
 an engine argument through all of them would change signatures that have
-nothing else to do with it. More importantly it would change the argument
-namespaces those stages deep-copy and dump to ``<prefix>.args.json``.
+nothing else to do with it. More importantly it would change the per-step
+namespaces those stages dump to ``<prefix>.args.json``.
 :func:`configure_from_args` is called once, from ``CHROMBPNET.main``, before any
-work starts.
+work starts and before the options are frozen.
 
 Loading is the exception. A checkpoint's suffix names the engine that wrote it,
 so :func:`for_model` and :func:`load_model_wrapper` load with the configured

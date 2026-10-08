@@ -25,7 +25,6 @@ call and saves. The PR does part of this in its ``train.main``; here the shared
 
 from __future__ import annotations
 
-import copy
 import importlib.util
 import os
 import re
@@ -38,6 +37,7 @@ from chrombpnet.engines.jax import DETERMINISTIC_XLA_FLAG as _DETERMINISTIC_FLAG
 from chrombpnet.engines.jax.optimizers import make_optimizer
 from chrombpnet.engines.jax.sequence_adapter import KerasPyDataset
 from chrombpnet.engines.keras_weights import assign_canonical_weights
+from chrombpnet.options import with_values
 from chrombpnet.training.utils.benchmark_utils import (
     benchmark_enables,
     use_keras_batch_order_shuffle,
@@ -125,8 +125,7 @@ def get_model(args, parameters):
             # The architecture file builds the optimizer, and a cosine
             # schedule needs the step count, which only fit knows; build with
             # a constant rate here, and fit compiles the schedule in.
-            build_args = copy.copy(args)
-            build_args.lr_schedule = "constant"
+            build_args = with_values(args, lr_schedule="constant")
         model = builder(build_args, parameters)
         print("got the model")
         if benchmark_enables(args, "shared_initial_weights"):
@@ -159,9 +158,8 @@ def fit_and_evaluate(model, train_gen, valid_gen, args, architecture_module):
     try:
         if getattr(args, "lr_schedule", None) == "cosine" and not getattr(args, "total_steps", None):
             # the schedule is part of the optimizer: give it the step budget
-            schedule_args = copy.copy(args)
-            schedule_args.total_steps = len(train_gen) * args.epochs
-            _recompile(model, make_optimizer(schedule_args))
+            _recompile(model, make_optimizer(
+                with_values(args, total_steps=len(train_gen) * args.epochs)))
 
         model_output_path_name = args.output_prefix + CHECKPOINT_SUFFIX
         model_output_path_logs_name = args.output_prefix + ".log"

@@ -1,5 +1,30 @@
 # Changelog
 
+## Steps no longer write into a shared argument namespace
+
+- **Record change only.** Once the command line is complete, it is frozen
+  into a read-only `Options` (`chrombpnet/options.py`). Values a step
+  decides (a generated bigwig, an output prefix, the filtered peaks a model
+  trains on, the geometry `qc` reads off a checkpoint) are passed to that
+  step explicitly, with `Options.step`.
+  - Before, each step deep-copied the namespace and assigned its values into
+    the copy. Preprocessing assigned into the namespace itself, so its values
+    reached every later step.
+- **What moves:** `logs/bias.args.json` and `logs/chrombpnet.args.json` lose
+  `plus_shift`, `minus_shift`, `chr` and `pwm_width`. Preprocessing set them
+  for its shift-QC step, and they leaked into training's record. The
+  `interpret.args.json` of `pipeline` and `bias pipeline` loses them too.
+  `bigwig` stays, now passed on explicitly. No model, metric or report
+  changes: the regression gate differs only in those two `args.json` files.
+- **A step cannot silently override user input.** `Options.step` refuses an
+  input that would replace an option the user gave, unless the step names it
+  in `replacing=`. Examples are training on the filtered peaks instead of the
+  `-p` file, and `contribs_bw`'s per-head output prefixes. Each substitution
+  is therefore visible where it happens.
+- Library callers can still pass an `argparse.Namespace` to the stages and
+  pipelines. It is frozen on entry, so it is no longer modified; before,
+  `preprocess_and_qc_bigwig` and the `qc` pipelines wrote into it.
+
 ## Profile JSD is reported in base 2
 
 - **Behaviour change, metrics.** Every Jensen-Shannon distance this package

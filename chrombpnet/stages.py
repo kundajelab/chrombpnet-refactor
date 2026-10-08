@@ -6,22 +6,16 @@ repeated with different model paths: the 30k-peak subsample appeared four
 times, the interpret setup four times, the report call six times, the bias-motif
 table twice, the preprocessing preamble twice.
 
-Two conventions are preserved exactly, because they are observable:
-
-* Stages communicate by mutating an ``argparse.Namespace``, mostly a
-  ``copy.deepcopy`` of the caller's. That is not a style anyone would choose,
-  but ``train.main`` dumps ``vars(args)`` to ``<prefix>.args.json``, so the
-  precise set of attributes present when it runs is part of the output. A stage
-  that added or dropped an attribute would change that file.
-* Where the original mutated ``args`` in place rather than a copy -- the
-  preprocessing preamble does, and later stages read ``args.bigwig`` and
-  ``args.chr`` from it -- that is kept. The in-place writes are how the
-  generated bigwig reaches training.
+Each stage takes the run's read-only :class:`~chrombpnet.options.Options`
+and its own inputs as explicit parameters, and hands the step module a new
+namespace built with :meth:`Options.step` -- never a modified copy of the
+user's. The step modules' ``<prefix>.args.json`` records are dumps of that
+namespace, so they hold the options plus that step's inputs and nothing
+another step set.
 """
 
 from __future__ import annotations
 
-import copy
 import json
 import warnings
 
@@ -29,6 +23,7 @@ import numpy as np
 import pandas as pd
 
 from chrombpnet.data import DefaultDataFile, get_default_data_path
+from chrombpnet.options import as_options
 
 #: Contribution scores are computed on at most this many peaks, sampled with a
 #: fixed seed so a rerun scores the same regions (--interpret-subsample).
@@ -59,39 +54,31 @@ BIAS_MOTIFS = {
 }
 
 
-def preprocess_and_qc_bigwig(args, layout):
-    """Shift reads into a bigwig, then build the PWM that QCs the shift.
-
-    Mutates ``args`` in place rather than a copy: the generated bigwig path and
-    the chosen validation chromosome are read by later stages and land in
-    ``<prefix>.args.json``.
-    """
+def preprocess_and_qc_bigwig(options, layout):
+    """Shift reads into a bigwig, build the PWM that QCs the shift, and return
+    the bigwig's path, which the caller passes on to the later steps."""
     import chrombpnet.helpers.preprocessing.reads_to_bigwig as reads_to_bigwig
-
-    args.output_prefix = layout.aux("data")
-    # --plus-shift/--minus-shift are not exposed by the pipeline parsers, so
-    # the shift is always estimated; reads_to_bigwig requires the attributes.
-    args.plus_shift = None
-    args.minus_shift = None
-    reads_to_bigwig.main(args)
-
     import chrombpnet.helpers.preprocessing.analysis.build_pwm_from_bigwig as build_pwm_from_bigwig
 
-    args.bigwig = layout.aux("data_unstranded.bw")
-    args.output_prefix = layout.evaluation("bw_shift_qc")
-    folds = json.load(open(args.chr_fold_path))
+    options = as_options(options)
+    # --plus-shift/--minus-shift are not exposed by the pipeline parsers, so
+    # the shift is always estimated; reads_to_bigwig requires the attributes.
+    reads_to_bigwig.main(options.step(
+        output_prefix=layout.aux("data"), plus_shift=None, minus_shift=None))
+    bigwig = layout.aux("data_unstranded.bw")
+
+    folds = json.load(open(options.chr_fold_path))
     if not folds["valid"]:
         raise ValueError("Validation chromosome list is empty")
-    args.chr = folds["valid"][0]
-    args.pwm_width = PWM_WIDTH
-    build_pwm_from_bigwig.main(args)
+    build_pwm_from_bigwig.main(options.step(
+        bigwig=bigwig, output_prefix=layout.evaluation("bw_shift_qc"),
+        chr=folds["valid"][0], pwm_width=PWM_WIDTH))
+    return bigwig
 
 
-def find_hyperparameters(args, layout, finder):
+def find_hyperparameters(options, layout, finder):
     """Run one of the hyperparameter finders, writing into ``auxiliary/``."""
-    args_copy = copy.deepcopy(args)
-    args_copy.output_prefix = layout.aux()
-    finder.main(args_copy)
+    finder.main(as_options(options).step(output_prefix=layout.aux()))
 
 
 def check_bias_model_quality(layout, ignore=False):
@@ -133,49 +120,43 @@ def check_bias_model_quality(layout, ignore=False):
     warnings.warn(message, RuntimeWarning, stacklevel=2)
 
 
-def run_predictions(args, layout, output_prefix, model_path, peaks, nonpeaks):
+def run_predictions(options, layout, output_prefix, model_path, peaks, nonpeaks):
     """Predict over the test split and write metrics.
 
-    ``peaks``/``nonpeaks`` take the string ``"None"`` to disable a set, which is
-    the sentinel ``initializers`` checks for.
+    ``peaks``/``nonpeaks`` are the regions to score, in place of ``-p``/``-n``;
+    the string ``"None"`` disables a set, the sentinel ``initializers`` checks
+    for.
     """
     import chrombpnet.training.predict as predict
 
-    args_copy = copy.deepcopy(args)
-    args_copy.output_prefix = output_prefix
-    args_copy.model_h5 = model_path
-    args_copy.peaks = peaks
-    args_copy.nonpeaks = nonpeaks
-    predict.main(args_copy)
+    predict.main(as_options(options).step(
+        replacing={"peaks": peaks, "nonpeaks": nonpeaks},
+        output_prefix=output_prefix, model_h5=model_path))
 
 
-def write_bias_motif_table(args, layout):
+def write_bias_motif_table(options, layout):
     """Write the motif table marginal footprinting inserts, and return its path.
 
     Not file-prefixed: this filename never carried the prefix.
     """
-    if args.data_type not in BIAS_MOTIFS:
+    if options.data_type not in BIAS_MOTIFS:
         raise ValueError(
-            f"unknown data type {args.data_type!r}; expected one of "
+            f"unknown data type {options.data_type!r}; expected one of "
             f"{sorted(BIAS_MOTIFS)}")
     path = layout.unprefixed("auxiliary", "motif_to_pwm.tsv")
-    pd.DataFrame(BIAS_MOTIFS[args.data_type]).to_csv(
+    pd.DataFrame(BIAS_MOTIFS[options.data_type]).to_csv(
         path, sep="\t", header=False, index=False)
     return path
 
 
-def run_marginal_footprints(args, layout, model_path, regions, output_prefix,
+def run_marginal_footprints(options, layout, model_path, regions, output_prefix,
                             motifs_to_pwm):
     """Insert each bias motif and measure the model's footprint response."""
     import chrombpnet.evaluation.marginal_footprints.marginal_footprinting as marginal_footprinting
 
-    args_copy = copy.deepcopy(args)
-    args_copy.model_h5 = model_path
-    args_copy.regions = regions
-    args_copy.output_prefix = output_prefix
-    args_copy.motifs_to_pwm = motifs_to_pwm
-    args_copy.ylim = None
-    marginal_footprinting.main(args_copy)
+    marginal_footprinting.main(as_options(options).step(
+        model_h5=model_path, regions=regions, output_prefix=output_prefix,
+        motifs_to_pwm=motifs_to_pwm, ylim=None))
 
 
 def subsample_peaks_for_interpretation(layout, peaks_path, size=None):
@@ -199,25 +180,21 @@ def subsample_peaks_for_interpretation(layout, peaks_path, size=None):
     return subsample_path
 
 
-def run_interpret(args, layout, model_path, regions, output_prefix,
+def run_interpret(options, layout, model_path, regions, output_prefix,
                   profile_or_counts):
     """Compute DeepLIFT-SHAP contribution scores."""
     import chrombpnet.evaluation.interpret.interpret as interpret
 
-    args_copy = copy.deepcopy(args)
-    args_copy.profile_or_counts = profile_or_counts
-    args_copy.regions = regions
-    args_copy.model_h5 = model_path
-    args_copy.output_prefix = output_prefix
-    args_copy.debug_chr = None
-    interpret.main(args_copy)
+    interpret.main(as_options(options).step(
+        profile_or_counts=profile_or_counts, regions=regions,
+        model_h5=model_path, output_prefix=output_prefix, debug_chr=None))
 
 
-def run_modisco(args, layout, scores_name, kind, pdf_name):
+def run_modisco(options, layout, scores_name, kind, pdf_name):
     """Discover motifs from one contribution track and render its report.
 
     ``kind`` is "profile" or "counts" and selects both the results filename and
-    the ``evaluation/modisco_<kind>/`` report directory. ``args`` supplies the
+    the ``evaluation/modisco_<kind>/`` report directory. ``options`` supplies the
     report options (``--tomtom-lite``, ``--modisco-max-seqlets``,
     ``--modisco-window``), each absent unless given; absent ones keep
     run_motifs' defaults.
@@ -230,21 +207,19 @@ def run_modisco(args, layout, scores_name, kind, pdf_name):
         f"modisco_results_{kind}_scores.h5")
     report_dir = layout.modisco_dir(kind)
 
-    settings = {name: getattr(args, option)
+    settings = {name: getattr(options, option)
                 for name, option in (("max_seqlets", "modisco_max_seqlets"),
                                      ("window", "modisco_window"))
-                if getattr(args, option, None) is not None}
+                if getattr(options, option, None) is not None}
     run_motifs(layout.interpret_subsample(f"{scores_name}.{kind}_scores.h5"),
                results, **settings)
     generate_report(results, report_dir, meme_file,
-                    tomtom_lite=bool(getattr(args, "tomtom_lite", None)))
+                    tomtom_lite=bool(getattr(options, "tomtom_lite", None)))
     convert_html_to_pdf.main(report_dir + "motifs.html",
                              layout.evaluation(pdf_name))
 
 
-def render_report(args, layout, module, command):
+def render_report(options, layout, module, command):
     """Render the HTML and PDF summary report for a finished run."""
-    args_copy = copy.deepcopy(args)
-    args_copy.input_dir = args_copy.output_dir
-    args_copy.command = command
-    module.main(args_copy)
+    options = as_options(options)
+    module.main(options.step(input_dir=options.output_dir, command=command))

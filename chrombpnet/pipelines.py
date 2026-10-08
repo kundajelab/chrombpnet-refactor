@@ -11,6 +11,12 @@ going on to evaluate.
 
 Checkpoint filenames take the configured engine's suffix (``.pt`` for
 PyTorch), and the built-in architecture files are the engine's.
+
+Each takes the run's read-only :class:`~chrombpnet.options.Options`. What a
+pipeline decides -- the bigwig preprocessing generates, the filtered peaks a
+model trains on, the geometry qc reads off a checkpoint -- it passes on
+explicitly, through :meth:`Options.step`, so it reaches only the steps that
+come after it.
 """
 
 from __future__ import annotations
@@ -18,35 +24,38 @@ from __future__ import annotations
 from chrombpnet import engines, stages
 from chrombpnet.engines import load_model_wrapper
 from chrombpnet.layout import RunLayout
+from chrombpnet.options import as_options
 
 
-def chrombpnet_train_pipeline(args):
+def chrombpnet_train_pipeline(options):
     """Train a bias-factorized ChromBPNet model, then evaluate it.
 
     Steps: preprocess -> hyperparameters -> QC the input bias model ->
     move params into logs/ -> train -> move logs -> (stop here for `train`) ->
     predict -> footprints -> interpret -> modisco -> report.
     """
-    layout = RunLayout.from_args(args)
+    options = as_options(options)
+    layout = RunLayout.from_args(options)
     engine = engines.current()
     sfx = engine.checkpoint_suffix
 
-    stages.preprocess_and_qc_bigwig(args, layout)
+    # Every later step reads the observed signal from this bigwig.
+    options = options.step(bigwig=stages.preprocess_and_qc_bigwig(options, layout))
 
     import chrombpnet.helpers.hyperparameters.find_chrombpnet_hyperparams as find_chrombpnet_hyperparams
-    stages.find_hyperparameters(args, layout, find_chrombpnet_hyperparams)
+    stages.find_hyperparameters(options, layout, find_chrombpnet_hyperparams)
 
     # Check the supplied bias model against observed peak counts before
     # spending a training run on it. Note the unprefixed "evaluation/bias"
     # output prefix, which check_bias_model_quality reads back.
     filtered_peaks = layout.aux("filtered.peaks.bed")
     stages.run_predictions(
-        args, layout,
+        options, layout,
         output_prefix=layout.unprefixed("evaluation", "bias"),
-        model_path=args.bias_model_path,
+        model_path=options.bias_model_path,
         peaks=filtered_peaks, nonpeaks="None")
     stages.check_bias_model_quality(
-        layout, ignore=getattr(args, "ignore_bias_flag", False))
+        layout, ignore=getattr(options, "ignore_bias_flag", False))
 
     # Separate models and params from the auxiliary scratch directory.
     layout.move("auxiliary", "models", f"bias_model_scaled{sfx}")
@@ -63,138 +72,145 @@ def chrombpnet_train_pipeline(args):
         handle.write(params)
 
     import chrombpnet.training.train as train
-    import copy
 
-    args_copy = copy.deepcopy(args)
-    if args_copy.architecture_from_file is None:
-        args_copy.architecture_from_file = engine.default_architecture("chrombpnet")
-    args_copy.peaks = filtered_peaks
-    args_copy.nonpeaks = layout.aux("filtered.nonpeaks.bed")
-    args_copy.output_prefix = layout.models("chrombpnet")
-    args_copy.params = model_params
-    train.main(args_copy)
+    train.main(options.step(
+        replacing={"peaks": filtered_peaks,
+                   "nonpeaks": layout.aux("filtered.nonpeaks.bed")},
+        architecture_from_file=default_architecture(options, engine, "chrombpnet"),
+        output_prefix=layout.models("chrombpnet"),
+        params=model_params))
 
     layout.move("models", "logs", "chrombpnet.log")
     layout.move("models", "logs", "chrombpnet.log.batch")
     layout.move("models", "logs", "chrombpnet.args.json")
 
     import chrombpnet.helpers.generate_reports.make_html as make_html
-    if args.cmd == "train":
-        stages.render_report(args, layout, make_html, args.cmd)
+    if options.cmd == "train":
+        stages.render_report(options, layout, make_html, options.cmd)
         print("Finished training! Exiting!")
         return
 
     nobias_model = layout.models(f"chrombpnet_nobias{sfx}")
 
     stages.run_predictions(
-        args, layout,
+        options, layout,
         output_prefix=layout.evaluation("chrombpnet"),
         model_path=layout.models(f"chrombpnet{sfx}"),
         peaks=filtered_peaks, nonpeaks="None")
 
-    motifs_to_pwm = stages.write_bias_motif_table(args, layout)
+    motifs_to_pwm = stages.write_bias_motif_table(options, layout)
     stages.run_marginal_footprints(
-        args, layout, model_path=nobias_model, regions=args.nonpeaks,
+        options, layout, model_path=nobias_model, regions=options.nonpeaks,
         output_prefix=layout.evaluation("chrombpnet_nobias"),
         motifs_to_pwm=motifs_to_pwm)
     layout.move("evaluation", "auxiliary", "chrombpnet_nobias_footprints.h5")
 
     subsample = stages.subsample_peaks_for_interpretation(
-        layout, filtered_peaks, getattr(args, "interpret_subsample", None))
+        layout, filtered_peaks, getattr(options, "interpret_subsample", None))
     # Both heads are scored and kept, as the bias pipelines do, so the
     # subsample's contribution scores can be compared across runs. MoDISco
     # stays profile-only: make_html renders just the profile table for
     # ChromBPNet models.
     stages.run_interpret(
-        args, layout, model_path=nobias_model, regions=subsample,
+        options, layout, model_path=nobias_model, regions=subsample,
         output_prefix=layout.interpret_subsample("chrombpnet_nobias"),
         profile_or_counts=["counts", "profile"])
-    stages.run_modisco(args, layout, "chrombpnet_nobias", "profile",
+    stages.run_modisco(options, layout, "chrombpnet_nobias", "profile",
                        "chrombpnet_nobias_profile.pdf")
 
-    stages.render_report(args, layout, make_html, args.cmd)
+    stages.render_report(options, layout, make_html, options.cmd)
 
 
-def chrombpnet_qc(args):
+def default_architecture(options, engine, kind):
+    """The -a architecture file, else the engine's built-in one for ``kind``."""
+    if options.architecture_from_file is None:
+        return engine.default_architecture(kind)
+    return options.architecture_from_file
+
+
+def model_geometry(options, model_path):
+    """``options`` plus the input and output lengths read off a checkpoint;
+    qc has no --inputlen/--outputlen."""
+    model = load_model_wrapper(
+        model_path, getattr(options, "device", None), announce=False)
+    return options.step(inputlen=int(model.input_shape[1]),
+                        outputlen=int(model.output_shape[0][1]))
+
+
+def chrombpnet_qc(options):
     """Evaluate an already-trained ChromBPNet model.
 
     The same tail as chrombpnet_train_pipeline from the prediction step on, but
     against user-supplied models and peak files rather than ones this run
     produced.
     """
-    layout = RunLayout.from_args(args)
-
-    # Read the geometry off the checkpoint; qc has no --inputlen/--outputlen.
-    chrombpnet_md = load_model_wrapper(
-        args.chrombpnet_model, getattr(args, "device", None), announce=False)
-    args.inputlen = int(chrombpnet_md.input_shape[1])
-    args.outputlen = int(chrombpnet_md.output_shape[0][1])
+    options = as_options(options)
+    layout = RunLayout.from_args(options)
+    options = model_geometry(options, options.chrombpnet_model)
 
     stages.run_predictions(
-        args, layout,
+        options, layout,
         output_prefix=layout.evaluation("chrombpnet"),
-        model_path=args.chrombpnet_model,
-        peaks=args.peaks, nonpeaks="None")
+        model_path=options.chrombpnet_model,
+        peaks=options.peaks, nonpeaks="None")
 
-    motifs_to_pwm = stages.write_bias_motif_table(args, layout)
+    motifs_to_pwm = stages.write_bias_motif_table(options, layout)
     stages.run_marginal_footprints(
-        args, layout, model_path=args.chrombpnet_model_nb,
-        regions=args.nonpeaks,
+        options, layout, model_path=options.chrombpnet_model_nb,
+        regions=options.nonpeaks,
         output_prefix=layout.evaluation("chrombpnet_nobias"),
         motifs_to_pwm=motifs_to_pwm)
     layout.move("evaluation", "auxiliary", "chrombpnet_nobias_footprints.h5")
 
     subsample = stages.subsample_peaks_for_interpretation(
-        layout, args.peaks, getattr(args, "interpret_subsample", None))
+        layout, options.peaks, getattr(options, "interpret_subsample", None))
     stages.run_interpret(
-        args, layout, model_path=args.chrombpnet_model_nb, regions=subsample,
+        options, layout, model_path=options.chrombpnet_model_nb, regions=subsample,
         output_prefix=layout.interpret_subsample("chrombpnet_nobias"),
         profile_or_counts=["counts", "profile"])
-    stages.run_modisco(args, layout, "chrombpnet_nobias", "profile",
+    stages.run_modisco(options, layout, "chrombpnet_nobias", "profile",
                        "chrombpnet_nobias_profile.pdf")
 
     import chrombpnet.helpers.generate_reports.make_html as make_html
-    stages.render_report(args, layout, make_html, args.cmd)
+    stages.render_report(options, layout, make_html, options.cmd)
 
 
-def train_bias_pipeline(args):
+def train_bias_pipeline(options):
     """Train a bias model on low-count nonpeaks, then evaluate it.
 
     Unlike the ChromBPNet pipeline this trains on nonpeaks only (peaks are
     passed as the "None" sentinel) and scores both counts and profile
     contributions.
     """
-    layout = RunLayout.from_args(args)
+    options = as_options(options)
+    layout = RunLayout.from_args(options)
     engine = engines.current()
 
-    stages.preprocess_and_qc_bigwig(args, layout)
+    # Every later step reads the observed signal from this bigwig.
+    options = options.step(bigwig=stages.preprocess_and_qc_bigwig(options, layout))
 
     import chrombpnet.helpers.hyperparameters.find_bias_hyperparams as find_bias_hyperparams
-    stages.find_hyperparameters(args, layout, find_bias_hyperparams)
+    stages.find_hyperparameters(options, layout, find_bias_hyperparams)
 
     layout.move("auxiliary", "logs", "bias_model_params.tsv")
     layout.move("auxiliary", "logs", "bias_data_params.tsv")
 
     import chrombpnet.training.train as train
-    import copy
 
     filtered_nonpeaks = layout.aux("filtered.bias_nonpeaks.bed")
-    args_copy = copy.deepcopy(args)
-    if args_copy.architecture_from_file is None:
-        args_copy.architecture_from_file = engine.default_architecture("bias")
-    args_copy.peaks = "None"
-    args_copy.nonpeaks = filtered_nonpeaks
-    args_copy.output_prefix = layout.models("bias")
-    args_copy.params = layout.logs("bias_model_params.tsv")
-    train.main(args_copy)
+    train.main(options.step(
+        replacing={"peaks": "None", "nonpeaks": filtered_nonpeaks},
+        architecture_from_file=default_architecture(options, engine, "bias"),
+        output_prefix=layout.models("bias"),
+        params=layout.logs("bias_model_params.tsv")))
 
     layout.move("models", "logs", "bias.args.json")
     layout.move("models", "logs", "bias.log")
     layout.move("models", "logs", "bias.log.batch")
 
     import chrombpnet.helpers.generate_reports.make_html_bias as make_html_bias
-    if args.cmd_bias == "train":
-        stages.render_report(args, layout, make_html_bias, args.cmd_bias)
+    if options.cmd_bias == "train":
+        stages.render_report(options, layout, make_html_bias, options.cmd_bias)
         print("Finished training! Exiting!")
         return
 
@@ -202,46 +218,43 @@ def train_bias_pipeline(args):
     filtered_peaks = layout.aux("filtered.bias_peaks.bed")
 
     stages.run_predictions(
-        args, layout,
+        options, layout,
         output_prefix=layout.evaluation("bias"),
         model_path=bias_model,
         peaks=filtered_peaks, nonpeaks=filtered_nonpeaks)
 
     subsample = stages.subsample_peaks_for_interpretation(
-        layout, filtered_peaks, getattr(args, "interpret_subsample", None))
+        layout, filtered_peaks, getattr(options, "interpret_subsample", None))
     stages.run_interpret(
-        args, layout, model_path=bias_model, regions=subsample,
+        options, layout, model_path=bias_model, regions=subsample,
         output_prefix=layout.interpret_subsample("bias"),
         profile_or_counts=["counts", "profile"])
-    stages.run_modisco(args, layout, "bias", "profile", "bias_profile.pdf")
-    stages.run_modisco(args, layout, "bias", "counts", "bias_counts.pdf")
+    stages.run_modisco(options, layout, "bias", "profile", "bias_profile.pdf")
+    stages.run_modisco(options, layout, "bias", "counts", "bias_counts.pdf")
 
-    stages.render_report(args, layout, make_html_bias, args.cmd_bias)
+    stages.render_report(options, layout, make_html_bias, options.cmd_bias)
 
 
-def bias_model_qc(args):
+def bias_model_qc(options):
     """Evaluate an already-trained bias model."""
-    layout = RunLayout.from_args(args)
-
-    bias_md = load_model_wrapper(
-        args.bias_model, getattr(args, "device", None), announce=False)
-    args.inputlen = int(bias_md.input_shape[1])
-    args.outputlen = int(bias_md.output_shape[0][1])
+    options = as_options(options)
+    layout = RunLayout.from_args(options)
+    options = model_geometry(options, options.bias_model)
 
     stages.run_predictions(
-        args, layout,
+        options, layout,
         output_prefix=layout.evaluation("bias"),
-        model_path=args.bias_model,
-        peaks=args.peaks, nonpeaks=args.nonpeaks)
+        model_path=options.bias_model,
+        peaks=options.peaks, nonpeaks=options.nonpeaks)
 
     subsample = stages.subsample_peaks_for_interpretation(
-        layout, args.peaks, getattr(args, "interpret_subsample", None))
+        layout, options.peaks, getattr(options, "interpret_subsample", None))
     stages.run_interpret(
-        args, layout, model_path=args.bias_model, regions=subsample,
+        options, layout, model_path=options.bias_model, regions=subsample,
         output_prefix=layout.interpret_subsample("bias"),
         profile_or_counts=["counts", "profile"])
-    stages.run_modisco(args, layout, "bias", "profile", "bias_profile.pdf")
-    stages.run_modisco(args, layout, "bias", "counts", "bias_counts.pdf")
+    stages.run_modisco(options, layout, "bias", "profile", "bias_profile.pdf")
+    stages.run_modisco(options, layout, "bias", "counts", "bias_counts.pdf")
 
     import chrombpnet.helpers.generate_reports.make_html_bias as make_html_bias
-    stages.render_report(args, layout, make_html_bias, args.cmd_bias)
+    stages.render_report(options, layout, make_html_bias, options.cmd_bias)
