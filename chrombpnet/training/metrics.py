@@ -25,10 +25,6 @@ def counts_metrics(labels,preds,outf,title):
     pearson_cor=pearsonr(labels,preds)[0]  
     mse=((labels - preds)**2).mean(axis=0)
 
-    #print("spearman:"+str(spearman_cor))
-    #print("pearson:"+str(pearson_cor))
-    #print("mse:"+str(mse))
-
     plt.rcParams["figure.figsize"]=8,8
     # density_scatter draws its own figure (plt.subplots) and that is the one
     # saved; the empty plt.figure() that used to precede it only leaked.
@@ -181,16 +177,7 @@ def plot_histogram(region_jsd, shuffled_labels_jsd, output_prefix, title):
     #generate histogram distributions 
     num_bins=100
     plt.rcParams["figure.figsize"]=8,8
-    
-    #plot mnnll histogram 
-    #plt.figure()
-    #n,bins,patches=plt.hist(mnnll_vals,num_bins,facecolor='blue',alpha=0.5,label="Predicted vs Labels")
-    #n1,bins1,patches1=plt.hist(shuffled_labels_mnll,num_bins,facecolor='black',alpha=0.5,label='Shuffled Labels vs Labels')
-    #plt.xlabel('Multinomial Negative LL Profile Labels and Predictions in Probability Space')
-    #plt.title("MNNLL: "+ tile)
-    #plt.legend(loc='best')
-    #plt.savefig(output_prefix+".mnnll.png",format='png',dpi=300)
-    
+
     #plot jsd histogram
     plt.figure()
     n,bins,patches=plt.hist(region_jsd,num_bins,facecolor='blue',alpha=0.5,label="Predicted vs Labels")

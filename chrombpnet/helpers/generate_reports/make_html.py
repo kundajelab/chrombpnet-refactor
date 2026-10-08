@@ -140,8 +140,6 @@ def qc_report(fpx,prefix,data_type):
 	stat = modisco_table.match_stat(table_profile)
 	tf_text_profile = tf_text_profile.replace(
 		"qvals (qval0,qval1,qval2)", modisco_table.stat_description(stat))
-	#table_profile = open(os.path.join(prefix,"evaluation/modisco_profile/motifs.html")).read().replace("./","./modisco_profile/").replace("width=\"240\"","class=\"cover\"").replace("border=\"1\" class=\"dataframe\"","").replace(">pos_patterns.pattern",">pos_").replace(">neg_patterns.pattern",">neg_").replace("modisco_cwm_fwd","cwm_fwd").replace("modisco_cwm_rev","cwm_rev").replace("num_seqlets","NumSeqs").replace("dataframe","new")
-	#table_counts = open(os.path.join(prefix,"auxiliary/interpret_subsample/modisco_counts/motifs.html")).read().replace("./","./modisco_counts/").replace("width=\"240\"","class=\"cover\"").replace("border=\"1\" class=\"dataframe\"","").replace(">pos_patterns.pattern",">pos_").replace(">neg_patterns.pattern",">neg_").replace("modisco_cwm_fwd","cwm_fwd").replace("modisco_cwm_rev","cwm_rev").replace("num_seqlets","NumSeqs")
 
 	html_perf = f'''
 			
@@ -239,23 +237,6 @@ def qc_report(fpx,prefix,data_type):
 	else:
 		print("Unknown data type: "+data_type)
 
-
-		
-# 	html_motifs = f'''			
-# 			<body style="font-size:20px;">
-# 				<h3>{tf_hed}</h3>
-# 				<p>{tf_text_profile}</p>
-# 			</body>
-# 			<body>
-# 				 {table_profile}
-# 			</body>
-# 			<body style="font-size:20px;">
-# 				<p>{tf_text_counts}</p>
-# 			</body>
-# 			<body>
-# 				 {table_counts}
-# 			</body>
-# 		'''					
 
 def main(args):
 
