@@ -191,21 +191,21 @@ def initialize_keras_default(model: BPNet, seed: int) -> None:
                 module.bias.zero_()
 
 
-def initialize_for_benchmark(model: BPNet, args) -> Optional[str]:
-    """Apply the initializer implied by ``args.benchmark``, if any.
+def initialize_for_benchmark(model: BPNet, args) -> str:
+    """Apply the initializer for the run's reproducibility level.
 
-    ``max`` shares the exact arrays with TensorFlow; ``tensorflow`` and
-    ``medium`` only match Keras's default initializer family.
+    ``--reproducibility-max`` shares the exact arrays with the other engines;
+    otherwise the weights come from Keras's default initializer family
+    (Glorot/Xavier-uniform, zero biases), as in the TensorFlow implementation.
+    PyTorch's own default initialization is never used.
     """
     from chrombpnet.training.utils.benchmark_utils import benchmark_enables
 
     if benchmark_enables(args, "shared_initial_weights"):
         initialize_keras_compatible(model, args.seed)
         return "shared_canonical_arrays"
-    if benchmark_enables(args, "keras_initializers"):
-        initialize_keras_default(model, args.seed)
-        return "keras_default_glorot"
-    return None
+    initialize_keras_default(model, args.seed)
+    return "keras_default_glorot"
 
 
 class ChromBPNet(nn.Module):

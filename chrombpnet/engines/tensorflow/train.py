@@ -11,9 +11,9 @@ differs:
   ``SourceFileLoader('', path).load_module()``, not with the shared loader:
   Keras records a ``Lambda`` layer's defining module name in the saved model,
   and the original's is the empty string;
-* ``--benchmark`` controls that apply to Keras are honoured. At the default
-  level none of them changes anything: ``fit`` shuffles batches exactly as the
-  original's default ``shuffle=True`` does;
+* ``--reproducibility`` / ``--reproducibility-max`` controls that apply to
+  Keras are honoured. Without them none of them changes anything: ``fit``
+  shuffles batches exactly as the original's default ``shuffle=True`` does;
 * fixed defects of the original: ``--seed`` is applied before the model is
   built, and the best validation checkpoint is restored even when training
   runs out of epochs.
@@ -52,7 +52,7 @@ def _enable_deterministic_kernels():
     enable = getattr(tf.config.experimental, "enable_op_determinism", None)
     if enable is None:
         raise RuntimeError(
-            "--benchmark max needs tf.config.experimental.enable_op_determinism")
+            "--reproducibility-max needs tf.config.experimental.enable_op_determinism")
     enable()
 
 
@@ -102,7 +102,7 @@ def fit_and_evaluate(model, train_gen, valid_gen, args, architecture_module):
               epochs=args.epochs,
               verbose=1,
               callbacks=cur_callbacks,
-              # True unless --benchmark medium/max pins the example order;
+              # True unless --reproducibility(-max) pins the example order;
               # True is also Keras's default, which the original relied on.
               shuffle=use_keras_batch_order_shuffle(args))
 

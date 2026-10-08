@@ -1,46 +1,33 @@
-"""Framework-neutral fixtures for controlled TensorFlow/PyTorch benchmarks.
+"""Reproducibility levels: how much of a training run is held fixed.
 
-This package is a port of the TensorFlow ChromBPNet, so matching that
-implementation's *settings* is the ordinary case, not a special mode. It is
-therefore what you get when ``--benchmark`` is omitted. The flag exists to
-hold progressively more constant than that, or to opt out of it entirely.
+This package is a port of the TensorFlow ChromBPNet, so its training
+*settings* are TensorFlow's: Glorot/Xavier-uniform initialization with zero
+biases, Adam epsilon ``1e-7``, sample-weighted epoch losses the way Keras
+aggregates them, batches visited in the shuffled order Keras uses, a seeded
+count-threshold nonpeak draw, and restoration of the best-validation
+checkpoint. Every engine always trains that way; jitter, reverse
+complementation, per-epoch negative subsampling and within-epoch shuffling
+still vary from run to run. Two flags hold more fixed:
 
-``pytorch``
-    No parity controls at all: PyTorch's own native initializations, Adam
-    defaults and loss aggregation. Not a level, an opt-out.
+``--reproducibility``
+    A pinned example schedule. All generator randomness is drawn from a
+    dedicated, framework-independent NumPy stream seeded from ``--seed``, so
+    every engine realizes the same jitter, reverse complements and negative
+    subsamples; epoch-start shuffling and the Keras batch-order shuffle are
+    disabled; validation generators are immutable.
 
-``tensorflow`` (**the default** -- what you get with no ``--benchmark``)
-    Make the PyTorch training *settings* equivalent to the TensorFlow/Keras
-    ones, while leaving normal training stochasticity in place. Conv1D/Dense
-    weights use Glorot/Xavier-uniform initialization with zero biases, Adam
-    uses epsilon ``1e-7``, epoch losses are sample-weighted the way Keras
-    aggregates them, batches are visited in the shuffled order Keras uses by
-    default, and the count-threshold nonpeak draw is seeded so both frameworks
-    prepare byte-identical training inputs. Jitter, reverse complementation,
-    per-epoch negative subsampling, and within-epoch shuffling still vary.
+``--reproducibility-max``
+    ``--reproducibility`` plus everything else that can be held constant:
+    every engine receives the same concrete initial weight arrays rather than
+    merely the same initializer family, the augmentation schedule for epoch
+    ``k`` is re-derived from ``(seed, mode, k)`` so it cannot drift,
+    deterministic kernels are requested, TF32 is disabled, and Adam's
+    foreach/fused dispatch is turned off.
 
-``medium``
-    ``tensorflow`` plus a frozen example schedule. All generator randomness is
-    drawn from a dedicated, framework-independent NumPy stream seeded from
-    ``--seed``, so both frameworks realize the same jitter, reverse
-    complements, and negative subsamples; epoch-start shuffling and the Keras
-    batch-order shuffle are disabled; validation generators are immutable; and
-    both frameworks restore the best-validation checkpoint before saving.
-
-``max``
-    ``medium`` plus everything else that can be held constant: both frameworks
-    receive the same concrete initial weight arrays rather than merely the same
-    initializer family, the augmentation schedule for epoch ``k`` is re-derived
-    from ``(seed, mode, k)`` so it cannot drift, deterministic kernels are
-    requested, TF32 is disabled, and Adam's foreach/fused dispatch is turned
-    off.
-
-A bare ``--benchmark`` with no value means ``max``.
-
-This level was once called ``lite`` and was reachable only as the argparse
-default, so a caller that built an argument namespace by hand -- ``qc`` does,
-and so does every library user -- silently got no controls instead. The
-default and the library fallback are now the same thing.
+Internally these are three levels -- ``tensorflow`` (neither flag),
+``medium`` and ``max`` -- which is what checkpoints record and what the
+generators are handed. They replace ``--benchmark``, whose ``pytorch`` level
+(PyTorch's own initialization and Adam settings) is gone.
 """
 
 from __future__ import annotations
@@ -51,36 +38,23 @@ import numpy as np
 
 BENCHMARK_LEVELS = ("tensorflow", "medium", "max")
 
-# Level used for a bare ``--benchmark`` with no value.
-BENCHMARK_DEFAULT_LEVEL = "max"
-
-# Level used when ``--benchmark`` is absent - from the command line, and
-# equally from a namespace that never had the attribute. ``tensorflow`` only
-# changes settings that bring this package in line with the TensorFlow
-# implementation it is a port of, so it is the right default for ordinary runs.
+# The level with neither flag -- from the command line, and equally from a
+# namespace that never had the attributes (qc, library callers).
 BENCHMARK_IMPLICIT_LEVEL = "tensorflow"
 
-# Opting out of parity altogether. Accepted on the command line but not a
-# level, so it is kept out of BENCHMARK_LEVELS and the rank table.
-BENCHMARK_NATIVE = "pytorch"
+# Level selected by a bare ``True``.
+BENCHMARK_DEFAULT_LEVEL = "max"
 
-BENCHMARK_CHOICES = (BENCHMARK_NATIVE,) + BENCHMARK_LEVELS
-
-# ``tensorflow`` was called ``lite`` until the default was inverted. The name
-# is gone from the command line - argparse rejects it and lists the valid ones
-# - but checkpoints record the normalized level in their provenance, so the
-# normalizer still reads it. Dropping it here would make old .pt files
-# unloadable for a renaming.
+# Older names, still read so that recorded levels keep loading: ``lite`` was
+# ``tensorflow`` before it became the default.
 _DEPRECATED_LEVEL_ALIASES = {"lite": "tensorflow"}
 
 _LEVEL_RANK = {name: rank for rank, name in enumerate(BENCHMARK_LEVELS, start=1)}
 
-# Minimum level at which each individual control becomes active. A
-# TensorFlow-side fork carrying the same table must rename `lite` to
-# `tensorflow` with it, or a level name stops meaning the same thing on both
-# sides of the comparison.
+# Minimum level at which each individual control becomes active. The
+# ``tensorflow`` ones are therefore always on.
 BENCHMARK_CONTROLS = {
-    # tensorflow: settings parity between the frameworks
+    # always: the TensorFlow implementation's training settings
     "keras_initializers": "tensorflow",
     "keras_adam": "tensorflow",
     "keras_loss_aggregation": "tensorflow",
@@ -90,11 +64,11 @@ BENCHMARK_CONTROLS = {
     # restore_best_weights already intend; without it a TensorFlow run that
     # exhausts max_epochs saves its last epoch while PyTorch saves its best.
     "restore_best_checkpoint": "tensorflow",
-    # medium: the example schedule is pinned and shared
+    # --reproducibility: the example schedule is pinned and shared
     "generator_rng": "medium",
     "fixed_example_order": "medium",
     "frozen_validation": "medium",
-    # max: identical starting tensors and numerics
+    # --reproducibility-max: identical starting tensors and numerics
     "shared_initial_weights": "max",
     "replayable_augmentation": "max",
     "deterministic_kernels": "max",
@@ -106,50 +80,57 @@ _MODE_OFFSETS = {"train": 0, "valid": 1, "test": 2}
 
 
 def normalize_benchmark_level(value):
-    """Map a raw ``--benchmark`` value onto a level, or ``None`` for no controls.
+    """Map a level name (or ``None``/``True``/``False``) onto a level.
 
-    ``None`` means *absent*, not *off*, and resolves to
-    :data:`BENCHMARK_IMPLICIT_LEVEL`. Only ``pytorch`` (or an explicit
-    ``False``) selects no controls at all.
+    ``None`` and ``False`` mean no extra reproducibility, i.e.
+    :data:`BENCHMARK_IMPLICIT_LEVEL`; ``True`` means ``max``.
     """
-    if value is None:
+    if value is None or value is False:
         return BENCHMARK_IMPLICIT_LEVEL
-    if value is False:
-        return None
     if value is True:
         return BENCHMARK_DEFAULT_LEVEL
     text = str(value).strip().lower()
-    if text in ("", "true"):
+    if text in ("", "false"):
+        return BENCHMARK_IMPLICIT_LEVEL
+    if text == "true":
         return BENCHMARK_DEFAULT_LEVEL
-    if text in ("false", BENCHMARK_NATIVE):
-        return None
     text = _DEPRECATED_LEVEL_ALIASES.get(text, text)
     if text not in _LEVEL_RANK:
         raise ValueError(
-            "Unknown benchmark level {!r}; expected one of {}".format(
-                value, ", ".join(BENCHMARK_CHOICES)
+            "Unknown reproducibility level {!r}; expected one of {}".format(
+                value, ", ".join(BENCHMARK_LEVELS)
             )
         )
     return text
 
 
-def benchmark_level(source):
-    """Read a benchmark level from an argument namespace or a raw value.
+def level_from_flags(reproducibility=None, reproducibility_max=None):
+    """The level ``--reproducibility`` / ``--reproducibility-max`` select."""
+    if reproducibility_max:
+        return "max"
+    if reproducibility:
+        return "medium"
+    return BENCHMARK_IMPLICIT_LEVEL
 
-    A namespace without a ``benchmark`` attribute is treated exactly like an
-    omitted flag, so ``qc`` and library callers get the same parity settings a
-    training run gets.
+
+def benchmark_level(source):
+    """The reproducibility level of an argument namespace or a raw value.
+
+    A namespace is read through its ``reproducibility`` and
+    ``reproducibility_max`` flags; one with neither -- ``qc``, library
+    callers -- gets the default level a training run gets. Library and test
+    callers may instead carry a level name as ``benchmark``.
     """
     if source is None or isinstance(source, (str, bool)):
         return normalize_benchmark_level(source)
+    if getattr(source, "reproducibility_max", None) or getattr(source, "reproducibility", None):
+        return level_from_flags(getattr(source, "reproducibility", None),
+                                getattr(source, "reproducibility_max", None))
     return normalize_benchmark_level(getattr(source, "benchmark", None))
 
 
 def benchmark_at_least(source, level):
-    current = benchmark_level(source)
-    if current is None:
-        return False
-    return _LEVEL_RANK[current] >= _LEVEL_RANK[level]
+    return _LEVEL_RANK[benchmark_level(source)] >= _LEVEL_RANK[level]
 
 
 def benchmark_enables(source, control):
@@ -157,41 +138,34 @@ def benchmark_enables(source, control):
     return benchmark_at_least(source, BENCHMARK_CONTROLS[control])
 
 
-BENCHMARK_HELP = (
-    "How much to hold constant for a controlled TensorFlow/PyTorch comparison. "
-    "Omit the flag for the default, 'tensorflow': match the TensorFlow "
-    "model/optimizer settings (Glorot/Xavier Conv1D initialization, Adam "
-    "epsilon 1e-7, Keras loss aggregation and batch order) while normal "
-    "shuffling and augmentation stay random. "
-    "medium: tensorflow plus a pinned, framework-shared example schedule. "
-    "max: hold as much constant as possible, including identical initial weight "
-    "arrays and deterministic kernels. "
-    "pytorch: PyTorch's own native defaults, with no TensorFlow parity. "
-    "A bare --benchmark means max."
-)
+REPRODUCIBILITY_HELP = (
+    "Pin the example schedule: jitter, reverse complements and negative "
+    "subsamples come from a stream seeded by --seed and shared by every "
+    "engine, epoch-start shuffling is off and the validation set is frozen. "
+    "Without it, training uses the TensorFlow implementation's settings with "
+    "normal shuffling and augmentation.")
+
+REPRODUCIBILITY_MAX_HELP = (
+    "--reproducibility plus identical initial weight arrays in every engine, "
+    "a replayable augmentation schedule, deterministic kernels, TF32 off and "
+    "scalar Adam dispatch. Slower.")
 
 
-def add_benchmark_argument(parser):
-    """Register ``--benchmark [pytorch|tensorflow|medium|max]`` on a parser.
+def add_reproducibility_arguments(parser):
+    """Register ``--reproducibility`` and ``--reproducibility-max``.
 
-    The default is ``None``, meaning *absent*, which
-    :func:`normalize_benchmark_level` resolves to
-    :data:`BENCHMARK_IMPLICIT_LEVEL`. Recording ``None`` rather than the level
-    name keeps ``<prefix>.args.json`` a faithful record of what was typed.
-    A bare ``--benchmark`` selects :data:`BENCHMARK_DEFAULT_LEVEL`.
+    Both default to ``None``, meaning *absent*, and are dropped from the
+    namespace when absent (``parsers.ABSENT_WHEN_OMITTED``), so
+    ``<prefix>.args.json`` records only what was typed.
     """
-    return parser.add_argument(
-        "--benchmark",
-        nargs="?",
-        const=BENCHMARK_DEFAULT_LEVEL,
-        default=None,
-        choices=BENCHMARK_CHOICES,
-        help=BENCHMARK_HELP,
-    )
+    parser.add_argument("--reproducibility", action="store_true", default=None,
+                        help=REPRODUCIBILITY_HELP)
+    parser.add_argument("--reproducibility-max", action="store_true", default=None,
+                        help=REPRODUCIBILITY_MAX_HELP)
 
 
 def use_keras_batch_order_shuffle(source):
-    """Keras shuffles Sequence batch indices; medium and above pin the order."""
+    """Keras shuffles Sequence batch indices; --reproducibility pins the order."""
     return benchmark_enables(source, "keras_batch_order_shuffle") and not benchmark_enables(
         source, "fixed_example_order"
     )

@@ -1,6 +1,6 @@
 """Keras-layout BPNet weights shared by the Keras-based engines.
 
-``--benchmark max`` starts every engine from the same arrays, drawn from one
+``--reproducibility-max`` starts every engine from the same arrays, drawn from one
 framework-neutral NumPy stream (``canonical_bpnet_weights``). TensorFlow 2.8's
 tf.keras and Keras 3 address layers and their weights identically, so the
 TensorFlow and JAX engines assign them with the same function.
@@ -14,7 +14,7 @@ from chrombpnet.training.utils.benchmark_utils import canonical_bpnet_weights
 def assign_canonical_weights(model, parameters, seed):
     """Give the trainable BPNet the shared Keras-layout initial arrays.
 
-    ``--benchmark max``: the same arrays the PyTorch engine assigns through
+    ``--reproducibility-max``: the same arrays the PyTorch engine assigns through
     ``initialize_keras_compatible``, drawn from one framework-neutral NumPy
     stream. For a bias-factorized model only the no-bias tower is assigned;
     the bias model is pretrained and frozen.

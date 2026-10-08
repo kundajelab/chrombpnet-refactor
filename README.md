@@ -109,8 +109,8 @@ to `-bs / 4`, because attribution needs about four times the GPU memory of a
 training step), `--dnase-convention` and `--data-aug` set how DNase cuts are
 recorded and which examples are reverse complemented (see
 [accessibility signal conventions](chrombpnet/helpers/preprocessing/README.md#accessibility-signal-conventions)),
-and `--benchmark` selects the reproducibility level described under
-[Reproducibility](#reproducibility).
+and `--reproducibility` / `--reproducibility-max` hold more of the run fixed
+(see [Reproducibility](#reproducibility)).
 
 For guidance on preparing reads and peaks, see the
 [preprocessing notes](https://github.com/kundajelab/chrombpnet/wiki/Preprocessing).
@@ -298,33 +298,34 @@ Triton forward are adapted from the
 
 ## Reproducibility
 
-`--benchmark` controls how much of the training run is held fixed. **Omit it**
-for the default, `tensorflow`.
+Every engine trains with the TensorFlow implementation's settings: Glorot/Xavier
+initialization with zero biases, Adam epsilon 1e-7, sample-weighted epoch
+losses, shuffled batch visit order, a seeded count-threshold draw, and
+restoration of the best-validation checkpoint. Jitter, reverse complements,
+negative subsamples and shuffling still vary from run to run. Two flags hold
+more fixed, on `pipeline`, `train`, `bias pipeline`, `bias train` and
+`predict`, for every engine:
 
-| Level | Effect |
+| Flag | Effect |
 |---|---|
-| `pytorch` | PyTorch's own defaults: Kaiming initialization, Adam epsilon 1e-8, per-batch loss averaging, sequential batch order |
-| *(omitted)* = `tensorflow` | Glorot/Xavier initialization with zero biases, Adam epsilon 1e-7, sample-weighted epoch losses, shuffled batch visit order, a seeded count-threshold draw, and restoration of the best-validation checkpoint |
-| `medium` | `tensorflow` plus a pinned example schedule: jitter, reverse complements and negative subsamples come from a seeded per-epoch stream instead of the global RNG (`generator_rng`), epoch-start shuffling is off (`fixed_example_order`), and the validation set stops being re-cropped each epoch (`frozen_validation`) |
-| `max` | `medium` plus fixed initial weight arrays, a replayable augmentation schedule, deterministic kernels, TF32 disabled and scalar Adam dispatch |
+| *(neither)* | the settings above |
+| `--reproducibility` | a pinned example schedule: jitter, reverse complements and negative subsamples come from a stream seeded by `--seed` and shared by every engine instead of the global RNG, epoch-start shuffling is off, and the validation set stops being re-cropped each epoch |
+| `--reproducibility-max` | `--reproducibility` plus identical initial weight arrays in every engine, a replayable augmentation schedule, deterministic kernels, TF32 disabled and scalar Adam dispatch |
 
-A bare `--benchmark` with no value means `max`. It is on `pipeline`, `train`,
-`bias pipeline`, `bias train` and `predict`.
+Two runs with the same flags and `--seed` draw the same examples in the same
+order: the data pipeline is seeded before the model is built, and cuDNN
+autotuning is left at its default (off), so kernel selection does not vary
+between runs. On the CPU that makes their checkpoints, logs and metrics
+identical; on a GPU, convolution kernels may still accumulate in a different
+order unless `--reproducibility-max` asks for deterministic ones.
 
-The default is `tensorflow` because this package is a port: matching the
-implementation it was ported from is the ordinary case, not a special mode.
-
-Two runs at the same level with the same `--seed` produce identical
-checkpoints, logs and metrics. This holds on GPU as well as CPU: the data
-pipeline is seeded before the model is built, and cuDNN autotuning is left at
-its default (off), so kernel selection does not vary between runs.
-
-`max` goes further and *requires* determinism rather than relying on it:
-`torch.use_deterministic_algorithms(True)`, `cudnn.deterministic`, and TF32
-off for both cuDNN and cuBLAS matmuls. That costs throughput, and on CUDA
-PyTorch additionally demands `CUBLAS_WORKSPACE_CONFIG=:4096:8` in the
-environment before it will allow deterministic cuBLAS reductions -- the
-package does not set this for you.
+`--reproducibility-max` goes further and *requires* determinism rather than
+relying on it: deterministic algorithms in PyTorch (with TF32 off for both
+cuDNN and cuBLAS matmuls), `enable_op_determinism` in TensorFlow, and XLA's
+deterministic GPU kernels in JAX. That costs throughput, and on CUDA PyTorch
+additionally demands `CUBLAS_WORKSPACE_CONFIG=:4096:8` in the environment
+before it will allow deterministic cuBLAS reductions -- the package does not
+set this for you.
 
 One step sits outside this: the enzyme shift is estimated from 20 000 reads
 sampled with an unseeded `shuf`. The estimate is an integer chosen by an argmax

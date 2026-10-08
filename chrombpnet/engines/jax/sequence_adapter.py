@@ -9,7 +9,7 @@ batch, in an order it shuffles with Python's ``random`` when
 
 The generator must see one ``on_epoch_end`` per completed pass, as it does under
 TF-Keras and the PyTorch engine: each call re-draws its jitter, reverse
-complements and negatives, and from ``--benchmark max`` on epoch ``k``'s draws
+complements and negatives, and with ``--reproducibility-max`` epoch ``k``'s draws
 are derived from ``(seed, mode, k)`` so that every engine trains on the same
 schedule. Keras 3 also calls ``on_epoch_end`` from ``EpochIterator.reset()``,
 before the first training epoch and before every validation pass, when no pass

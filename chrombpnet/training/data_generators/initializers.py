@@ -1,6 +1,6 @@
 import chrombpnet.training.data_generators.batchgen_generator as batchgen_generator
 from chrombpnet import conventions
-from chrombpnet.training.utils.benchmark_utils import benchmark_enables
+from chrombpnet.training.utils.benchmark_utils import benchmark_enables, benchmark_level
 import pandas as pd
 import json
 
@@ -104,7 +104,7 @@ def initialize_generators(args, mode, parameters, return_coords):
                                     return_coords=return_coords,
                                     shuffle_at_epoch_start=shuffle_at_epoch_start,
                                     mode=mode,
-                                    benchmark=getattr(args, "benchmark", None),
+                                    benchmark=benchmark_level(args),
                                     benchmark_seed=getattr(args, "seed", None),
                                     rc_shift=convention.rc_shift,
                                     rc_frac=convention.rc_frac

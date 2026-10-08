@@ -243,6 +243,6 @@ def test_keras_archives_digest_by_content(tmp_path):
            "(capture one first: python -m tests.regression.harness capture --out <dir>)")
 def test_artifacts_match_the_captured_baseline():
     baseline = Path(os.environ["CHROMBPNET_REGRESSION_BASELINE"])
-    benchmark = os.environ.get("CHROMBPNET_REGRESSION_BENCHMARK") or None
-    assert harness.compare(baseline, benchmark, None) == 0, (
+    reproducibility = os.environ.get("CHROMBPNET_REGRESSION_REPRODUCIBILITY") or None
+    assert harness.compare(baseline, reproducibility, None) == 0, (
         "CLI artifacts changed; see the per-artifact report above")

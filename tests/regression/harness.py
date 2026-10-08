@@ -142,7 +142,7 @@ def _for_engine(argv: list[str], engine: str) -> list[str]:
 
 
 def run_scenarios(workspace: Path, names: list[str] | None = None,
-                  benchmark: str | None = None,
+                  reproducibility: str | None = None,
                   verbose: bool = True,
                   engine: str = "pytorch") -> dict[str, dict[str, str]]:
     """Execute the scenarios and return ``{scenario: {artifact: digest}}``."""
@@ -190,8 +190,8 @@ def run_scenarios(workspace: Path, names: list[str] | None = None,
 
         values = _placeholders(workspace, paths, scenario)
         argv = _for_engine([part.format(**values) for part in scenario.argv], engine)
-        if benchmark is not None and _accepts_benchmark(argv):
-            argv += ["--benchmark", benchmark]
+        if reproducibility is not None and _accepts_reproducibility(argv):
+            argv += [REPRODUCIBILITY_FLAGS[reproducibility]]
 
         started = time.monotonic()
         completed = subprocess.run(
@@ -242,8 +242,13 @@ def _verify_package_root(env: dict[str, str], cwd: Path) -> None:
             "checkout of that revision instead of using 'against --ref'.")
 
 
-def _accepts_benchmark(argv: list[str]) -> bool:
-    """--benchmark only exists on the four training parsers."""
+#: ``--reproducibility`` values for the harness, and the CLI flag each adds.
+REPRODUCIBILITY_FLAGS = {"on": "--reproducibility", "max": "--reproducibility-max"}
+
+
+def _accepts_reproducibility(argv: list[str]) -> bool:
+    """The reproducibility flags exist on the four training parsers (and
+    predict, which no scenario runs)."""
     head = [part for part in argv[:2] if not part.startswith("-")]
     return head[:2] in (["pipeline"], ["train"], ["bias", "pipeline"],
                         ["bias", "train"])
@@ -254,11 +259,12 @@ def _accepts_benchmark(argv: list[str]) -> bool:
 ENGINE_RECORD = "engine.txt"
 
 
-def capture(out: Path, benchmark: str | None, names: list[str] | None,
+def capture(out: Path, reproducibility: str | None, names: list[str] | None,
             engine: str = "pytorch") -> Path:
     """Run the scenarios in RUN_DIR and archive the result under ``out``."""
     out = Path(out)
-    manifests = run_scenarios(RUN_DIR, names=names, benchmark=benchmark, engine=engine)
+    manifests = run_scenarios(RUN_DIR, names=names, reproducibility=reproducibility,
+                              engine=engine)
     manifest_path = out / "manifest.json"
     artifacts.write_manifest(manifest_path, manifests)
     (out / ENGINE_RECORD).write_text(engine + "\n")
@@ -276,7 +282,7 @@ def capture(out: Path, benchmark: str | None, names: list[str] | None,
     return manifest_path
 
 
-def compare(baseline_dir: Path, benchmark: str | None,
+def compare(baseline_dir: Path, reproducibility: str | None,
             names: list[str] | None, engine: str = "pytorch") -> int:
     """Re-run the scenarios and diff against a captured baseline."""
     baseline_dir = Path(baseline_dir)
@@ -290,7 +296,7 @@ def compare(baseline_dir: Path, benchmark: str | None,
                          f"not {engine}")
 
     current_workspace = RUN_DIR
-    current = run_scenarios(current_workspace, names=names, benchmark=benchmark,
+    current = run_scenarios(current_workspace, names=names, reproducibility=reproducibility,
                             engine=engine)
 
     problems: list[str] = []
@@ -323,7 +329,7 @@ def compare(baseline_dir: Path, benchmark: str | None,
     return 0
 
 
-def against_ref(ref: str, benchmark: str | None,
+def against_ref(ref: str, reproducibility: str | None,
                 names: list[str] | None, engine: str = "pytorch") -> int:
     """Capture a baseline from ``ref`` in a temporary worktree, then compare.
 
@@ -369,8 +375,10 @@ def against_ref(ref: str, benchmark: str | None,
         env["CHROMBPNET_EXPECT_PACKAGE_ROOT"] = str(worktree)
         argv = [sys.executable, "-m", "tests.regression.harness", "capture",
                 "--out", str(baseline)]
-        if benchmark:
-            argv += ["--benchmark", benchmark]
+        if reproducibility:
+            # The ref's own harness runs the baseline: a ref from before
+            # --reproducibility replaced --benchmark does not know this flag.
+            argv += ["--reproducibility", reproducibility]
         if engine != "pytorch":
             argv += ["--engine", engine]
         for name in names or []:
@@ -381,7 +389,7 @@ def against_ref(ref: str, benchmark: str | None,
                         str(worktree)], check=False, capture_output=True)
 
     print(f"\n--- comparing working tree against {ref} ---")
-    return compare(baseline, benchmark, names, engine)
+    return compare(baseline, reproducibility, names, engine)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -390,9 +398,9 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     for name in ("capture", "compare", "against"):
         child = sub.add_parser(name)
-        child.add_argument("--benchmark", default=None,
-                           help="benchmark level to pass to training commands "
-                                "(omit for the CLI default, 'tensorflow')")
+        child.add_argument("--reproducibility", default=None, choices=sorted(REPRODUCIBILITY_FLAGS),
+                           help="pass --reproducibility (on) or --reproducibility-max (max) "
+                                "to the training commands (omit for neither)")
         child.add_argument("--scenario", action="append", dest="scenarios",
                            help="run only this scenario (repeatable)")
         child.add_argument("--engine", default="pytorch", choices=sorted(ENGINE_SUFFIXES),
@@ -407,11 +415,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "capture":
-        capture(args.out, args.benchmark, args.scenarios, args.engine)
+        capture(args.out, args.reproducibility, args.scenarios, args.engine)
         return 0
     if args.command == "compare":
-        return compare(args.baseline, args.benchmark, args.scenarios, args.engine)
-    return against_ref(args.ref, args.benchmark, args.scenarios, args.engine)
+        return compare(args.baseline, args.reproducibility, args.scenarios, args.engine)
+    return against_ref(args.ref, args.reproducibility, args.scenarios, args.engine)
 
 
 if __name__ == "__main__":

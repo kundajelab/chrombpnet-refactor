@@ -12,15 +12,15 @@ call and saves. The PR does part of this in its ``train.main``; here the shared
   ``get_model``, and the precision it sets is restored when ``fit`` ends;
 * batches come from the shared generator through
   :class:`~chrombpnet.engines.jax.sequence_adapter.KerasPyDataset`, and
-  ``fit(shuffle=...)`` follows ``--benchmark`` (True at the default level, as
-  in the PR);
+  ``fit(shuffle=...)`` follows ``--reproducibility`` (True without it, as in
+  the PR);
 * ``--lr-schedule cosine`` needs the number of training steps, which the
   architecture file cannot know when it builds the optimizer; the PR built the
   training generator first, and here the model is recompiled with the schedule
   once ``fit`` has the generator. The argument namespace is not modified;
 * checkpoints are ``.keras`` files, this engine's format;
-* ``--benchmark max`` assigns the shared Keras-layout initial weights and asks
-  XLA for deterministic GPU kernels.
+* ``--reproducibility-max`` assigns the shared Keras-layout initial weights
+  and asks XLA for deterministic GPU kernels.
 """
 
 from __future__ import annotations
@@ -78,7 +78,7 @@ def _enable_deterministic_kernels():
     if runtime.backends_initialized():
         if jax.default_backend() != "cpu":
             raise RuntimeError(
-                "--benchmark max needs deterministic GPU kernels, which JAX can only be given before it "
+                "--reproducibility-max needs deterministic GPU kernels, which JAX can only be given before it "
                 "starts; set XLA_FLAGS={} in the environment".format(_DETERMINISTIC_FLAG))
         return
     os.environ["XLA_FLAGS"] = (flags + " " + _DETERMINISTIC_FLAG).strip()

@@ -28,8 +28,8 @@ def test_cli_help_lists_active_command_tree():
         assert command in completed.stdout
 
 
-def test_training_cli_exposes_benchmark_mode():
-    commands = (["pipeline"], ["train"], ["bias", "pipeline"], ["bias", "train"])
+def test_training_cli_exposes_the_reproducibility_flags():
+    commands = (["pipeline"], ["train"], ["bias", "pipeline"], ["bias", "train"], ["predict"])
     for command in commands:
         completed = subprocess.run(
             [sys.executable, "-m", "chrombpnet.CHROMBPNET", *command, "--help"],
@@ -37,15 +37,10 @@ def test_training_cli_exposes_benchmark_mode():
             text=True,
             capture_output=True,
         )
-        assert "--benchmark" in completed.stdout
-        # Three levels plus an opt-out, with a bare --benchmark still accepted.
-        assert "{pytorch,tensorflow,medium,max}" in completed.stdout.replace("\n", "")
-        # The "lite" benchmark level is gone; argparse must reject it and say
-        # what is valid, rather than silently accepting a stale script. (The
-        # word itself may appear: pipeline has --tomtom-lite.)
-        import re
-        choices = re.search(r"--benchmark\[\{([^}]*)\}\]", completed.stdout.replace("\n", "").replace(" ", ""))
-        assert choices is not None and "lite" not in choices.group(1)
+        assert "--reproducibility " in completed.stdout.replace("\n", " "), command
+        assert "--reproducibility-max" in completed.stdout, command
+        # --benchmark is gone; a stale script fails at the parser.
+        assert "--benchmark" not in completed.stdout, command
 
 
 def test_nonpeak_oversampling_is_bounded_by_available_rows():
@@ -116,10 +111,9 @@ def test_interpret_batch_size_is_exposed_wherever_interpret_runs():
         assert "--interpret-batch-size" in completed.stdout, command
 
 
-def test_benchmark_defaults_to_tensorflow_parity_when_the_flag_is_omitted():
+def test_neither_flag_means_the_tensorflow_settings():
     import chrombpnet.parsers as parsers
     from chrombpnet.training.utils.benchmark_utils import (
-        BENCHMARK_DEFAULT_LEVEL,
         BENCHMARK_IMPLICIT_LEVEL,
         benchmark_enables,
         benchmark_level,
@@ -129,29 +123,27 @@ def test_benchmark_defaults_to_tensorflow_parity_when_the_flag_is_omitted():
             "-p", "p", "-n", "n", "-fl", "f", "-b", "b", "-o", "o"]
 
     def parse(extra):
-        argv = ["chrombpnet"] + base + extra
-        original, sys.argv = sys.argv, argv
-        try:
-            return parsers.read_parser()
-        finally:
-            sys.argv = original
+        args = parsers.read_parser(base + extra)
+        parsers.drop_absent(args)
+        return args
 
     assert BENCHMARK_IMPLICIT_LEVEL == "tensorflow"
-    # Omitting the flag selects TensorFlow parity, so this package matches the
-    # implementation it is a port of out of the box. The parser records None,
-    # not the level name, so args.json says what was actually typed.
-    assert parse([]).benchmark is None
-    assert benchmark_level(parse([])) == "tensorflow"
-    assert benchmark_enables(parse([]), "keras_adam")
-    assert benchmark_enables(parse([]), "keras_initializers")
-    assert not benchmark_enables(parse([]), "fixed_example_order")
-    # A bare flag still means max, as it did before the default changed.
-    assert benchmark_level(parse(["--benchmark"])) == BENCHMARK_DEFAULT_LEVEL == "max"
-    # "pytorch" is the escape hatch to PyTorch's native defaults.
-    assert benchmark_level(parse(["--benchmark", "pytorch"])) is None
-    assert not benchmark_enables(parse(["--benchmark", "pytorch"]), "keras_adam")
-    for level in ("tensorflow", "medium", "max"):
-        assert benchmark_level(parse(["--benchmark", level])) == level
+    # Omitting both flags selects the TensorFlow settings, so this package
+    # matches the implementation it is a port of out of the box. Absent flags
+    # are dropped, so args.json says only what was typed.
+    args = parse([])
+    assert not hasattr(args, "reproducibility") and not hasattr(args, "reproducibility_max")
+    assert benchmark_level(args) == "tensorflow"
+    assert benchmark_enables(args, "keras_adam")
+    assert benchmark_enables(args, "keras_initializers")
+    assert not benchmark_enables(args, "fixed_example_order")
+    assert benchmark_level(parse(["--reproducibility"])) == "medium"
+    assert benchmark_level(parse(["--reproducibility-max"])) == "max"
+    assert benchmark_level(parse(["--reproducibility", "--reproducibility-max"])) == "max"
+    # The old flag and its levels are refused.
+    for stale in (["--benchmark"], ["--benchmark", "pytorch"], ["--reproducibility", "max"]):
+        with pytest.raises(SystemExit):
+            parsers.read_parser(base + stale)
 
 
 def _one_hot_reference(seqs):

@@ -96,9 +96,6 @@ def test_pytorch_only_flags_are_refused_for_other_engines():
     with pytest.raises(ValueError, match="--predict-fk"):
         engines.configure_from_args(
             Namespace(engine="tensorflow", predict_fk=True), require=False)
-    with pytest.raises(ValueError, match="--benchmark pytorch"):
-        engines.configure_from_args(
-            Namespace(engine="tensorflow", benchmark="pytorch"), require=False)
     # Inferred engines get the same check.
     with pytest.raises(ValueError, match="--predict-fk"):
         engines.configure_from_args(

@@ -90,7 +90,7 @@ class ChromBPNetBatchGenerator:
             #
             # Without this, `chrombpnet qc` and `chrombpnet bias qc` fall back
             # to the global np.random, which nothing on those paths ever seeds,
-            # because neither command exposes --seed or --benchmark. Two
+            # because neither command exposes --seed or --reproducibility. Two
             # identical bias qc runs then disagree: measured on a synthetic
             # fixture, coords_center moved by up to 32475 and the reported
             # counts pearsonr went from -0.0 to -0.21.

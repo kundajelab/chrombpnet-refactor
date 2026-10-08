@@ -1,5 +1,35 @@
 # Changelog
 
+## `--benchmark` replaced by `--reproducibility` and `--reproducibility-max`
+
+- **Behaviour change, command line.** `--benchmark
+  [pytorch|tensorflow|medium|max]` is gone, from `pipeline`, `train`, `bias
+  pipeline`, `bias train` and `predict`. In its place, two boolean flags:
+  - `--reproducibility`, the old `medium`: a pinned example schedule (jitter,
+    reverse complements and negative subsamples from a stream seeded by
+    `--seed` and shared by every engine; no epoch-start shuffling; a frozen
+    validation set).
+  - `--reproducibility-max`, the old `max`: that plus identical initial
+    weight arrays in every engine, a replayable augmentation schedule,
+    deterministic kernels, TF32 off and scalar Adam dispatch.
+- **The `pytorch` level is removed**: PyTorch's own initialization, Adam
+  epsilon and loss aggregation are no longer reachable, so the PyTorch engine
+  always uses the TensorFlow implementation's settings. The `tensorflow`
+  level is simply what a run is with neither flag, as it already was by
+  default.
+- Both flags work for all three engines; they did as levels too, through the
+  shared data generators and each engine's own controls (`enable_op_determinism`
+  in TensorFlow, XLA's deterministic kernels in JAX). `--benchmark pytorch`'s
+  refusal for the TensorFlow and JAX engines goes with it.
+- **No output changes with neither flag**, except the record of the run:
+  `<prefix>.args.json` no longer has a `"benchmark": null` key, and the new
+  flags are left out of it when absent. PyTorch checkpoints still record the
+  level (`tensorflow`, `medium`, `max`), so existing `.pt` files load as
+  before.
+- The regression harness's `--benchmark LEVEL` becomes `--reproducibility
+  {on,max}`, and `CHROMBPNET_REGRESSION_BENCHMARK` becomes
+  `CHROMBPNET_REGRESSION_REPRODUCIBILITY`.
+
 ## `--data-aug` split in two: `--dnase-convention` and `--data-aug`
 
 - **Behaviour change, command line.** The one `--data-aug` flag with seven

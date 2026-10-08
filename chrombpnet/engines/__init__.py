@@ -197,10 +197,6 @@ def _check_combinations(engine, args):
         raise ValueError(
             f"--predict-fk runs PyTorch's fused Triton forward and cannot be "
             f"combined with the {engine.name} engine")
-    if getattr(args, "benchmark", None) == "pytorch":
-        raise ValueError(
-            f"--benchmark pytorch opts out of PyTorch's TensorFlow-parity "
-            f"settings and has no meaning for the {engine.name} engine")
 
 
 def load_model_wrapper(path, device=None, *, announce=True, summary=True):

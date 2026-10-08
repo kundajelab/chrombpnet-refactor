@@ -125,5 +125,6 @@ the other engines: `--optimizer muon` (Muon on the dilated convolutions,
 experimental), `--muon-lr`, `--ema`/`--ema-momentum`, `--lr-schedule cosine`
 and `--precision {default,highest,bf16}` (bf16 is faster but loses accuracy).
 
-`--predict-fk` (the fused Triton forward) and `--benchmark pytorch` are
-PyTorch-only and are refused for other engines.
+`--predict-fk` (the fused Triton forward) is PyTorch-only and refused for the
+other engines. `--reproducibility` and `--reproducibility-max` work on all
+three.

@@ -1,7 +1,7 @@
 import argparse
 
 from chrombpnet import conventions, engines
-from chrombpnet.training.utils.benchmark_utils import add_benchmark_argument
+from chrombpnet.training.utils.benchmark_utils import add_reproducibility_arguments
 from argparse import RawTextHelpFormatter
 
 
@@ -251,7 +251,7 @@ REPORT_OPTIONS = ("tomtom_lite", "interpret_subsample", "modisco_max_seqlets",
 
 #: Other options removed from ``args`` when not given, so ``args.json``
 #: records exactly what it did before they existed.
-ABSENT_WHEN_OMITTED = ("dnase_convention",)
+ABSENT_WHEN_OMITTED = ("dnase_convention", "reproducibility", "reproducibility_max")
 
 
 def drop_absent(args):
@@ -317,7 +317,7 @@ def _add_chrombpnet_training_arguments(parser, reports=False):
     required, optional = _required_optional(parser)
     _add_genomics_inputs(required)
     _add_training_options(optional)
-    add_benchmark_argument(optional)
+    add_reproducibility_arguments(optional)
     _add_ignore_bias_flag(optional)
     required.add_argument("-b", "--bias-model-path", type=str, required=True, help="Path for a pretrained bias model checkpoint (.pt PyTorch, .h5 TensorFlow)")
     optional.add_argument("-sr", "--negative-sampling-ratio", type=float, default=0.1, help="Ratio of negatives to positive samples per epoch")
@@ -338,7 +338,7 @@ def _add_bias_training_arguments(parser, reports=False):
     required, optional = _required_optional(parser)
     _add_genomics_inputs(required)
     _add_training_options(optional)
-    add_benchmark_argument(optional)
+    add_reproducibility_arguments(optional)
     required.add_argument("-b", "--bias-threshold-factor", type=float, required=True, help="A threshold is applied on maximum count of non-peak region for training bias model, which is set as this threshold x min(count over peak regions). Recommended start value 0.5 for ATAC and 0.8 for DNase.")
     _add_architecture_options(optional, filters=128, dilations=4, jitter=0)
     _add_batch_sizes(optional)
@@ -521,7 +521,7 @@ def _add_predict_arguments(parser):
     required.add_argument("-d", "--data-type", required=True, type=str, choices=['ATAC', 'DNASE'], help="assay type")
     optional.add_argument("-bs", "--batch-size", type=int, default=64, help="batch size to use for prediction")
     optional.add_argument("-s", "--seed", type=int, default=1234, help="seed for the profile-metrics shuffled draw")
-    add_benchmark_argument(optional)
+    add_reproducibility_arguments(optional)
     _add_data_aug(optional)
     _add_device(optional)
     _add_predict_fk(optional)

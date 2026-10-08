@@ -27,6 +27,7 @@ from chrombpnet.training.utils.benchmark_utils import (
     benchmark_level,
     canonical_bpnet_weights,
     generator_seed,
+    level_from_flags,
     make_generator_rng,
     normalize_benchmark_level,
     use_keras_batch_order_shuffle,
@@ -177,19 +178,21 @@ def test_benchmark_initializer_uses_canonical_glorot_arrays():
 
 
 
-def test_benchmark_levels_are_ordered_and_default_to_max():
+def test_reproducibility_levels_are_ordered_and_never_opt_out():
     assert BENCHMARK_LEVELS == ("tensorflow", "medium", "max")
     assert normalize_benchmark_level(True) == "max"
-    # Absent means TensorFlow parity, for a raw None and for a namespace that
-    # never had the attribute alike. Only "pytorch" opts out.
+    # Absent means the TensorFlow settings, for a raw None, for False and for
+    # a namespace that never had the flags alike. Nothing opts out of them.
     assert normalize_benchmark_level(None) == "tensorflow"
+    assert normalize_benchmark_level(False) == "tensorflow"
     assert benchmark_level(SimpleNamespace(seed=1)) == "tensorflow"
-    assert normalize_benchmark_level("pytorch") is None
-    assert normalize_benchmark_level(False) is None
-    # "lite" is off the command line but still readable, so a checkpoint whose
-    # provenance records it keeps loading.
+    # The PyTorch-native level is gone.
+    with pytest.raises(ValueError, match="Unknown reproducibility level"):
+        normalize_benchmark_level("pytorch")
+    # "lite" is still readable, so a checkpoint whose provenance records it
+    # keeps loading.
     assert normalize_benchmark_level("lite") == "tensorflow"
-    with pytest.raises(ValueError, match="Unknown benchmark level"):
+    with pytest.raises(ValueError, match="Unknown reproducibility level"):
         normalize_benchmark_level("huge")
     # Every control is monotone: once active it stays active at stricter levels.
     for control in BENCHMARK_CONTROLS:
@@ -203,8 +206,6 @@ def test_benchmark_level_selects_the_expected_controls():
     assert benchmark_enables("tensorflow", "restore_best_checkpoint")
     assert not benchmark_enables("tensorflow", "fixed_example_order")
     assert not benchmark_enables("tensorflow", "generator_rng")
-    # Opting out reaches none of them.
-    assert not benchmark_enables("pytorch", "keras_adam")
     assert benchmark_enables("medium", "fixed_example_order")
     assert benchmark_enables("medium", "generator_rng")
     assert not benchmark_enables("medium", "shared_initial_weights")
@@ -214,9 +215,22 @@ def test_benchmark_level_selects_the_expected_controls():
     # Keras shuffles batch indices by default; medium and above pin the order.
     assert use_keras_batch_order_shuffle("tensorflow")
     assert not use_keras_batch_order_shuffle("medium")
-    # None is absent, so it behaves as the default level, not as an opt-out.
+    # None is absent, so it behaves as the default level.
     assert use_keras_batch_order_shuffle(None)
-    assert not use_keras_batch_order_shuffle("pytorch")
+
+
+def test_the_flags_select_the_levels():
+    assert level_from_flags() == "tensorflow"
+    assert level_from_flags(reproducibility=True) == "medium"
+    assert level_from_flags(reproducibility_max=True) == "max"
+    assert level_from_flags(True, True) == "max"
+    # A namespace is read through its flags; drop_absent may have removed them.
+    assert benchmark_level(SimpleNamespace(reproducibility=True)) == "medium"
+    assert benchmark_level(SimpleNamespace(reproducibility_max=True)) == "max"
+    assert benchmark_level(SimpleNamespace(reproducibility=None, reproducibility_max=None)) == "tensorflow"
+    assert benchmark_enables(SimpleNamespace(reproducibility=True), "generator_rng")
+    assert not benchmark_enables(SimpleNamespace(reproducibility=True), "deterministic_kernels")
+    assert benchmark_enables(SimpleNamespace(reproducibility_max=True), "deterministic_kernels")
 
 
 def test_lite_initializer_is_glorot_but_not_the_shared_arrays():
@@ -244,9 +258,8 @@ def test_lite_initializer_is_glorot_but_not_the_shared_arrays():
 
 
 def test_initialize_for_benchmark_dispatches_on_level():
-    assert initialize_for_benchmark(
-        BPNet(SMALL), SimpleNamespace(seed=3, benchmark="pytorch")) is None
-    # A namespace with no benchmark attribute now gets the parity initializer.
+    # Never PyTorch's own initialization: a namespace with neither flag gets
+    # the Keras initializer family.
     assert initialize_for_benchmark(
         BPNet(SMALL), SimpleNamespace(seed=3)) == "keras_default_glorot"
     for level, expected in (
@@ -256,6 +269,8 @@ def test_initialize_for_benchmark_dispatches_on_level():
     ):
         args = SimpleNamespace(seed=3, benchmark=level)
         assert initialize_for_benchmark(BPNet(SMALL), args) == expected
+    assert initialize_for_benchmark(
+        BPNet(SMALL), SimpleNamespace(seed=3, reproducibility_max=True)) == "shared_canonical_arrays"
     model = BPNet(SMALL)
     initialize_for_benchmark(model, SimpleNamespace(seed=3, benchmark="max"))
     expected = canonical_bpnet_weights(SMALL.filters, SMALL.n_dilation_layers, 3)
@@ -283,13 +298,13 @@ def test_tensorflow_adam_matches_keras_epsilon_without_pinning_dispatch():
     assert parity.defaults["amsgrad"] is False
     assert parity.defaults["foreach"] is None
     assert parity.defaults["fused"] is None
-    # Omitting the flag is the same thing, which is the point of the default.
+    # Omitting the flags is the same thing, which is the point of the default.
     implicit = _build_optimizer(model, SimpleNamespace(learning_rate=0.001))
     assert implicit.defaults["eps"] == 1e-7
-    # Only "pytorch" gets torch's own epsilon back.
-    native = _build_optimizer(
-        model, SimpleNamespace(learning_rate=0.001, benchmark="pytorch"))
-    assert native.defaults["eps"] == 1e-8
+    # --reproducibility-max additionally pins Adam's dispatch.
+    pinned = _build_optimizer(
+        model, SimpleNamespace(learning_rate=0.001, reproducibility_max=True))
+    assert pinned.defaults["eps"] == 1e-7 and pinned.defaults["foreach"] is False
 
 
 def test_generator_rng_is_dedicated_from_medium_and_replayable_at_max():

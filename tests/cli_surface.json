@@ -52,21 +52,6 @@
     "required": false,
     "type": "int"
   },
-  "bias pipeline benchmark": {
-    "choices": [
-      "max",
-      "medium",
-      "pytorch",
-      "tensorflow"
-    ],
-    "default": "None",
-    "nargs": "'?'",
-    "options": [
-      "--benchmark"
-    ],
-    "required": false,
-    "type": "None"
-  },
   "bias pipeline bias_threshold_factor": {
     "choices": null,
     "default": "None",
@@ -518,6 +503,26 @@
     "required": false,
     "type": "str"
   },
+  "bias pipeline reproducibility": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--reproducibility"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "bias pipeline reproducibility_max": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--reproducibility-max"
+    ],
+    "required": false,
+    "type": "None"
+  },
   "bias pipeline seed": {
     "choices": null,
     "default": "1234",
@@ -862,21 +867,6 @@
     ],
     "required": false,
     "type": "int"
-  },
-  "bias train benchmark": {
-    "choices": [
-      "max",
-      "medium",
-      "pytorch",
-      "tensorflow"
-    ],
-    "default": "None",
-    "nargs": "'?'",
-    "options": [
-      "--benchmark"
-    ],
-    "required": false,
-    "type": "None"
   },
   "bias train bias_threshold_factor": {
     "choices": null,
@@ -1298,6 +1288,26 @@
     ],
     "required": false,
     "type": "str"
+  },
+  "bias train reproducibility": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--reproducibility"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "bias train reproducibility_max": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--reproducibility-max"
+    ],
+    "required": false,
+    "type": "None"
   },
   "bias train seed": {
     "choices": null,
@@ -1837,21 +1847,6 @@
     "required": false,
     "type": "int"
   },
-  "pipeline benchmark": {
-    "choices": [
-      "max",
-      "medium",
-      "pytorch",
-      "tensorflow"
-    ],
-    "default": "None",
-    "nargs": "'?'",
-    "options": [
-      "--benchmark"
-    ],
-    "required": false,
-    "type": "None"
-  },
   "pipeline bias_model_path": {
     "choices": null,
     "default": "None",
@@ -2324,6 +2319,26 @@
     "required": false,
     "type": "str"
   },
+  "pipeline reproducibility": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--reproducibility"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "pipeline reproducibility_max": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--reproducibility-max"
+    ],
+    "required": false,
+    "type": "None"
+  },
   "pipeline seed": {
     "choices": null,
     "default": "1234",
@@ -2554,21 +2569,6 @@
     "required": false,
     "type": "int"
   },
-  "predict benchmark": {
-    "choices": [
-      "max",
-      "medium",
-      "pytorch",
-      "tensorflow"
-    ],
-    "default": "None",
-    "nargs": "'?'",
-    "options": [
-      "--benchmark"
-    ],
-    "required": false,
-    "type": "None"
-  },
   "predict bigwig": {
     "choices": null,
     "default": "None",
@@ -2742,6 +2742,26 @@
     "nargs": "0",
     "options": [
       "--predict-fk"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "predict reproducibility": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--reproducibility"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "predict reproducibility_max": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--reproducibility-max"
     ],
     "required": false,
     "type": "None"
@@ -3258,21 +3278,6 @@
     "required": false,
     "type": "int"
   },
-  "train benchmark": {
-    "choices": [
-      "max",
-      "medium",
-      "pytorch",
-      "tensorflow"
-    ],
-    "default": "None",
-    "nargs": "'?'",
-    "options": [
-      "--benchmark"
-    ],
-    "required": false,
-    "type": "None"
-  },
   "train bias_model_path": {
     "choices": null,
     "default": "None",
@@ -3714,6 +3719,26 @@
     ],
     "required": false,
     "type": "str"
+  },
+  "train reproducibility": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--reproducibility"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "train reproducibility_max": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--reproducibility-max"
+    ],
+    "required": false,
+    "type": "None"
   },
   "train seed": {
     "choices": null,
