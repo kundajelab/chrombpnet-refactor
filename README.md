@@ -7,81 +7,60 @@ sequence bias of the assay enzyme (Tn5 or DNase I). The bias-free model can
 then be interpreted to recover cis-regulatory sequence syntax, transcription
 factor footprints, and the effect of regulatory variants.
 
-The deep-learning engine is a choice: **PyTorch** (the default),
-**TensorFlow** (the original Keras implementation, byte-identical to it given
-the same inputs) or **JAX** (Keras 3 on JAX, from ChromBPNet 2.0; within
-float32 tolerances of the original). Everything else -- preprocessing,
-GC-matched negatives, the data generators, metrics, bigwigs, footprints, motif
-discovery and the reports -- is shared, framework-neutral code; DeepLIFT/DeepSHAP
-is the only downstream step that differs between engines. See
-[Engines](#engines).
+![ChromBPNet architecture](images/chrombpnet_arch.png)
 
 ## Table of contents
 
 - [Installation](#installation)
-- [QuickStart](#quickstart)
-  - [Training a bias-factorized ChromBPNet model](#training-a-bias-factorized-chrombpnet-model)
-  - [Training a bias model](#training-a-bias-model)
-- [Engines](#engines)
-- [Command line](#command-line)
+- [Quick Start](#quick-start)
+  1. [Training a bias model](#1-training-a-bias-model)
+  2. [Training a bias-factorized ChromBPNet model](#2-training-a-bias-factorized-chrombpnet-model)
+  3. [Other command lines](#3-other-command-lines)
+- [Optimizations](#optimizations)
 - [Reproducibility](#reproducibility)
 - [Python API](#python-api)
-- [Testing](#testing)
-- [Citation and license](#citation-and-license)
+- Elsewhere:
+  [engines and environments](envs/README.md),
+  [accessibility signal conventions](chrombpnet/helpers/preprocessing/README.md#accessibility-signal-conventions),
+  [testing](tests/README.md)
 
 ## Installation
 
 Each engine has its own conda environment, because their frameworks cannot
-share one (TensorFlow 2.8 needs Python <= 3.10, the PyTorch stack is on 3.11,
-and JAX 0.11 needs Python >= 3.12 and NumPy 2):
+share one. Create the ones you need from the repository root:
+
+| Engine | Create the environment | Then | Python and framework |
+|---|---|---|---|
+| PyTorch (default) | `conda env create -f envs/chrombpnet-pytorch.yml` | `conda activate chrombpnet-pytorch` | Python 3.11, PyTorch 2.5.1 |
+| TensorFlow | `conda env create -f envs/chrombpnet-tensorflow.yml` | `conda activate chrombpnet-tensorflow` | Python 3.8, TensorFlow 2.8.0 |
+| JAX | `conda env create -f envs/chrombpnet-jax.yml` | `conda activate chrombpnet-jax` | Python 3.12, Keras 3.15, JAX 0.11.2 |
+
+- Each file installs this package in editable mode with its engine's extra,
+  plus the command-line tools preprocessing uses (`bedtools`, `samtools`,
+  `bedGraphToBigWig`), MEME's `tomtom` and the Pango/Cairo stack for the PDF
+  reports.
+- Pick the engine with `--engine` (the checkpoint suffix decides when it is
+  omitted) and the device with `--device cpu`, `cuda` or e.g. `cuda:1`.
+  [`envs/README.md`](envs/README.md) describes each engine, its GPU
+  libraries, and what differs between them.
+- The motif reports use TF-MoDISco and match motifs with MEME's `tomtom`;
+  `--tomtom-lite` uses TOMTOM-lite (memelite) instead, with uncorrected
+  p-values. TOMTOM-lite needs TF-MoDISco 2.5 or later, which the TensorFlow
+  environment (TF-MoDISco 2.3.2) does not have.
+
+## Quick Start
+
+Both steps take the same inputs, described under step 1. A bias model
+generally transfers between samples of the same assay, so step 1 can be
+skipped when you already have one.
+
+### 1. Training a bias model
+
+A bias model is trained on background regions only, so it can learn the
+enzyme's sequence preference without learning biology:
 
 ```bash
-conda env create -f envs/chrombpnet-pytorch.yml      # default engine
-conda activate chrombpnet-pytorch
-
-conda env create -f envs/chrombpnet-tensorflow.yml   # --engine tensorflow
-conda env create -f envs/chrombpnet-jax.yml          # --engine jax
-```
-
-Run these from the repository root: each file installs the package in
-editable mode with its engine's extra (`-e ..[pytorch]` and so on) and applies
-the supplemental pip requirements in `envs/requirements-<engine>.txt`.
-
-The PyTorch environment installs a CUDA-enabled build that falls back to CPU
-automatically; the JAX environment installs `jax[cuda12]` (CUDA 12 as pip
-wheels: any CUDA 12 driver, >= 525, and also the Pascal and Volta GPUs that
-CUDA 13 dropped; `jax[cuda13]==0.11.2` works on Turing or newer with driver
->= 580). A system CUDA or cuDNN on `LD_LIBRARY_PATH` would shadow the
-libraries those wheels bring, so the JAX engine loads the bundled ones first
-when it finds namesakes there. Every command accepts `--device cpu`, `--device cuda`, or a
-specific device such as `--device cuda:1`.
-
-Conda also supplies the command-line tools the preprocessing step shells out to
-(`bedtools`, `samtools`, `bedGraphToBigWig`) and the native Pango/Cairo stack
-WeasyPrint needs to render the PDF reports.
-
-Motif discovery and the motif reports use TF-MoDISco, installed from the
-checkout named in `envs/requirements-pytorch.txt` and in the `[reports]` extra of
-`pyproject.toml`. It is optional: everything except `modisco_motifs` and the
-motif section of the `qc` reports works without it.
-
-The motif reports match each motif against a motif database with MEME's
-`tomtom`, which every environment installs from conda (`meme`). The commands
-that end with a report check for it before doing any work. With
-`--tomtom-lite` they use TOMTOM-lite (memelite) instead, so MEME is not
-needed, and the report lists uncorrected p-values instead of q-values.
-TOMTOM-lite needs TF-MoDISco 2.5 or later, so the TensorFlow environment,
-whose newest TF-MoDISco is 2.3.2, refuses the flag.
-
-## QuickStart
-
-### Training a bias-factorized ChromBPNet model
-
-With a pre-trained bias model in hand:
-
-```bash
-# -ibam takes a BAM; use -ifrag for a fragment file or -itag for a tagAlign.
-chrombpnet pipeline \
+chrombpnet bias pipeline \
   -ibam /path/to/input.bam \
   -d ATAC \
   -g /path/to/hg38.fa \
@@ -89,34 +68,15 @@ chrombpnet pipeline \
   -p /path/to/peaks.bed \
   -n /path/to/nonpeaks.bed \
   -fl /path/to/fold_0.json \
-  -b /path/to/bias.pt \
-  -o /path/to/output/dir/
+  -b 0.5 \
+  -o /path/to/bias/dir/
 ```
 
-Use `chrombpnet train` instead of `pipeline` to stop after training and its
-report, skipping evaluation, contribution scoring and motif discovery.
-
-The main `pipeline` evaluation also writes
-`profile_metrics.peaks.median_pearsonr` in
-`evaluation/chrombpnet_metrics.json` (with the optional filename prefix).
-This is the median Pearson R across test peaks, calculated across bases within
-each peak using observed counts and predicted profile probabilities, without
-smoothing or log transforms. Constant or non-finite profiles have undefined R
-and are excluded; the value is `null` if no peaks have a defined correlation.
-The same metric is included under each evaluated subset in the JSON outputs of
-standalone `qc` and `predict`, bias evaluation (including the input bias check),
-and `pred_bw` with ground truth. The outputs are:
-
-- ChromBPNet `pipeline`/`qc`: `evaluation/[prefix_]chrombpnet_metrics.json`.
-- Bias `pipeline`/`qc`: `evaluation/[prefix_]bias_metrics.json`; the main
-  pipeline's input bias check uses unprefixed `evaluation/bias_metrics.json`.
-- Standalone `predict`: `<output-prefix>_metrics.json`.
-- `pred_bw` with `--bigwig`: `<output-prefix>_<model>_metrics.json`, where
-  `<model>` is `chrombpnet`, `chrombpnet_nobias`, or `bias`, for supplied models.
-  This uses `profile_metrics.regions.median_pearsonr` across evaluated regions.
-
-HTML/PDF reports continue to show their existing metrics without profile
-Pearson R.
+Here `-b` is the bias threshold factor, not a model path: non-peak regions
+whose counts exceed `-b x` the 1st-percentile peak count are dropped, so the
+model never sees background that looks like signal. Start at `0.5` for ATAC
+and `0.8` for DNase. The trained model lands at `models/bias.pt` and is what
+you pass to `chrombpnet pipeline -b` in step 2.
 
 #### Input format
 
@@ -136,23 +96,46 @@ Pearson R.
   `start + summit`. Example:
   [peaks.bed](https://storage.googleapis.com/chrombpnet_data/input_files/ENCSR868FGK_relaxed_peaks_no_blacklist.bed).
 - `-n`: non-peak background regions, same 10-column format. Generate your own
-  with `chrombpnet prep nonpeaks` (below). Example:
+  with `chrombpnet prep nonpeaks` (step 3). Example:
   [nonpeaks.bed](https://storage.googleapis.com/chrombpnet_data/input_files/ENCSR868FGK_nonpeaks_no_blacklist.bed).
 - `-fl`: JSON naming the train/valid/test chromosome split. Generate one with
   `chrombpnet prep splits`, or use the published
   [five-fold splits](https://zenodo.org/records/7443683/files/folds.zip?download=1).
-- `-b`: a bias model `.pt` checkpoint. Bias models generally transfer between
-  samples of the same assay; train one with `chrombpnet bias pipeline` below.
 - `-o`: output directory.
 
 Optional flags worth knowing: `-fp` prefixes every output filename, `-bs` sets
 the training batch size, `-ibs` the contribution-scoring batch size (defaults
 to `-bs / 4`, because attribution needs about four times the GPU memory of a
-training step), and `--benchmark` selects the reproducibility level described
-under [Reproducibility](#reproducibility).
+training step), `--dnase-convention` and `--data-aug` set how DNase cuts are
+recorded and which examples are reverse complemented (see
+[accessibility signal conventions](chrombpnet/helpers/preprocessing/README.md#accessibility-signal-conventions)),
+and `--benchmark` selects the reproducibility level described under
+[Reproducibility](#reproducibility).
 
 For guidance on preparing reads and peaks, see the
 [preprocessing notes](https://github.com/kundajelab/chrombpnet/wiki/Preprocessing).
+
+### 2. Training a bias-factorized ChromBPNet model
+
+With a bias model in hand:
+
+```bash
+# -ibam takes a BAM; use -ifrag for a fragment file or -itag for a tagAlign.
+chrombpnet pipeline \
+  -ibam /path/to/input.bam \
+  -d ATAC \
+  -g /path/to/hg38.fa \
+  -c /path/to/hg38.chrom.sizes \
+  -p /path/to/peaks.bed \
+  -n /path/to/nonpeaks.bed \
+  -fl /path/to/fold_0.json \
+  -b /path/to/bias.pt \
+  -o /path/to/output/dir/
+```
+
+The inputs are step 1's, except that `-b` is now the bias model checkpoint.
+Use `chrombpnet train` instead of `pipeline` to stop after training and its
+report, skipping evaluation, contribution scoring and motif discovery.
 
 #### Output format
 
@@ -211,114 +194,26 @@ Read `evaluation/overall_report.html` first: it collects the shift QC image,
 the loss curve, the count and profile metrics, the marginal footprints and the
 discovered motifs into one page.
 
-### Training a bias model
+`evaluation/chrombpnet_metrics.json` (with the optional filename prefix) also
+holds `profile_metrics.peaks.median_pearsonr`: the median over test peaks of
+the Pearson R, across bases within each peak, between observed counts and
+predicted profile probabilities, without smoothing or log transforms.
+Constant or non-finite profiles have undefined R and are excluded; the value
+is `null` if no peak has a defined correlation. The same metric is in every
+evaluation JSON:
 
-A bias model is trained on background regions only, so it can learn the
-enzyme's sequence preference without learning biology:
+- ChromBPNet `pipeline`/`qc`: `evaluation/[prefix_]chrombpnet_metrics.json`.
+- Bias `pipeline`/`qc`: `evaluation/[prefix_]bias_metrics.json`; the main
+  pipeline's input bias check uses unprefixed `evaluation/bias_metrics.json`.
+- Standalone `predict`: `<output-prefix>_metrics.json`.
+- `pred_bw` with `--bigwig`: `<output-prefix>_<model>_metrics.json`, where
+  `<model>` is `chrombpnet`, `chrombpnet_nobias`, or `bias`, for supplied
+  models; there it is `profile_metrics.regions.median_pearsonr`, across the
+  evaluated regions.
 
-```bash
-chrombpnet bias pipeline \
-  -ibam /path/to/input.bam \
-  -d ATAC \
-  -g /path/to/hg38.fa \
-  -c /path/to/hg38.chrom.sizes \
-  -p /path/to/peaks.bed \
-  -n /path/to/nonpeaks.bed \
-  -fl /path/to/fold_0.json \
-  -b 0.5 \
-  -o /path/to/bias/dir/
-```
+The HTML/PDF reports do not show it.
 
-Here `-b` is the bias threshold factor, not a model path: non-peak regions
-whose counts exceed `-b x` the 1st-percentile peak count are dropped, so the
-model never sees background that looks like signal. Start at `0.5` for ATAC
-and `0.8` for DNase. The trained model lands at `models/bias.pt` and is what
-you pass to `chrombpnet pipeline -b`.
-
-## Engines
-
-```bash
-chrombpnet pipeline --engine pytorch ...      # the default
-chrombpnet pipeline --engine tensorflow ...   # from the chrombpnet-tensorflow env
-chrombpnet pipeline --engine jax ...          # from the chrombpnet-jax env
-chrombpnet pred_bw -cm models/chrombpnet.h5 ...   # engine inferred: TensorFlow
-```
-
-`--engine` is accepted by every command that builds or loads a model. When it
-is omitted the input models' checkpoint suffixes decide (`.pt` PyTorch, `.h5`
-TensorFlow, `.keras` JAX), else PyTorch. An explicit `--engine` must be able to
-read every input model: `--engine jax` also reads the original's `.h5` models,
-so `chrombpnet pipeline --engine jax -b original_bias.h5 ...` works, and inputs
-in both formats (`-bm bias.h5 -cm chrombpnet.keras`) go to JAX. `prep` and
-`modisco_motifs` never touch a model, take no `--engine`, and run in any of the
-three environments.
-
-| | PyTorch | TensorFlow | JAX |
-|---|---|---|---|
-| environment | `chrombpnet-pytorch` (Python 3.11) | `chrombpnet-tensorflow` (Python 3.8, TF 2.8.0) | `chrombpnet-jax` (Python 3.12, Keras 3.15, JAX 0.11) |
-| checkpoints | `.pt` | `.h5` (Keras 2) | `.keras` (Keras 3); also reads `.h5` |
-| DeepLIFT/DeepSHAP | Tangermeme | kundajelab `shap` fork | native JAX (ChromBPNet 2.0) |
-| TF-MoDISco | git checkout (2.6 API) | modisco-lite 2.3.2 (newest for Python 3.8) | git checkout |
-| status | default | byte-identical to the original | within float32 tolerances of the original |
-| reproducibility gate | `tests/regression` (golden artifacts) | `tests/parity/tf_engine.py` | `tests/parity/jax_engine.py` |
-
-The engine is a narrow interface (`chrombpnet/engines/base.py`): build and
-train a model, load one for prediction, rescale the bias model's count head,
-and compute hypothetical contribution scores. The shared code reaches a model
-only through it, and the predictor it hands back has the Keras-shaped surface
-the shared code always used (NLC one-hot in, `(profile_logits, logcounts)`
-out).
-
-**TensorFlow** is the original implementation (kundajelab/chrombpnet@09938fd)
-behind that interface: its model definitions, loss, callbacks, `model.fit`
-call, bias rescale and DeepSHAP code, each module stating what it changes.
-Given identical batches, initial weights and shuffle references it reproduces
-the original's checkpoints, logs, predictions and contribution scores byte for
-byte, which `tests/parity/tf_engine.py` checks against a checkout of the
-original (for the profile scores, with the original's `StopGradient` handler
-restored, below). It loads models trained by the original package, so every downstream
-command works on existing `.h5` models. It differs from the original only where
-this package fixes a defect, each in its own commit and CHANGELOG entry:
-`--seed` now seeds the bias-factorized model's trainable tower; the best
-validation checkpoint is restored even when training runs out of epochs;
-DeepSHAP's dinucleotide shuffles are seeded by `--seed`; and the profile
-DeepSHAP target's `stop_gradient` is honoured, so each logit is weighted by the
-input's own softmax, as in the PyTorch engine. The `shap` fork has that
-handler commented out, so the original weighted it by the midpoint of the
-input's and the reference's softmax. Attribution runs in a
-spawned subprocess, because the shap fork needs TF1 graph mode, which is
-process-global; `--interpret-batch-size` has no effect there.
-
-**JAX** is the Keras 3 / JAX port of the original from
-[kundajelab/chrombpnet#284](https://github.com/kundajelab/chrombpnet/pull/284)
-("ChromBPNet 2.0"): its architectures (the original ones, with a registered
-`LogSumExp` count head instead of a bytecode `Lambda`), loss, callbacks,
-`model.fit`, loader for the original's `.h5` models (no TensorFlow needed, and
-their bytecode is never run), bias rescale, and native JAX DeepSHAP -- the
-`shap` fork's multipliers, with both heads from one jitted pass per chunk.
-The profile target's `stop_gradient` is honoured, as in the other two
-engines, where the PR reproduces the fork's midpoint weighting. Each module states what this package
-changes. The defaults are the original training recipe. It cannot be byte-identical
-to TensorFlow 2.8, so `tests/parity/jax_engine.py` checks agreement with the
-original on identical inputs: predictions within 1e-4, a 20-step Adam trace
-within 1e-3, DeepSHAP within 1e-4 relative L2 (against the original with
-its `StopGradient` handler restored) with bitwise-identical references (drawn
-exactly as the TensorFlow engine draws them), and the
-original's models loaded within 1e-4. Models are `.keras` files;
-`chrombpnet export --legacy-h5 -m model.keras -o model.h5` writes a copy in the
-original's `.h5` layout, which the TensorFlow engine, chrombpnet 1.x,
-variant-scorer and bpnet-lite read. `--interpret-batch-size` counts
-(sequence, reference) pairs, as for PyTorch.
-
-The JAX engine also has ChromBPNet 2.0's opt-in training options, refused for
-the other engines: `--optimizer muon` (Muon on the dilated convolutions,
-experimental), `--muon-lr`, `--ema`/`--ema-momentum`, `--lr-schedule cosine`
-and `--precision {default,highest,bf16}` (bf16 is faster but loses accuracy).
-
-`--predict-fk` (the fused Triton forward) and `--benchmark pytorch` are
-PyTorch-only and are refused for other engines.
-
-## Command line
+### 3. Other command lines
 
 ```text
 chrombpnet pipeline          train a bias-factorized model, then evaluate it
@@ -329,6 +224,7 @@ chrombpnet bias train        train a bias model only
 chrombpnet bias qc           evaluate an already-trained bias model
 chrombpnet prep nonpeaks     GC-matched background regions from peaks
 chrombpnet prep splits       chromosome train/valid/test split JSON
+chrombpnet predict           score one model on a fold's test split
 chrombpnet pred_bw           prediction bigwigs (and metrics, given -bw)
 chrombpnet contribs_bw       contribution-score bigwigs
 chrombpnet modisco_motifs    motif discovery from contribution scores
@@ -353,115 +249,52 @@ Four options control them, all off by default:
 
 ## Optimizations
 
-`pred_bw` runs about **47 % faster** than the code this package started from,
-on 5,000 hg38 regions with three models on an L40S (55.7s -> 29.6s). Those
-optimizations are always on and byte-identical to what they replaced, with one
-exception: bigWigs are written as fixed-step blocks, which stores the same
-values in a different on-disk section type (2.8x faster to write, ~1.5x
-smaller). They came in two groups -- levers ported from the
+Compared with the original TensorFlow ChromBPNet
+([kundajelab/chrombpnet](https://github.com/kundajelab/chrombpnet)):
+
+- **Three engines instead of one.** PyTorch (the default), TensorFlow (the
+  original Keras implementation, byte-identical to it given the same inputs)
+  and JAX (Keras 3 on JAX, from ChromBPNet 2.0), all behind one shared,
+  framework-neutral pipeline. Contribution scoring is batched over
+  (sequence, reference) pairs in PyTorch, and computes both heads in one
+  jitted pass in JAX, where the original explains one example at a time. See
+  [`envs/README.md`](envs/README.md).
+- **Non-peak selection** (`prep nonpeaks`): candidates are compact numeric
+  arrays, shuffled once per fold, sorted by GC bin and consumed without
+  replacement, with a binary search for the nearest non-empty bin. The
+  original walked the GC bins at random per region in Python, and could loop
+  forever once the matching bins ran out; this fails with an error instead.
+- **Sequence windows** are read through a memory map of the FASTA, one
+  gather per chromosome, instead of one `pyfaidx` slice per region, and
+  one-hot encoded through a 256-entry lookup table instead of a sort.
+- **Profile metrics** (JSD and its bounds) are computed for all regions at
+  once instead of in a per-region loop, with identical values and the same
+  random stream.
+- **Prediction** casts and transposes each batch as it is needed into a
+  preallocated output, instead of converting the whole input up front, and
+  runs under `torch.inference_mode`.
+- **`pred_bw`** featurizes the regions and reads the observed bigwig once for
+  all its models, writes each model's bigwig and metrics in a worker process
+  while the next model predicts, and builds the bigwig writer's arguments as
+  numpy arrays.
+- **BigWigs are written as fixed-step sections**: the same values, faster to
+  write and smaller, so their bytes differ from the original's.
+- **Start-up and shutdown**: heavy imports are started in the background, and
+  the CLI exits without interpreter teardown once every output is verified
+  and synced to disk.
+- **Fused Triton forward** (`--predict-fk`, optional; on `pred_bw`,
+  `footprints`, `qc` and `bias qc`): fp32-exact kernels in place of the
+  eager TF32 convolutions, so predictions move by about 1e-5 (closer to an
+  fp64 reference). Recommended on H100/H200 only: it refuses other GPUs by
+  name, and on an L40S it buys accuracy rather than speed. Not on
+  `contribs_bw`, whose DeepLIFT needs autograd and hooks a fused kernel
+  cannot provide.
+
+The memory-mapped reads, the lookup-table one-hot, the vectorized metrics,
+the worker-process writer, the background imports, the fast exit and the
+Triton forward are adapted from the
 [ChromBPNet optimization kit](https://github.com/anthropics/uplifting-biomolecular-modeling/tree/main/chrombpnet)
-(Apache-2.0), and optimizations written here -- and the CHANGELOG records what
-each was worth.
-
-The one optimization that is **not** on by default is the fused Triton
-forward, because it changes the numbers:
-
-```bash
-chrombpnet pred_bw --predict-fk      # prediction using fused kernels
-```
-
-Available on `pred_bw`, `footprints`, `qc` and `bias qc`. Not on
-`contribs_bw`: DeepLIFT needs autograd and hooks on the `nn.ReLU` modules,
-which a fused kernel cannot provide.
-
-It runs the forward on the kit's vendored `chrombpnet_k1` kernels, which are
-fp32-exact where the eager path runs TF32 convolutions. Against an fp64
-reference it errs 1.0e-05 where the default errs 1.1e-03 -- so it is *more*
-accurate than the shipped path, while still moving the profile head by ~1e-5.
-That is why it is opt-in. It needs an H100 or H200 and refuses by name on
-anything else rather than falling back silently; on an L40S it buys accuracy
-rather than speed.
-
-## Cut conventions and reverse complementation
-
-Two flags. `--dnase-convention` (DNASE only) selects how a DNase cut is
-recorded and what reverse complementation does about it; omitting it
-selects **`both-half`**. `--data-aug` selects which examples are reverse
-complemented, the same for either assay; omitting it selects **`augment`**
-(half of the training examples). An explicit `--dnase-convention` on an ATAC
-run is an error rather than a silent no-op. Pass `--dnase-convention
-right-deprecated` for the DNase behaviour this package shipped before the
-flags existed (deprecated: kept to reproduce earlier runs only).
-
-They exist because the two assays record different things. DNase I is a
-nuclease: it cuts the backbone *between* two bases, so the 0/+1 shift records
-the event at a **bond**, named by that bond's right-hand base — the `+1` on
-minus reads is exactly what makes both strands name the same bond the same
-way. Tn5 leaves a 9 bp stagger, and 9 being odd, ATAC records a **base**.
-
-Reversing a profile maps a base to its mirror correctly. It does *not* do the
-same for a bond: the bond lands in the right place but is left named by the
-wrong base, so a reverse-complemented DNase profile is misregistered by one.
-The correction is to reverse and then shift one position — `i → W-i` rather
-than `i → W-1-i`.
-
-| `--dnase-convention` | preprocessing | RC shift |
-|---|---|---|
-| `right` | DNase 0/+1 | **+1** |
-| `left` | DNase −1/0 | **−1** |
-| **`both-half`** *(default)* | 0.5 on both bases flanking the cut | 0 |
-| `both-full` | 1.0 on both bases flanking the cut | 0 |
-| `right-deprecated` | DNase 0/+1 | 0 — misregistered by one; deprecated |
-
-| `--data-aug` | splits flipped |
-|---|---|
-| **`augment`** *(default)* | train, 50 % |
-| `forward-only` | none |
-| `revcomp-only` | train, valid and test, 100 % |
-
-ATAC (+4/−4) records a base, so plain reversal is already right and it takes
-no `--dnase-convention`; `--data-aug` applies to it unchanged.
-
-The flags replace the earlier single `--data-aug` with seven values. Its old
-values map exactly onto them:
-
-| old `--data-aug` | now |
-|---|---|
-| `standard` | `--dnase-convention right-deprecated` on DNASE; nothing on ATAC |
-| `fr-only` | `--data-aug forward-only` (on DNASE also `--dnase-convention right-deprecated`) |
-| `rc-only` | `--data-aug revcomp-only` (on DNASE also `--dnase-convention right-deprecated`) |
-| `right`, `left`, `both-half`, `both-full` | `--dnase-convention` of the same name |
-
-`both-half` is the DNase default in preference to the `right` shift. A shift
-corrects the misregistration; splitting the cut across both bases flanking
-the bond removes the asymmetry that causes it, so there is nothing left to
-correct and no dependence on getting the sign right. It also leaves no label
-slot without a source, so the label window is not widened. The cost is that
-each cut is smeared over 2 bp; the `0.5` scale keeps the track total exactly
-what one deposit per cut gives, so `counts_loss_weight` and the `-oth`/`-b`
-ratios carry over unchanged.
-
-Both flags are on `pipeline`, `train`, `qc`, their `bias` counterparts and
-`predict`; `reads_to_bigwig` takes `--dnase-convention` (the bigwig does not
-depend on `--data-aug`).
-
-The geometry is measured, not just derived: the plus- and minus-strand cut
-PWMs in `chrombpnet/data/{DNASE,ATAC}.ref.motifs.txt` align with each other's
-reverse complement at lag 0 for DNase and lag −1 for ATAC, and the required
-label shift is `lag + 1` in both cases. `tests/test_conventions.py` asserts
-it, so changing the shift deltas without changing the correction fails.
-
-## Scoring one model on one split
-
-```bash
-chrombpnet predict -m model.pt -d DNASE -g hg38.fa -c hg38.chrom.sizes \
-    -r peaks.bed -n None -fl fold_0.json -bw observed.bw -op out
-```
-
-Writes `out_predictions.h5` and `out_metrics.json`. This is the stage `qc`
-runs first, without the attribution and MoDISco that follow it — useful when
-what you want is a metric for a model against a given test split. Geometry is
-read off the checkpoint.
+(Apache-2.0); the rest were written here. The CHANGELOG records each one.
 
 ## Reproducibility
 
@@ -475,7 +308,8 @@ for the default, `tensorflow`.
 | `medium` | `tensorflow` plus a pinned example schedule: jitter, reverse complements and negative subsamples come from a seeded per-epoch stream instead of the global RNG (`generator_rng`), epoch-start shuffling is off (`fixed_example_order`), and the validation set stops being re-cropped each epoch (`frozen_validation`) |
 | `max` | `medium` plus fixed initial weight arrays, a replayable augmentation schedule, deterministic kernels, TF32 disabled and scalar Adam dispatch |
 
-A bare `--benchmark` with no value means `max`.
+A bare `--benchmark` with no value means `max`. It is on `pipeline`, `train`,
+`bias pipeline`, `bias train` and `predict`.
 
 The default is `tensorflow` because this package is a port: matching the
 implementation it was ported from is the ordinary case, not a special mode.
@@ -527,59 +361,3 @@ bias branch is frozen and stays in eval mode.
 Historical scripts and paper-analysis assets that the CLI does not reach are
 isolated under [`legacy/`](legacy/README.md). They are kept for provenance and
 are not installed with the package.
-
-## Testing
-
-```bash
-pytest                                   # unit and CLI tests, offline
-
-# Check that a change did not move any CLI output. Replays ten real
-# `chrombpnet` invocations against a synthetic fixture and compares every
-# produced file -- checkpoints, HDF5, bigwigs, PNGs, PDFs, HTML, logs --
-# against a baseline captured from another revision.
-python -m tests.regression.harness against --ref main
-
-# Check the CLI surface: every argument declaration against a committed
-# snapshot, plus the full --help text of every subcommand.
-pytest tests/test_cli_surface.py
-tests/dump_cli_help.sh > /tmp/help.txt
-
-# Cross-framework parity, opt-in: needs a second environment alongside this
-# one. Compares 13 arrays and a predictions HDF5 at atol=1e-6, rtol=1e-5.
-CHROMBPNET_TF_PARITY=1 pytest tests/test_tensorflow.py
-
-# TensorFlow engine, from the chrombpnet-tensorflow environment: byte-identity
-# with the original Keras implementation (opt-in, several minutes) ...
-CHROMBPNET_TF_ENGINE_PARITY=1 pytest tests/parity/test_tf_engine.py
-# ... and the golden-artifact sweep run through --engine tensorflow.
-python -m tests.regression.harness capture --engine tensorflow --out DIR
-
-# JAX engine: agreement with the original (needs chrombpnet-tensorflow and
-# chrombpnet-jax side by side; opt-in, several minutes) ...
-CHROMBPNET_JAX_ENGINE_PARITY=1 pytest tests/parity/test_jax_engine.py
-# ... and the golden-artifact sweep, from the chrombpnet-jax environment.
-python -m tests.regression.harness capture --engine jax --out DIR
-
-# DeepSHAP across engines: the TensorFlow and JAX engines against PyTorch,
-# whose semantics are the reference (needs all three environments; opt-in).
-CHROMBPNET_DEEPSHAP_ENGINES=1 pytest tests/parity/test_deepshap_engines.py
-```
-
-`pytest` runs in every engine's environment; tests that need a framework the
-environment lacks are skipped.
-
-See [`tests/regression/README.md`](tests/regression/README.md) for what makes
-the artifact comparison valid and which fixture constants are pinned by
-hardcoded values elsewhere in the package.
-
-## Citation and license
-
-If you use this software, please cite:
-
-> Pampari A, Shcherbina A, Nair S, Schreiber J, Patel A, Wang A, Kundu S,
-> Shrikumar A, Kundaje A. *Bias factorized, base-resolution deep learning
-> models of chromatin accessibility reveal cis-regulatory sequence syntax,
-> transcription factor footprints and regulatory variants.*
-> <https://github.com/kundajelab/chrombpnet>, doi:10.5281/zenodo.7567627
-
-Released under the MIT license; see `LICENSE`.
