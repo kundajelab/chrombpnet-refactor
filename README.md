@@ -80,14 +80,18 @@ you pass to `chrombpnet pipeline -b` in step 2.
 
 #### Input format
 
-- `-ibam` / `-ifrag` / `-itag`: filtered reads, as BAM, fragment file or
-  tagAlign. Exactly one is required. Example files:
+- `-ibam` / `-ifrag` / `-itag` / `-ibw`: filtered reads, as BAM, fragment file
+  or tagAlign, or in their place a bigwig that `chrombpnet prep bigwig` made
+  from them (see [Making the bigwig once](#making-the-bigwig-once)). Exactly
+  one is required. Example files:
   [bam](https://storage.googleapis.com/chrombpnet_data/input_files/ENCSR868FGK_merged.bam),
   [fragment](https://storage.googleapis.com/chrombpnet_data/input_files/example.fragments.tsv),
   [tagalign](https://storage.googleapis.com/chrombpnet_data/input_files/example.tagAlign).
   The enzyme shift is estimated from the reads; you do not supply it.
-- `-ibw`: in place of reads, a bigwig that `chrombpnet prep bigwig` made from
-  them (see [Making the bigwig once](#making-the-bigwig-once)).
+  - For DNase-seq with `-ibw`, the model predicts cuts in the convention the
+    bigwig records. Previous-generation ChromBPNet models effectively
+    predicted a `both-half` convention, even when given a bigwig with a left
+    or right shift convention.
 - `-d`: assay type, `ATAC` or `DNASE`.
 - `-g`: reference genome FASTA, e.g.
   [hg38.fa](https://storage.googleapis.com/chrombpnet_data/input_files/hg38.genome.fa).
