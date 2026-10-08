@@ -8,6 +8,14 @@ from scipy.interpolate import interpn
 from scipy.spatial.distance import jensenshannon
 
 
+#: Logarithm base for every Jensen-Shannon distance this package reports.
+#: Base 2 bounds the distance to [0, 1]: 0 for identical profiles, 1 for
+#: profiles with disjoint support. (The original package used scipy's default,
+#: the natural log, which bounds it by sqrt(ln 2) ~ 0.833; a base-2 value is the
+#: base-e one divided by sqrt(ln 2).)
+JSD_BASE = 2
+
+
 def configure_plot_style():
     """Apply the shared figure size and font used by every metrics plot.
 
@@ -102,7 +110,7 @@ def jsd_min_max_bounds(profile):
         return (np.nan, np.nan)
 
     # jsd of profile with uniform profile
-    max_jsd = jensenshannon(profile_prob, uniform_profile)
+    max_jsd = jensenshannon(profile_prob, uniform_profile, base=JSD_BASE)
 
     # jsd of profile with itself (upper bound)
     min_jsd = 0.0

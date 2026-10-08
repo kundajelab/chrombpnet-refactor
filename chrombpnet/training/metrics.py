@@ -10,6 +10,7 @@ from matplotlib import pyplot as plt
 # matplotlib, plt and four scipy names over this module's own imports, so which
 # definition won depended on import order.
 from chrombpnet.training.utils.metrics_utils import (
+    JSD_BASE,
     density_scatter,
     get_min_max_normalized_value,
     jsd_min_max_bounds,
@@ -108,12 +109,12 @@ def _profile_metrics_looped(true_counts, pred_probs, seed):
             jsd_rnd.append(np.nan)
             jsd_rnd_norm.append(np.nan)
             continue
-        cur_jsd = jensenshannon(observed_prob, predicted_prob)
+        cur_jsd = jensenshannon(observed_prob, predicted_prob, base=JSD_BASE)
         jsd_pw.append(cur_jsd)
         min_jsd, max_jsd = jsd_min_max_bounds(true_counts[idx, :])
         jsd_norm.append(get_min_max_normalized_value(cur_jsd, min_jsd, max_jsd))
         shuffled_prob = normalize_profile(rng.permutation(true_counts[idx, :]))
-        cur_rnd = jensenshannon(observed_prob, shuffled_prob)
+        cur_rnd = jensenshannon(observed_prob, shuffled_prob, base=JSD_BASE)
         jsd_rnd.append(cur_rnd)
         jsd_rnd_norm.append(get_min_max_normalized_value(cur_rnd, min_jsd, max_jsd))
     empty = np.array([])
@@ -154,12 +155,14 @@ def profile_metrics(true_counts, pred_probs, pseudocount=0.001, seed=1234):
     jsd_rnd = np.full(num_regions, np.nan)
     max_jsd = np.full(num_regions, np.nan)
     if valid.any():
-        jsd_pw[valid] = jensenshannon(observed_prob[valid], predicted_prob[valid], axis=1)
-        jsd_rnd[valid] = jensenshannon(observed_prob[valid], shuffled_prob[valid], axis=1)
+        jsd_pw[valid] = jensenshannon(observed_prob[valid], predicted_prob[valid],
+                                      axis=1, base=JSD_BASE)
+        jsd_rnd[valid] = jensenshannon(observed_prob[valid], shuffled_prob[valid],
+                                       axis=1, base=JSD_BASE)
         # jsd_min_max_bounds: (0, jsd(profile, uniform)). The profile it
         # normalizes is true_counts, i.e. observed_prob again.
         uniform = np.full((int(valid.sum()), width), 1.0 / width)
-        max_jsd[valid] = jensenshannon(observed_prob[valid], uniform, axis=1)
+        max_jsd[valid] = jensenshannon(observed_prob[valid], uniform, axis=1, base=JSD_BASE)
     min_jsd = np.where(valid, 0.0, np.nan)
 
     jsd_norm = np.full(num_regions, np.nan)

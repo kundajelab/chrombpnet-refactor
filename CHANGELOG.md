@@ -1,5 +1,22 @@
 # Changelog
 
+## Profile JSD is reported in base 2
+
+- **Behaviour change, metrics.** Every Jensen-Shannon distance this package
+  reports is now computed in base 2 (`metrics_utils.JSD_BASE`), so it lies in
+  [0, 1]: 0 for identical profiles, 1 for profiles with disjoint support. It
+  used scipy's default, the natural log, as the original package does, which
+  bounds it by sqrt(ln 2) ~ 0.833.
+- **What moves:** `median_jsd` in every metrics JSON (`pipeline`/`qc`,
+  `bias pipeline`/`bias qc`, `predict`, `pred_bw --bigwig`), the
+  `*.profile_jsd.png` histograms, and the reports that print it. A base-2
+  value is the base-e one divided by sqrt(ln 2), i.e. ~1.20 times larger, so
+  JSDs from earlier runs, and from the original package, compare after that
+  conversion.
+- `median_norm_jsd` does not change: it measures the distance against the
+  distance to a uniform profile, both in the same base. (Its removal was also
+  suggested and is not part of this change.)
+
 ## JAX engine: `--reproducibility-max` works on a GPU
 
 - **Bug fix.** `--reproducibility-max` (before it, `--benchmark max`) asks XLA

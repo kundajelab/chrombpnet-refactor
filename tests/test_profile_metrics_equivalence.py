@@ -13,6 +13,7 @@ from scipy.spatial.distance import jensenshannon
 
 from chrombpnet.training.metrics import profile_metrics
 from chrombpnet.training.utils.metrics_utils import (
+    JSD_BASE,
     get_min_max_normalized_value,
     jsd_min_max_bounds,
     normalize_profile,
@@ -20,7 +21,8 @@ from chrombpnet.training.utils.metrics_utils import (
 
 
 def _profile_metrics_loop(true_counts, pred_probs, seed=1234):
-    """The pre-vectorization body, verbatim apart from the dead mNLL lines."""
+    """The pre-vectorization body, verbatim apart from the dead mNLL lines
+    and the base-2 JSD."""
     jsd_pw, jsd_norm, jsd_rnd, jsd_rnd_norm = [], [], [], []
     rng = np.random.default_rng(seed)
     for idx in range(true_counts.shape[0]):
@@ -32,13 +34,13 @@ def _profile_metrics_loop(true_counts, pred_probs, seed=1234):
             jsd_rnd.append(np.nan)
             jsd_rnd_norm.append(np.nan)
             continue
-        cur_jsd = jensenshannon(observed_prob, predicted_prob)
+        cur_jsd = jensenshannon(observed_prob, predicted_prob, base=JSD_BASE)
         jsd_pw.append(cur_jsd)
         min_jsd, max_jsd = jsd_min_max_bounds(true_counts[idx, :])
         jsd_norm.append(get_min_max_normalized_value(cur_jsd, min_jsd, max_jsd))
         shuffled = rng.permutation(true_counts[idx, :])
         shuffled_prob = normalize_profile(shuffled)
-        cur_rnd = jensenshannon(observed_prob, shuffled_prob)
+        cur_rnd = jensenshannon(observed_prob, shuffled_prob, base=JSD_BASE)
         jsd_rnd.append(cur_rnd)
         jsd_rnd_norm.append(get_min_max_normalized_value(cur_rnd, min_jsd, max_jsd))
     return (np.array(jsd_pw), np.array(jsd_norm),
@@ -92,3 +94,20 @@ def test_mnll_slots_are_still_empty_arrays():
     assert len(result) == 8
     for index in (0, 1, 6, 7):
         assert result[index].size == 0
+
+
+def test_jsd_is_base_2():
+    """Bounded by [0, 1]: disjoint profiles are 1 apart. The base-e value
+    the original reported is this times sqrt(ln 2); the min-max normalized
+    JSD compares two distances in the same base, so it does not change."""
+    counts = np.array([[5.0, 0.0, 0.0, 0.0], [1.0, 2.0, 3.0, 4.0]])
+    probs = np.array([[0.0, 0.0, 0.0, 1.0], [0.12, 0.2, 0.3, 0.38]])
+    _, _, jsd, jsd_norm, _, _, _, _ = profile_metrics(counts, probs)
+    assert jsd[0] == pytest.approx(1.0)
+    observed = counts[1] / counts[1].sum()
+    natural = jensenshannon(observed, probs[1])
+    assert jsd[1] == pytest.approx(natural / np.sqrt(np.log(2)))
+    natural_max = jensenshannon(observed, np.full(4, 0.25))
+    expected = get_min_max_normalized_value(natural, 0.0, natural_max)
+    assert 0.0 < expected < 1.0
+    assert jsd_norm[1] == pytest.approx(expected)

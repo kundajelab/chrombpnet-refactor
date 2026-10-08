@@ -192,7 +192,10 @@ evaluation/
 
 Read `evaluation/overall_report.html` first: it collects the shift QC image,
 the loss curve, the count and profile metrics, the marginal footprints and the
-discovered motifs into one page.
+discovered motifs into one page. The profile metric `median_jsd` is the median
+Jensen-Shannon distance, in base 2, between observed and predicted profiles:
+0 is identical, 1 is disjoint. (The original package reported it in base e;
+divide those values by sqrt(ln 2) to compare.)
 
 `evaluation/chrombpnet_metrics.json` (with the optional filename prefix) also
 holds `profile_metrics.peaks.median_pearsonr`: the median over test peaks of
