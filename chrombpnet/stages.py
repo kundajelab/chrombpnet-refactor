@@ -56,16 +56,25 @@ BIAS_MOTIFS = {
 
 def preprocess_and_qc_bigwig(options, layout):
     """Shift reads into a bigwig, build the PWM that QCs the shift, and return
-    the bigwig's path, which the caller passes on to the later steps."""
+    the bigwig's path, which the caller passes on to the later steps.
+
+    With -ibw the given bigwig is used as is: only the PWM is built, which is
+    the evidence that its shift is right.
+    """
     import chrombpnet.helpers.preprocessing.reads_to_bigwig as reads_to_bigwig
     import chrombpnet.helpers.preprocessing.analysis.build_pwm_from_bigwig as build_pwm_from_bigwig
 
     options = as_options(options)
-    # --plus-shift/--minus-shift are not exposed by the pipeline parsers, so
-    # the shift is always estimated; reads_to_bigwig requires the attributes.
-    reads_to_bigwig.main(options.step(
-        output_prefix=layout.aux("data"), plus_shift=None, minus_shift=None))
-    bigwig = layout.aux("data_unstranded.bw")
+    bigwig = getattr(options, "input_bigwig", None)
+    if bigwig is None:
+        # --plus-shift/--minus-shift are not exposed by the pipeline parsers,
+        # so the shift is always estimated; reads_to_bigwig requires the
+        # attributes.
+        reads_to_bigwig.main(options.step(
+            output_prefix=layout.aux("data"), plus_shift=None, minus_shift=None))
+        bigwig = layout.aux("data_unstranded.bw")
+    else:
+        warn_if_dnase_convention_assumed(options)
 
     folds = json.load(open(options.chr_fold_path))
     if not folds["valid"]:
@@ -74,6 +83,25 @@ def preprocess_and_qc_bigwig(options, layout):
         bigwig=bigwig, output_prefix=layout.evaluation("bw_shift_qc"),
         chr=folds["valid"][0], pwm_width=PWM_WIDTH))
     return bigwig
+
+
+def warn_if_dnase_convention_assumed(options):
+    """A DNASE bigwig given with -ibw but no --dnase-convention is taken to
+    use the default, which reverse-complement augmentation relies on and
+    nothing can check -- and which a chrombpnet 1.x bigwig does not use."""
+    from chrombpnet import conventions
+
+    if (getattr(options, "data_type", None) != "DNASE"
+            or getattr(options, "dnase_convention", None) is not None
+            or getattr(options, "data_aug", None) == "forward-only"):
+        return
+    warnings.warn(
+        f"-ibw: the DNASE bigwig is taken to record cuts as "
+        f"--dnase-convention {conventions.DNASE_CONVENTION_DEFAULT} (the "
+        f"default), which reverse-complement augmentation relies on. A bigwig "
+        f"from chrombpnet 1.x records them as `right`: pass --dnase-convention "
+        f"right, or right-deprecated to reproduce 1.x training.",
+        RuntimeWarning, stacklevel=3)
 
 
 def find_hyperparameters(options, layout, finder):

@@ -271,6 +271,17 @@
     "required": false,
     "type": "str"
   },
+  "bias pipeline input_bigwig": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--input-bigwig",
+      "-ibw"
+    ],
+    "required": false,
+    "type": "str"
+  },
   "bias pipeline input_fragment_file": {
     "choices": null,
     "default": "None",
@@ -1083,6 +1094,17 @@
     "options": [
       "--input-bam-file",
       "-ibam"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "bias train input_bigwig": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--input-bigwig",
+      "-ibw"
     ],
     "required": false,
     "type": "str"
@@ -2076,6 +2098,17 @@
     "required": false,
     "type": "str"
   },
+  "pipeline input_bigwig": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--input-bigwig",
+      "-ibw"
+    ],
+    "required": false,
+    "type": "str"
+  },
   "pipeline input_fragment_file": {
     "choices": null,
     "default": "None",
@@ -2776,6 +2809,195 @@
     ],
     "required": false,
     "type": "int"
+  },
+  "prep bigwig ATAC_ref_path": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--ATAC-ref-path"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "prep bigwig DNASE_ref_path": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--DNASE-ref-path"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "prep bigwig bsort": {
+    "choices": null,
+    "default": "False",
+    "nargs": "0",
+    "options": [
+      "--bsort"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "prep bigwig chrom_sizes": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--chrom-sizes",
+      "-c"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "prep bigwig data_type": {
+    "choices": [
+      "ATAC",
+      "DNASE"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--data-type",
+      "-d"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "prep bigwig dnase_convention": {
+    "choices": [
+      "both-full",
+      "both-half",
+      "left",
+      "right",
+      "right-deprecated"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--dnase-convention"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "prep bigwig genome": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--genome",
+      "-g"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "prep bigwig help": {
+    "choices": null,
+    "default": "'==SUPPRESS=='",
+    "nargs": "0",
+    "options": [
+      "--help",
+      "-h"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "prep bigwig input_bam_file": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--input-bam-file",
+      "-ibam"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "prep bigwig input_fragment_file": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--input-fragment-file",
+      "-ifrag"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "prep bigwig input_tagalign_file": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--input-tagalign-file",
+      "-itag"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "prep bigwig minus_shift": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--minus-shift",
+      "-ms"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "prep bigwig no_st": {
+    "choices": null,
+    "default": "False",
+    "nargs": "0",
+    "options": [
+      "--no-st"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "prep bigwig num_samples": {
+    "choices": null,
+    "default": "10000",
+    "nargs": "None",
+    "options": [
+      "--num-samples"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "prep bigwig output_prefix": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--output-prefix",
+      "-op"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "prep bigwig plus_shift": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--plus-shift",
+      "-ps"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "prep bigwig tmpdir": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--tmpdir"
+    ],
+    "required": false,
+    "type": "str"
   },
   "prep help": {
     "choices": null,
@@ -3503,6 +3725,17 @@
     "options": [
       "--input-bam-file",
       "-ibam"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "train input_bigwig": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--input-bigwig",
+      "-ibw"
     ],
     "required": false,
     "type": "str"

@@ -250,6 +250,14 @@ def main():
 		elif args.cmd_prep == "splits":
 			import chrombpnet.helpers.make_chr_splits.splits as splits
 			splits.main(args)
+
+		elif args.cmd_prep == "bigwig":
+			import chrombpnet.helpers.preprocessing.reads_to_bigwig as reads_to_bigwig
+			directory = os.path.dirname(args.output_prefix)
+			if directory:
+				os.makedirs(directory, exist_ok=True)
+			reads_to_bigwig.main(args)
+			print("wrote {}_unstranded.bw".format(args.output_prefix))
 			
 		else:
 			print("Command not found")

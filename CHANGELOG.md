@@ -1,5 +1,30 @@
 # Changelog
 
+## Bigwig input: `-ibw` and `chrombpnet prep bigwig`
+
+- **New input, no output changes.** `pipeline`, `train`, `bias pipeline` and
+  `bias train` take `-ibw/--input-bigwig` as an alternative to
+  `-ibam`/`-ifrag`/`-itag`; exactly one of the four is required. The run
+  skips converting reads into `auxiliary/data_unstranded.bw` and uses the
+  given bigwig as it is. It still draws the shift QC
+  (`evaluation/bw_shift_qc.png`) from that bigwig.
+- **`chrombpnet prep bigwig`** is that conversion as its own command, so one
+  bigwig serves the bias and the ChromBPNet runs. Each run used to build it
+  again. It takes the training commands' preprocessing options and
+  `--dnase-convention`, plus `-ps`/`-ms` for a known shift, and writes
+  `<prefix>_unstranded.bw`.
+- `tests/test_bigwig_input.py` runs `prep bigwig` on the regression fixture.
+  Its bigwig is byte-identical to the one `bias train` builds from the same
+  reads, and `bias train -ibw` with it trains byte-identical models and
+  logs; only `logs/bias.args.json` records the different input.
+- A run from reads is unchanged, its `args.json` included: `input_bigwig` is
+  left out of the record when not given.
+- The package cannot check a supplied bigwig's conventions; the shift QC is
+  the evidence. For DNase, the `--dnase-convention` given to training must be
+  the one the bigwig was made with. A DNase run given `-ibw` without
+  `--dnase-convention` warns that the default (`both-half`) is assumed,
+  unless `--data-aug forward-only` leaves nothing depending on it.
+
 ## Steps no longer write into a shared argument namespace
 
 - **Record change only.** Once the command line is complete, it is frozen

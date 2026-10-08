@@ -69,14 +69,34 @@ def _required_optional(parser):
             parser.add_argument_group('optional arguments'))
 
 
+def _add_read_files(reads):
+    """The three read formats preprocessing converts to a bigwig."""
+    reads.add_argument('-ibam', '--input-bam-file', type=str, help="Input BAM file")
+    reads.add_argument('-ifrag', '--input-fragment-file', type=str, help="Input fragment file")
+    reads.add_argument('-itag', '--input-tagalign-file', type=str, help="Input tagAlign file")
+
+
+def _add_shift_estimation(optional):
+    """How preprocessing estimates the enzyme shift."""
+    optional.add_argument('--ATAC-ref-path', type=str, default=None, help="Path to ATAC reference motifs (ATAC.ref.motifs.txt used by default)")
+    optional.add_argument('--DNASE-ref-path', type=str, default=None, help="Path to DNASE reference motifs (DNASE.ref.motifs.txt used by default)")
+    optional.add_argument('--num-samples', type=int, default=10000, help="Number of reads to sample from BAM/fragment/tagAlign file for shift estimation")
+
+
+def _add_read_sorting(optional):
+    """How preprocessing sorts and filters the shifted reads."""
+    optional.add_argument('--bsort', required=False, default=False, action='store_true', help="In prpeprocess, by deafult we sort bam using unix sort but sometimes LC collate can cause issues, so this can be set to use betools sort which works well but is memory intensive..")
+    optional.add_argument('--tmpdir', required=False, default=None, type=str, help="temp dir for unix sort")
+    optional.add_argument('--no-st', required=False, default=False, action='store_true', help="Dont do streaming  and filtering in preprocessing (short chromosome contrigs not in reference fasta are not removed)")
+
+
 def _add_genomics_inputs(required):
     """Reference, reads and region files shared by the training commands."""
     required.add_argument('-g', '--genome', required=True, type=str, help="reference genome fasta file")
     required.add_argument('-c', '--chrom-sizes', type=str, required=True, help="Chrom sizes file")
     reads = required.add_mutually_exclusive_group(required=True)
-    reads.add_argument('-ibam', '--input-bam-file', type=str, help="Input BAM file")
-    reads.add_argument('-ifrag', '--input-fragment-file', type=str, help="Input fragment file")
-    reads.add_argument('-itag', '--input-tagalign-file', type=str, help="Input tagAlign file")
+    _add_read_files(reads)
+    reads.add_argument('-ibw', '--input-bigwig', type=str, default=None, help="Input bigwig instead of reads: the shifted, unstranded counts `chrombpnet prep bigwig` writes. Preprocessing is skipped and the bigwig used as is; the shift QC (bw_shift_qc.png) is still drawn from it. It must have been made with this package's conventions, and for DNASE with the --dnase-convention given here")
     required.add_argument('-o', '--output-dir', type=str, required=True, help="Output dir (path/to/output/dir)")
     required.add_argument('-d', '--data-type', required=True, type=str, choices=['ATAC', 'DNASE'], help="assay type")
     required.add_argument("-p", "--peaks", type=str, required=True, help="10 column bed file of peaks. Sequences and labels will be extracted centered at start (2nd col) + summit (10th col).")
@@ -88,13 +108,12 @@ def _add_training_options(optional):
     """Preprocessing, geometry and optimizer options for the training commands.
 
     -ps/--plus-shift and -ms/--minus-shift are deliberately absent: the shift is
-    always estimated, and pipelines.py sets both attributes to None for
-    reads_to_bigwig.
+    always estimated, and stages.preprocess_and_qc_bigwig passes both to
+    reads_to_bigwig as None. A bigwig made with a known shift comes in through
+    `prep bigwig` and -ibw. The shift and sorting options do nothing with -ibw.
     """
     optional.add_argument("-oth", "--outlier-threshold", type=float, default=0.9999, help="threshold to use to filter outlies")
-    optional.add_argument('--ATAC-ref-path', type=str, default=None, help="Path to ATAC reference motifs (ATAC.ref.motifs.txt used by default)")
-    optional.add_argument('--DNASE-ref-path', type=str, default=None, help="Path to DNASE reference motifs (DNASE.ref.motifs.txt used by default)")
-    optional.add_argument('--num-samples', type=int, default=10000, help="Number of reads to sample from BAM/fragment/tagAlign file for shift estimation")
+    _add_shift_estimation(optional)
     optional.add_argument("-il", "--inputlen", type=int, default=2114, required=False, help="Sequence input length")
     optional.add_argument("-ol", "--outputlen", type=int, default=1000, required=False, help="Prediction output length")
     optional.add_argument("-s", "--seed", type=int, default=1234, help="seed to use for model training")
@@ -105,9 +124,7 @@ def _add_training_options(optional):
     optional.add_argument("-a", "--architecture-from-file", type=str, required=False, default=None, help="Model to use for training")
     optional.add_argument("-fp", "--file-prefix", type=str, required=False, default=None, help="File prefix for output to use. All the files will be prefixed with this string if provided.")
     optional.add_argument('-hp', '--html-prefix', required=False, default="./", help="The html prefix to use for the html file output.")
-    optional.add_argument('--bsort', required=False, default=False, action='store_true', help="In prpeprocess, by deafult we sort bam using unix sort but sometimes LC collate can cause issues, so this can be set to use betools sort which works well but is memory intensive..")
-    optional.add_argument('--tmpdir', required=False, default=None, type=str, help="temp dir for unix sort")
-    optional.add_argument('--no-st', required=False, default=False, action='store_true', help="Dont do streaming  and filtering in preprocessing (short chromosome contrigs not in reference fasta are not removed)")
+    _add_read_sorting(optional)
     _add_data_aug(optional)
     _add_device(optional)
 
@@ -141,6 +158,12 @@ def _add_data_aug(optional):
              "never validation or test. forward-only: none. revcomp-only: "
              "every example of every split. Where a DNase cut lands under "
              "reversal is --dnase-convention's business.")
+    _add_dnase_convention(optional)
+
+
+def _add_dnase_convention(optional):
+    """``--dnase-convention`` alone: `prep bigwig` records cuts but trains
+    nothing, so it takes no ``--data-aug``."""
     optional.add_argument(
         "--dnase-convention", type=str, default=None,
         choices=list(conventions.DNASE_CONVENTION_CHOICES),
@@ -251,7 +274,8 @@ REPORT_OPTIONS = ("tomtom_lite", "interpret_subsample", "modisco_max_seqlets",
 
 #: Other options removed from ``args`` when not given, so ``args.json``
 #: records exactly what it did before they existed.
-ABSENT_WHEN_OMITTED = ("dnase_convention", "reproducibility", "reproducibility_max")
+ABSENT_WHEN_OMITTED = ("dnase_convention", "reproducibility", "reproducibility_max",
+                       "input_bigwig")
 
 
 def drop_absent(args):
@@ -366,9 +390,10 @@ def build_parser():
 
     # helper parsers
     prep_parser_full = subparsers.add_parser("prep", help="Tools to generate preprocessing data for chrombpnet")
-    prep_parser_sub = prep_parser_full.add_subparsers(help="Must be eithier 'nonpeaks' or 'splits'.", required=True, dest='cmd_prep')
+    prep_parser_sub = prep_parser_full.add_subparsers(help="Must be eithier 'nonpeaks', 'splits' or 'bigwig'.", required=True, dest='cmd_prep')
     nonpeaks_parser = prep_parser_sub.add_parser("nonpeaks", help="Generate non-peak background regions given peaks")
     splits_parser = prep_parser_sub.add_parser("splits", help="Generate chromosome splits")
+    bigwig_parser = prep_parser_sub.add_parser("bigwig", help="Convert reads to the shifted, unstranded bigwig that the training commands take with -ibw")
 
     # downstream tool parsers
     preds_parser = subparsers.add_parser("pred_bw", help="Get model prediction bigwigs (Metrics calculated if observed bigwig provided)")
@@ -399,6 +424,8 @@ def build_parser():
     required_splits_parser.add_argument("-c", "--chrom-sizes", type=str, required=True, help="TSV file with chromosome sizes. All chromosomes from the first column of chrom sizes file are used")
     required_splits_parser.add_argument("-tcr", "--test-chroms", nargs="*", type=str, required=True, help="Chromosomes to use for test")
     required_splits_parser.add_argument("-vcr", "--valid-chroms", nargs="*", type=str, required=True, help="Chromosomes to use for validation")
+
+    _add_prep_bigwig_arguments(bigwig_parser)
 
     _add_chrombpnet_training_arguments(train_parser)
     _add_chrombpnet_training_arguments(pipeline_parser, reports=True)
@@ -478,6 +505,24 @@ def build_parser():
     _add_report_options(optional_tfm, interpretation=False)
 
     return parser
+
+
+def _add_prep_bigwig_arguments(parser):
+    """`prep bigwig`: the training commands' preprocessing as its own step, so
+    one bigwig serves the bias and the ChromBPNet runs (-ibw). Unlike them it
+    takes a known shift (-ps/-ms) in place of estimating it."""
+    required, optional = _required_optional(parser)
+    required.add_argument('-g', '--genome', required=True, type=str, help="reference genome fasta file")
+    required.add_argument('-c', '--chrom-sizes', type=str, required=True, help="Chrom sizes file")
+    reads = required.add_mutually_exclusive_group(required=True)
+    _add_read_files(reads)
+    required.add_argument('-op', '--output-prefix', type=str, required=True, help="Output prefix (path/to/prefix): the bigwig is written to <prefix>_unstranded.bw")
+    required.add_argument('-d', '--data-type', required=True, type=str, choices=['ATAC', 'DNASE'], help="assay type")
+    optional.add_argument('-ps', '--plus-shift', type=int, default=None, help="Plus strand shift applied to reads. Estimated if not specified")
+    optional.add_argument('-ms', '--minus-shift', type=int, default=None, help="Minus strand shift applied to reads. Estimated if not specified")
+    _add_shift_estimation(optional)
+    _add_read_sorting(optional)
+    _add_dnase_convention(optional)
 
 
 def _add_export_arguments(parser):

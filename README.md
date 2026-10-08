@@ -86,6 +86,8 @@ you pass to `chrombpnet pipeline -b` in step 2.
   [fragment](https://storage.googleapis.com/chrombpnet_data/input_files/example.fragments.tsv),
   [tagalign](https://storage.googleapis.com/chrombpnet_data/input_files/example.tagAlign).
   The enzyme shift is estimated from the reads; you do not supply it.
+- `-ibw`: in place of reads, a bigwig that `chrombpnet prep bigwig` made from
+  them (see [Making the bigwig once](#making-the-bigwig-once)).
 - `-d`: assay type, `ATAC` or `DNASE`.
 - `-g`: reference genome FASTA, e.g.
   [hg38.fa](https://storage.googleapis.com/chrombpnet_data/input_files/hg38.genome.fa).
@@ -136,6 +138,35 @@ chrombpnet pipeline \
 The inputs are step 1's, except that `-b` is now the bias model checkpoint.
 Use `chrombpnet train` instead of `pipeline` to stop after training and its
 report, skipping evaluation, contribution scoring and motif discovery.
+
+#### Making the bigwig once
+
+Given reads, every training command first converts them into a shifted,
+unstranded bigwig (`auxiliary/data_unstranded.bw`), so steps 1 and 2 each
+build the same one. `chrombpnet prep bigwig` does this conversion on its own,
+and `-ibw` passes the result to any of `bias pipeline`, `bias train`,
+`pipeline` and `train` in place of `-ibam`/`-ifrag`/`-itag`:
+
+```bash
+chrombpnet prep bigwig -ibam /path/to/input.bam -d ATAC \
+  -g /path/to/hg38.fa -c /path/to/hg38.chrom.sizes -op /path/to/data
+# writes /path/to/data_unstranded.bw
+chrombpnet bias pipeline -ibw /path/to/data_unstranded.bw -d ATAC ... -b 0.5 -o /path/to/bias/dir/
+chrombpnet pipeline -ibw /path/to/data_unstranded.bw -d ATAC ... -b /path/to/bias.pt -o /path/to/output/dir/
+```
+
+A run given `-ibw` trains exactly what a run given the reads trains. It skips
+only the conversion, and still draws the shift QC (`evaluation/bw_shift_qc.png`)
+from the bigwig. `prep bigwig` estimates the enzyme shift like the training
+commands, or takes a known one with `-ps`/`-ms`.
+
+The bigwig must follow this package's conventions, which the training
+commands cannot check; the shift QC is the evidence. For DNase, give the
+training commands the same `--dnase-convention` the bigwig was made with,
+because reverse-complement augmentation depends on it. The default,
+`both-half`, does not describe a DNase bigwig from chrombpnet 1.x, which
+records each cut on one base as `right` does: give `--dnase-convention right`
+with one, or `right-deprecated` to reproduce 1.x training exactly.
 
 #### Output format
 
@@ -227,6 +258,7 @@ chrombpnet bias train        train a bias model only
 chrombpnet bias qc           evaluate an already-trained bias model
 chrombpnet prep nonpeaks     GC-matched background regions from peaks
 chrombpnet prep splits       chromosome train/valid/test split JSON
+chrombpnet prep bigwig       shifted, unstranded bigwig from reads (for -ibw)
 chrombpnet predict           score one model on a fold's test split
 chrombpnet pred_bw           prediction bigwigs (and metrics, given -bw)
 chrombpnet contribs_bw       contribution-score bigwigs

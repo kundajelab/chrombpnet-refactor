@@ -69,6 +69,9 @@ Both gzipped and plain text files are allowed. Sorting is not expected.
 
 The `CHROM_SIZES` file should be a tab-separated file with two columns. First column is the chromosome and second column is the chromsome length. Make sure the input BAM/fragment/tagAlign file are consistent with the chromosomes in `CHROM_SIZES`.
 
+`chrombpnet prep bigwig` runs this script from the package's command line,
+with the same options. Its output goes to the training commands with `-ibw`.
+
 ### Example usage
 
 ```bash
