@@ -30,12 +30,12 @@ Checks (tolerances as in the PR, CPU, full float32):
 * the bias count-head rescale: predictions max abs <= 1e-4;
 * DeepSHAP references: **bitwise** equal; hypothetical scores, both heads,
   for the initial bias model and the original's trained no-bias model,
-  through ``engine.attribute``: relative L2 <= 1e-4. The golden scores are the
-  original's with the shap fork's StopGradient handler registered
-  (``tf_engine.honour_stop_gradient``), because the engine honours the profile
-  target's ``stop_gradient``; without it the original weights the profile
-  logits by a midpoint, and the engine's profile scores must differ from
-  those by more than ``tf_engine.MIN_PROFILE_DEPARTURE``;
+  through ``engine.attribute``: relative L2 <= 1e-4. By default against the
+  original as it is (the shap fork's StopGradient handler commented out, so
+  the profile logits get midpoint weights); with
+  ``--contribs-profile-stopgrad``, against the original with that handler
+  registered (``tf_engine.honour_stop_gradient``). The two profile weightings
+  must differ by more than ``tf_engine.MIN_PROFILE_DEPARTURE``;
 * the JAX engine loads the original's 1.x models (including the full
   bias-factorized model with its bytecode ``Lambda``) and predicts within 1e-4;
 * a ``.keras`` save/load round trip is exact;
@@ -223,10 +223,9 @@ def golden_shap(workdir, out, original_repo):
     for name, path in (("bias", os.path.join(workdir, "bias_init.h5")),
                        ("nobias", os.path.join(out, "chrombpnet_trace_nobias.h5"))):
         for head in ("counts", "profile"):
-            scores["{}_{}".format(name, head)] = side.shap(path, seqs, head, SHAP_SEED,
-                                                            stop_gradient=True)
-        scores["{}_profile_midpoint".format(name)] = side.shap(path, seqs, "profile", SHAP_SEED,
-                                                                stop_gradient=False)
+            scores["{}_{}".format(name, head)] = side.shap(path, seqs, head, SHAP_SEED)
+        scores["{}_profile_stopgrad".format(name)] = side.shap(path, seqs, "profile", SHAP_SEED,
+                                                                stop_gradient=True)
     np.savez(os.path.join(out, "shap.npz"), **scores)
 
 
@@ -324,6 +323,9 @@ def jax_side(workdir, golden_dir, out):
                                              batch_size=NUM_SHUFFLES, num_shuffles=NUM_SHUFFLES,
                                              seed=SHAP_SEED):
             scores["{}_{}".format(name, head)] = values
+        scores["{}_profile_stopgrad".format(name)] = dict(engine.attribute(
+            model, seqs, ["profile"], device="cpu", batch_size=NUM_SHUFFLES,
+            num_shuffles=NUM_SHUFFLES, seed=SHAP_SEED, profile_stop_gradient=True))["profile"]
     np.savez(os.path.join(out, "shap.npz"), **scores)
 
 
@@ -473,12 +475,12 @@ def compare(golden_dir, golden_dir2, jax_dir, report):
     sg, sj = (np.load(os.path.join(d, "shap.npz")) for d in (golden_dir, jax_dir))
     report.equal("shap: references", sj["references"], sg["references"])
     for name in ("bias", "nobias"):
-        for head in ("counts", "profile"):
+        for head in ("counts", "profile", "profile_stopgrad"):
             key = "{}_{}".format(name, head)
             report.relative_l2("shap: {} hypothetical scores".format(key), sj[key], sg[key], 1e-4)
-        departure = _tf_engine().relative_l2(sj[name + "_profile"], sg[name + "_profile_midpoint"])
+        departure = _tf_engine().relative_l2(sg[name + "_profile_stopgrad"], sg[name + "_profile"])
         minimum = _tf_engine().MIN_PROFILE_DEPARTURE
-        report.check("shap: {}_profile departs from the original's midpoint".format(name),
+        report.check("shap: {} profile weightings differ (StopGradient handler)".format(name),
                      departure > minimum, "relative L2 {:.2e} (> {:g})".format(departure, minimum))
 
 

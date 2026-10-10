@@ -89,11 +89,12 @@ class PyTorchEngine(Engine):
         return model.config.input_length
 
     def attribute(self, model, seqs, profile_or_counts, *, device, batch_size,
-                  num_shuffles, seed):
+                  num_shuffles, seed, profile_stop_gradient=False):
         from chrombpnet.engines.pytorch import attribution
         return attribution.attribute(
             model, seqs, profile_or_counts, device=device,
-            batch_size=batch_size, num_shuffles=num_shuffles, seed=seed)
+            batch_size=batch_size, num_shuffles=num_shuffles, seed=seed,
+            profile_stop_gradient=profile_stop_gradient)
 
 
 ENGINE = PyTorchEngine()

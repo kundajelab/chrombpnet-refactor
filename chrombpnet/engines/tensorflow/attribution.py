@@ -19,21 +19,20 @@ eagerly in this process by the time attribution starts.
 ``--interpret-batch-size`` has no effect: the fork explains one example at a
 time, against its own references.
 
-Two deliberate departures from the original:
+One deliberate departure from the original: the dinucleotide-shuffled
+references are drawn from ``np.random.RandomState(seed)``, fresh for each head,
+where the original drew them from an unseeded stream. Contribution scores are
+therefore reproducible run to run, and ``--seed`` means what it says.
 
-- The dinucleotide-shuffled references are drawn from
-  ``np.random.RandomState(seed)``, fresh for each head, where the original
-  drew them from an unseeded stream. Contribution scores are therefore
-  reproducible run to run, and ``--seed`` means what it says.
-- The profile target's ``tf.stop_gradient`` is honoured
-  (``honour_stop_gradient``). The target weights each mean-normalized logit
-  by its softmax under ``stop_gradient``, so that the softmax acts as fixed
-  weights: the input's logits weighted by ``softmax(mn_x)``, as the PyTorch
-  engine computes them. The shap fork has its ``StopGradient`` handler
-  commented out (``deep_tf.py:595``), so the original treated the weights as
-  a second varying input and its two-input rule weighted the logits by the
-  midpoint ``0.5 * (softmax(mn_x) + softmax(mn_r))`` instead. The counts head
-  is unchanged.
+The profile target weights each mean-normalized logit by its softmax under
+``tf.stop_gradient``, meaning the softmax to act as fixed weights. The shap
+fork has its ``StopGradient`` handler commented out (``deep_tf.py:595``), so
+by default -- as in the original -- the weights count as a second varying
+input, and the fork's two-input rule weights the logits by the midpoint
+``0.5 * (softmax(mn_x) + softmax(mn_r))``. With ``stop_gradient``
+(``--contribs-profile-stopgrad``) the handler is registered for the profile
+explainer (``honour_stop_gradient``) and the weights are ``softmax(mn_x)``.
+The counts head is the same either way.
 """
 
 from __future__ import annotations
@@ -84,8 +83,12 @@ def _references(num_shuffles, seed):
                              rng=np.random.RandomState(seed))
 
 
-def explain(model, seqs, profile_or_counts, num_shuffles, seed):
-    """Hypothetical scores per head. Needs graph mode and a graph-mode model."""
+def explain(model, seqs, profile_or_counts, num_shuffles, seed, stop_gradient=False):
+    """Hypothetical scores per head. Needs graph mode and a graph-mode model.
+
+    ``stop_gradient`` honours the profile target's ``tf.stop_gradient``; by
+    default the fork's midpoint weighting applies, as in the original.
+    """
     import shap
     import tensorflow as tf
 
@@ -111,7 +114,8 @@ def explain(model, seqs, profile_or_counts, num_shuffles, seed):
 
     if "profile" in profile_or_counts:
         weightedsum_meannormed_logits = shap_utils.get_weightedsum_meannormed_logits(model)
-        with honour_stop_gradient():
+        handler = honour_stop_gradient() if stop_gradient else contextlib.nullcontext()
+        with handler:
             profile_model_profile_explainer = shap.explainers.deep.TFDeepExplainer(
                 (profile_model_input, weightedsum_meannormed_logits),
                 _references(num_shuffles, seed),
@@ -123,7 +127,8 @@ def explain(model, seqs, profile_or_counts, num_shuffles, seed):
     return scores
 
 
-def _worker(model_path, workdir, profile_or_counts, num_shuffles, seed, device):
+def _worker(model_path, workdir, profile_or_counts, num_shuffles, seed, device,
+            stop_gradient=False):
     """Child-process entry point: graph mode, load, explain, write ``.npy``."""
     from chrombpnet.engines.tensorflow.predictor import configure_device, load_model
 
@@ -137,11 +142,13 @@ def _worker(model_path, workdir, profile_or_counts, num_shuffles, seed, device):
     model.summary()
 
     seqs = np.load(os.path.join(workdir, "seqs.npy"))
-    for head, values in explain(model, seqs, profile_or_counts, num_shuffles, seed).items():
+    for head, values in explain(model, seqs, profile_or_counts, num_shuffles, seed,
+                                stop_gradient).items():
         np.save(os.path.join(workdir, f"{head}.npy"), values)
 
 
-def attribute(model_path, seqs, profile_or_counts, *, device, num_shuffles, seed):
+def attribute(model_path, seqs, profile_or_counts, *, device, num_shuffles, seed,
+              profile_stop_gradient=False):
     """Yield ``(head, hypothetical_scores)``, counts before profile.
 
     The scores travel back through ``.npy`` files in a temporary directory
@@ -155,7 +162,7 @@ def attribute(model_path, seqs, profile_or_counts, *, device, num_shuffles, seed
         process = context.Process(
             target=_worker,
             args=(model_path, workdir, list(profile_or_counts), int(num_shuffles),
-                  int(seed), device))
+                  int(seed), device, bool(profile_stop_gradient)))
         process.start()
         process.join()
         if process.exitcode != 0:

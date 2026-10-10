@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """DeepSHAP agreement of the three engines, with PyTorch as the reference.
 
-The PyTorch engine's profile target weights the mean-normalized logits by
-their softmax under ``detach`` -- the target's stop-gradient -- and
-tangermeme's DeepLIFT treats those weights as constants. The TensorFlow engine
-(the kundajelab shap fork, with the ``StopGradient`` handler it has commented
-out registered again) and the JAX engine (``profile_weighting="softmax_x"``)
-must compute the same scores. Before that fix both weighted the logits by the
-midpoint of the input's and the reference's softmax, as the original
-ChromBPNet does.
+The profile target weights the mean-normalized logits by their softmax under a
+stop-gradient, and the engines compute it two ways, which must agree:
+
+* by default, as the original ChromBPNet does -- the kundajelab shap fork has
+  its ``StopGradient`` handler commented out, so each logit of an (input,
+  reference) pair is weighted by the midpoint of their softmaxes. TensorFlow:
+  the fork as it is; JAX: ``profile_weighting="chrombpnet"``; PyTorch:
+  ``ProfileWrapper``'s midpoint over tangermeme's paired batch halves.
+* with ``--contribs-profile-stopgrad``, honouring the stop-gradient -- the
+  input's own softmax. TensorFlow: the handler registered; JAX:
+  ``"softmax_x"``; PyTorch: the softmax detached.
 
 One bias-architecture BPNet with fixed Keras-layout weights, including
 non-zero biases so that ReLUs switch between a sequence and its references;
@@ -17,12 +20,11 @@ random sequences; one reference set. Three interpreters, files in between:
 ``tensorflow`` this package's TensorFlow engine, in ``chrombpnet-tensorflow``:
                builds the model and saves it as a 1.x ``.h5``, records the
                engine's reference stream (``shap_utils.shuffle_several_times``
-               on one ``RandomState(seed)``), and scores both heads through
+               on one ``RandomState(seed)``), and scores both heads, and the
+               profile head again with the stop-gradient, through
                ``engine.attribute``, the path the CLI takes.
 ``jax``        the JAX engine, in ``chrombpnet-jax``: loads that ``.h5`` and
-               scores both heads through ``engine.attribute``. As a control it
-               also scores the profile head with the midpoint weighting
-               (``profile_weighting="chrombpnet"``).
+               scores the same through ``engine.attribute``.
 ``pytorch``    the PyTorch engine's target wrappers with tangermeme, in
                ``chrombpnet-pytorch``: the same weights
                (``assign_keras_layout_weights``) and the TensorFlow engine's
@@ -33,11 +35,10 @@ Checks:
 
 * the JAX engine's references equal the TensorFlow engine's bitwise;
 * the three models' predictions agree within 1e-4;
-* TensorFlow and JAX each agree with PyTorch within relative L2 1e-4, both
-  heads;
-* the midpoint weighting does not (relative L2 above
-  ``tf_engine.MIN_PROFILE_DEPARTURE``), so the comparison tells the two
-  weightings apart.
+* TensorFlow and JAX each agree with PyTorch within relative L2 1e-4: counts,
+  profile, and profile with the stop-gradient;
+* the two profile weightings differ (relative L2 above
+  ``tf_engine.MIN_PROFILE_DEPARTURE``), so the comparison tells them apart.
 
 Usage::
 
@@ -70,6 +71,9 @@ FILTERS = 8
 #: tf_engine._set_bpnet_weights assigns tf_engine.N_DIL_LAYERS layers.
 N_DIL_LAYERS = 2
 HEADS = ("counts", "profile")
+#: What every worker scores: both heads by default, and the profile head with
+#: the stop-gradient honoured.
+SCORES = ("counts", "profile", "profile_stopgrad")
 TOLERANCE = 1e-4
 
 
@@ -143,6 +147,9 @@ def tensorflow_worker(workdir):
     handle = engine.load_attribution_model(path, None)
     scores = dict(engine.attribute(handle, seqs, list(HEADS), device=None, batch_size=1,
                                    num_shuffles=NUM_SHUFFLES, seed=SEED))
+    scores["profile_stopgrad"] = dict(engine.attribute(
+        handle, seqs, ["profile"], device=None, batch_size=1, num_shuffles=NUM_SHUFFLES,
+        seed=SEED, profile_stop_gradient=True))["profile"]
     np.savez(os.path.join(workdir, "tensorflow.npz"), predicted_profile=profile,
              predicted_counts=counts, **scores)
 
@@ -151,7 +158,6 @@ def jax_worker(workdir):
     _import_this_package()
     from chrombpnet import engines
     from chrombpnet.engines.jax.attribution import SequentialReferences
-    from chrombpnet.engines.jax.attribution.explainer import DeepLiftShap
 
     engine = engines.configure("jax")
     seqs = np.load(os.path.join(workdir, "inputs.npz"))["seqs"]
@@ -159,11 +165,10 @@ def jax_worker(workdir):
     profile, counts = model.predict(seqs, batch_size=NUM_SEQS, verbose=0)
     scores = dict(engine.attribute(model, seqs, list(HEADS), device="cpu",
                                    batch_size=NUM_SHUFFLES, num_shuffles=NUM_SHUFFLES, seed=SEED))
+    scores["profile_stopgrad"] = dict(engine.attribute(
+        model, seqs, ["profile"], device="cpu", batch_size=NUM_SHUFFLES,
+        num_shuffles=NUM_SHUFFLES, seed=SEED, profile_stop_gradient=True))["profile"]
     scores["references"] = SequentialReferences(NUM_SHUFFLES, SEED)(seqs, 0, len(seqs))
-    midpoint = DeepLiftShap(model, heads=("profile",), profile_weighting="chrombpnet",
-                            num_shuffles=NUM_SHUFFLES)
-    scores["profile_midpoint"] = midpoint.explain(
-        seqs, references=SequentialReferences(NUM_SHUFFLES, SEED))["profile"]
     np.savez(os.path.join(workdir, "jax.npz"), predicted_profile=profile,
              predicted_counts=counts, **scores)
 
@@ -189,7 +194,8 @@ def pytorch_worker(workdir):
     with torch.no_grad():
         profile, counts = model(sequence)
     results = {"predicted_profile": profile.numpy(), "predicted_counts": counts.numpy()}
-    for head, wrapper in (("counts", CountsWrapper(model)), ("profile", ProfileWrapper(model))):
+    for head, wrapper in (("counts", CountsWrapper(model)), ("profile", ProfileWrapper(model)),
+                          ("profile_stopgrad", ProfileWrapper(model, stop_gradient=True))):
         wrapper.eval()
         scores = deep_lift_shap(wrapper, sequence, references=references, hypothetical=True,
                                 batch_size=NUM_SHUFFLES, device="cpu")
@@ -215,12 +221,12 @@ def compare(workdir, report):
         for name, side in (("TensorFlow", tf), ("JAX", jx)):
             report.close("predictions: {} {} vs PyTorch".format(name, output),
                          np.reshape(side[key], pt[key].shape), pt[key], 1e-4)
-    for head in HEADS:
+    for head in SCORES:
         for name, side in (("TensorFlow", tf), ("JAX", jx)):
             report.relative_l2("shap {}: {} vs PyTorch".format(head, name),
                                side[head], pt[head], TOLERANCE)
-    distance = tf_engine.relative_l2(jx["profile_midpoint"], pt["profile"])
-    report.check("control: midpoint weighting differs from PyTorch",
+    distance = tf_engine.relative_l2(pt["profile"], pt["profile_stopgrad"])
+    report.check("control: the midpoint and stop-gradient weightings differ",
                  distance > tf_engine.MIN_PROFILE_DEPARTURE,
                  "relative L2 {:.2e} (> {:g})".format(distance, tf_engine.MIN_PROFILE_DEPARTURE))
 

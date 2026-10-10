@@ -275,7 +275,7 @@ REPORT_OPTIONS = ("tomtom_lite", "interpret_subsample", "modisco_max_seqlets",
 #: Other options removed from ``args`` when not given, so ``args.json``
 #: records exactly what it did before they existed.
 ABSENT_WHEN_OMITTED = ("dnase_convention", "reproducibility", "reproducibility_max",
-                       "input_bigwig")
+                       "input_bigwig", "contribs_profile_stopgrad")
 
 
 def drop_absent(args):
@@ -284,6 +284,10 @@ def drop_absent(args):
     for name in REPORT_OPTIONS + ABSENT_WHEN_OMITTED:
         if hasattr(args, name) and getattr(args, name) is None:
             delattr(args, name)
+
+
+def _add_contribs_profile_stopgrad(optional):
+    optional.add_argument("--contribs-profile-stopgrad", action="store_true", default=None, help="Honour the stop-gradient on the softmax weights of the profile contribution target, so each profile logit is weighted by the input's own predicted profile. By default the weights are the midpoint of the input's and each shuffled reference's predicted profile, as chrombpnet 1.x and bpnet compute them: the kundajelab shap fork they use leaves its StopGradient handler off. Counts contribution scores are the same either way")
 
 
 def _add_report_options(optional, interpretation=True):
@@ -296,6 +300,7 @@ def _add_report_options(optional, interpretation=True):
     optional.add_argument("--interpret-subsample", type=positive_int, default=None, help="Number of peaks, sampled with a fixed seed, whose contribution scores the TF-MoDISco motif reports are built from (default 30000; all peaks if there are fewer). The sample is written to auxiliary/30K_subsample_peaks.bed whatever its size")
     optional.add_argument("--modisco-max-seqlets", type=positive_int, default=None, help="Maximum seqlets per positive/negative pattern group in TF-MoDISco motif discovery (default 50000)")
     optional.add_argument("--modisco-window", type=even_positive_int, default=None, help="Width in bp of the window, centred on each scored sequence, in which TF-MoDISco discovers motifs (default 500). Must be even and no longer than the model input length")
+    _add_contribs_profile_stopgrad(optional)
 
 
 def _add_architecture_options(optional, *, filters, dilations, jitter):
@@ -479,6 +484,7 @@ def build_parser():
     _add_interpret_batch_size(optional_contribs)
     optional_contribs.add_argument('--num-shuffles', type=int, default=20)
     optional_contribs.add_argument('--seed', type=int, default=1234)
+    _add_contribs_profile_stopgrad(optional_contribs)
 
     # Get marginal footprints
     required_ftps, optional_ftps = _required_optional(footprints_parser)

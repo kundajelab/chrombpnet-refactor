@@ -85,6 +85,7 @@ def fetch_interpret_args():
     )
     parser.add_argument("--num-shuffles", type=int, default=20)
     parser.add_argument("--seed", type=int, default=1234)
+    parser.add_argument("--contribs-profile-stopgrad", action="store_true", default=None)
     parser.add_argument("--device", default=None)
     return parser.parse_args()
 
@@ -120,11 +121,13 @@ def interpret(
     num_shuffles=20,
     seed=1234,
     engine=None,
+    profile_stop_gradient=False,
 ):
     """Score ``seqs`` and write ``<output_prefix>.<head>_scores.h5`` per head.
 
     ``model`` is what ``engine.load_attribution_model`` returned; ``engine``
-    defaults to the configured one.
+    defaults to the configured one. ``profile_stop_gradient`` is
+    ``--contribs-profile-stopgrad`` (``Engine.attribute``).
     """
     seqs = np.asarray(seqs)
     if seqs.ndim != 3 or seqs.shape[2] != 4:
@@ -138,7 +141,8 @@ def interpret(
     engine = engine or engines.current()
     for name, scores_nlc in engine.attribute(
             model, seqs, profile_or_counts, device=device,
-            batch_size=batch_size, num_shuffles=num_shuffles, seed=seed):
+            batch_size=batch_size, num_shuffles=num_shuffles, seed=seed,
+            profile_stop_gradient=profile_stop_gradient):
         _save_scores(
             f"{output_prefix}.{name}_scores.h5",
             generate_shap_dict(seqs, scores_nlc),
@@ -182,6 +186,7 @@ def main(args):
         num_shuffles=getattr(args, "num_shuffles", 20),
         seed=getattr(args, "seed", 1234),
         engine=engine,
+        profile_stop_gradient=bool(getattr(args, "contribs_profile_stopgrad", None)),
     )
 
 

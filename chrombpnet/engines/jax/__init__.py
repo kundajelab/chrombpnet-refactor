@@ -199,11 +199,12 @@ class JaxEngine(Engine):
         return int(model.inputs[0].shape[1])
 
     def attribute(self, model, seqs, profile_or_counts, *, device, batch_size,
-                  num_shuffles, seed):
+                  num_shuffles, seed, profile_stop_gradient=False):
         from chrombpnet.engines.jax import attribution
         return attribution.attribute(
             model, seqs, profile_or_counts, batch_size=batch_size,
-            num_shuffles=num_shuffles, seed=seed)
+            num_shuffles=num_shuffles, seed=seed,
+            profile_stop_gradient=profile_stop_gradient)
 
 
 ENGINE = JaxEngine()

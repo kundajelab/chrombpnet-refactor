@@ -85,17 +85,13 @@ call, bias rescale and DeepSHAP code, each module stating what it changes.
 Given identical batches, initial weights and shuffle references it reproduces
 the original's checkpoints, logs, predictions and contribution scores byte for
 byte, which `tests/parity/tf_engine.py` checks against a checkout of the
-original (for the profile scores, with the original's `StopGradient` handler
-restored, below). It loads models trained by the original package, so every
+original. It loads models trained by the original package, so every
 downstream command works on existing `.h5` models. It differs from the
 original only where this package fixes a defect, each in its own commit and
 CHANGELOG entry: `--seed` now seeds the bias-factorized model's trainable
 tower; the best validation checkpoint is restored even when training runs out
-of epochs; DeepSHAP's dinucleotide shuffles are seeded by `--seed`; and the
-profile DeepSHAP target's `stop_gradient` is honoured, so each logit is
-weighted by the input's own softmax, as in the PyTorch engine. The `shap` fork
-has that handler commented out, so the original weighted it by the midpoint of
-the input's and the reference's softmax. Attribution runs in a spawned
+of epochs; and DeepSHAP's dinucleotide shuffles are seeded by `--seed`.
+Attribution runs in a spawned
 subprocess, because the shap fork needs TF1 graph mode, which is
 process-global; `--interpret-batch-size` has no effect there.
 
@@ -106,15 +102,13 @@ process-global; `--interpret-batch-size` has no effect there.
 `model.fit`, loader for the original's `.h5` models (no TensorFlow needed, and
 their bytecode is never run), bias rescale, and native JAX DeepSHAP -- the
 `shap` fork's multipliers, with both heads from one jitted pass per chunk.
-The profile target's `stop_gradient` is honoured, as in the other two
-engines, where the PR reproduces the fork's midpoint weighting. Each module
-states what this package changes. The defaults are the original training
+Each module states what this package changes. The defaults are the original training
 recipe. It cannot be byte-identical to TensorFlow 2.8, so
 `tests/parity/jax_engine.py` checks agreement with the original on identical
 inputs: predictions within 1e-4, a 20-step Adam trace within 1e-3, DeepSHAP
-within 1e-4 relative L2 (against the original with its `StopGradient` handler
-restored) with bitwise-identical references (drawn exactly as the TensorFlow
-engine draws them), and the original's models loaded within 1e-4. Models are
+within 1e-4 relative L2 in both profile weightings (below) with
+bitwise-identical references (drawn exactly as the TensorFlow engine draws
+them), and the original's models loaded within 1e-4. Models are
 `.keras` files; `chrombpnet export --legacy-h5 -m model.keras -o model.h5`
 writes a copy in the original's `.h5` layout, which the TensorFlow engine,
 chrombpnet 1.x, variant-scorer and bpnet-lite read. `--interpret-batch-size`
@@ -124,6 +118,20 @@ The JAX engine also has ChromBPNet 2.0's opt-in training options, refused for
 the other engines: `--optimizer muon` (Muon on the dilated convolutions,
 experimental), `--muon-lr`, `--ema`/`--ema-momentum`, `--lr-schedule cosine`
 and `--precision {default,highest,bf16}` (bf16 is faster but loses accuracy).
+
+**The profile DeepSHAP target** is `sum(softmax(stop_gradient(mn)) * mn)` over
+the mean-normalized profile logits `mn`; the stop-gradient means the softmax
+to act as fixed weights. chrombpnet 1.x and bpnet compute it with the
+kundajelab `shap` fork, which has its `StopGradient` handler commented out
+(`deep_tf.py:595`), so the weights count as a second varying input and each
+logit of an (input, reference) pair is weighted by the midpoint
+`0.5 * (softmax(mn_x) + softmax(mn_r))`. All three engines do the same by
+default. `--contribs-profile-stopgrad` (on `pipeline`, `qc`, `bias pipeline`,
+`bias qc` and `contribs_bw`) honours the stop-gradient instead, weighting each
+logit by the input's own softmax. The counts head is the same either way.
+`tests/parity/deepshap_engines.py` checks that the three engines agree within
+1e-4 in both modes; on a real model the two profile weightings correlate at
+about 0.97.
 
 `--predict-fk` (the fused Triton forward) is PyTorch-only and refused for the
 other engines. `--reproducibility` and `--reproducibility-max` work on all

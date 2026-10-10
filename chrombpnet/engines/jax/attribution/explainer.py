@@ -199,7 +199,8 @@ class DeepLiftShap:
         model: Keras 3 model with outputs [profile logits, log counts].
         heads: subset of ("counts", "profile").
         profile_weighting: see deeplift_jax.profile_weights; "chrombpnet" reproduces chrombpnet 1.x, and
-            the engine uses "softmax_x" (the target's StopGradient honoured, as in PyTorch and TensorFlow).
+            the engine uses it by default, and "softmax_x" (the StopGradient honoured) with
+            --contribs-profile-stopgrad.
         precision: matmul/conv precision while tracing: "auto" (default: "highest" on CPU, "default" on GPU),
             "highest" (full float32), "high", or "default" (TF32 on Ampere+ GPUs; faster, noisier near ReLU
             branch switches).

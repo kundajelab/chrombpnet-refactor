@@ -6,14 +6,14 @@ JAX DeepSHAP: the multipliers of the kundajelab ``shap`` fork's
 ``TFDeepExplainer`` that the original ChromBPNet used, computed with one jitted
 forward per chunk for both heads, and projected on the device.
 
-This module adds two things. The first is the profile target's weights. The
-engine uses ``profile_weighting="softmax_x"``: the target's ``stop_gradient``
-is honoured, so each mean-normalized logit of the input is weighted by its
-softmax, ``softmax(mn_x)``. That is what the PyTorch engine computes, and the
-TensorFlow engine too, now that it registers the ``StopGradient`` handler
-that the shap fork has commented out (``deep_tf.py:595``). The PR's default,
-``"chrombpnet"``, reproduces that fork's midpoint weights instead,
-``0.5 * (softmax(mn_x) + softmax(mn_r))``.
+This module adds two things. The first is the choice of the profile target's
+weights. By default the engine uses the PR's ``profile_weighting="chrombpnet"``,
+the shap fork's midpoint weights ``0.5 * (softmax(mn_x) + softmax(mn_r))``,
+which chrombpnet 1.x computes because the fork has its ``StopGradient`` handler
+commented out (``deep_tf.py:595``); the PyTorch and TensorFlow engines compute
+the same by default. ``profile_stop_gradient`` (``--contribs-profile-stopgrad``)
+selects ``"softmax_x"`` instead: the target's ``stop_gradient`` honoured, so
+each mean-normalized logit of the input is weighted by its own softmax.
 
 The second is the reference stream. The PR seeds each sequence's
 references from its own content; here they are drawn exactly as the
@@ -82,7 +82,8 @@ def sequences_per_step(batch_size, num_shuffles):
     return max(1, int(batch_size) // max(1, int(num_shuffles)))
 
 
-def attribute(model, seqs, profile_or_counts, *, batch_size, num_shuffles, seed):
+def attribute(model, seqs, profile_or_counts, *, batch_size, num_shuffles, seed,
+              profile_stop_gradient=False):
     """Yield ``(head, hypothetical_scores)``, counts before profile.
 
     Both heads come from the same chunked pass, so both are computed before
@@ -95,7 +96,8 @@ def attribute(model, seqs, profile_or_counts, *, batch_size, num_shuffles, seed)
         return
     seqs = np.asarray(seqs)
     explainer = DeepLiftShap(
-        model, heads=heads, profile_weighting="softmax_x",
+        model, heads=heads,
+        profile_weighting="softmax_x" if profile_stop_gradient else "chrombpnet",
         batch_seqs=sequences_per_step(batch_size, num_shuffles),
         num_shuffles=num_shuffles)
     print("Seqs dimension : {}".format(seqs.shape))

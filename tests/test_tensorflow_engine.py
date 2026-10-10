@@ -84,23 +84,24 @@ def test_honour_stop_gradient_restores_the_shap_forks_handlers():
 # explain() needs graph mode, which must be entered before TensorFlow runs
 # anything in the process, so it runs in a fresh interpreter.
 _EXPLAIN_PROFILE = """
-import contextlib, sys
+import sys
 import numpy as np
 import tensorflow as tf
 tf.compat.v1.disable_eager_execution()
 from chrombpnet.engines.tensorflow import attribution
 from chrombpnet.engines.tensorflow.predictor import load_model
-if sys.argv[3] == "without-handler":
-    attribution.honour_stop_gradient = contextlib.nullcontext
 model = load_model(sys.argv[1], compile=False)
-np.save(sys.argv[4], attribution.explain(model, np.load(sys.argv[2]), ["profile"], 3, 11)["profile"])
+scores = attribution.explain(model, np.load(sys.argv[2]), ["profile"], 3, 11,
+                             stop_gradient=sys.argv[3] == "with-handler")
+np.save(sys.argv[4], scores["profile"])
 """
 
 
-def test_profile_scores_honour_the_targets_stop_gradient(engine, bias_path, tmp_path):
-    """With the handler the profile logits are weighted by softmax(mn_x), as in
-    the PyTorch engine; without it, by the midpoint of the input's and the
-    reference's softmax, as in the original."""
+def test_profile_scores_follow_the_original_unless_stopgrad_is_asked_for(engine, bias_path, tmp_path):
+    """By default the profile logits are weighted by the midpoint of the
+    input's and the reference's softmax, as in the original, whose shap fork
+    leaves the StopGradient handler off; with --contribs-profile-stopgrad the
+    handler is registered and the weights are softmax(mn_x)."""
     import subprocess
     import sys
 
@@ -114,8 +115,10 @@ def test_profile_scores_honour_the_targets_stop_gradient(engine, bias_path, tmp_
         scores[mode] = np.load(out)
     honoured, midpoint = scores["with-handler"], scores["without-handler"]
     assert np.linalg.norm(honoured - midpoint) > 1e-3 * np.linalg.norm(midpoint)
-    # The CLI's path, a spawned graph-mode child, computes the former.
+    # The CLI's path, a spawned graph-mode child, computes each on request.
     handle = engine.load_attribution_model(bias_path, None)
-    cli = dict(engine.attribute(handle, seqs, ["profile"], device=None, batch_size=1,
-                                num_shuffles=3, seed=11))["profile"]
-    np.testing.assert_allclose(cli, honoured, rtol=1e-6, atol=1e-9)
+    for stop_gradient, expected in ((False, midpoint), (True, honoured)):
+        cli = dict(engine.attribute(handle, seqs, ["profile"], device=None, batch_size=1,
+                                    num_shuffles=3, seed=11,
+                                    profile_stop_gradient=stop_gradient))["profile"]
+        np.testing.assert_allclose(cli, expected, rtol=1e-6, atol=1e-9)

@@ -9,13 +9,12 @@ feeds both implementations identical batches, identical initial weights and
 identical DeepSHAP references, and then requires every output to be equal --
 not close, equal.
 
-One defect fix changes an output on purpose: the engine honours the profile
-DeepSHAP target's ``tf.stop_gradient``, whose handler the shap fork has
-commented out (``deep_tf.py:595``). Both sides are therefore run with that
-handler registered -- by the harness, on the reference side -- and must still
-be equal. The original's own scores, without it, are recorded as well, to
-check that the handler changes the profile head and leaves the counts head
-alone.
+DeepSHAP is compared in both of the engine's modes. By default it scores as
+the original does, whose shap fork has the ``StopGradient`` handler commented
+out (``deep_tf.py:595``). With ``--contribs-profile-stopgrad`` it registers
+that handler for the profile head; the harness registers it on the reference
+side too, and the two must still be equal. The handler must change the
+profile head and leave the counts head alone.
 
 Everything runs in the ``chrombpnet-tensorflow`` environment, in separate
 processes, because both code bases are the package ``chrombpnet``:
@@ -43,10 +42,10 @@ What is compared, exactly:
               for a bias model and a bias-factorized model where early stopping
               fires, and a bias-factorized model that runs out of epochs;
 * ``rescale`` the hyperparameter finder's bias count-head rescale;
-* ``shap``    DeepSHAP hypothetical scores for both heads, with the
-              StopGradient handler on both sides; and, on the reference side,
-              the original's unchanged counts head and its different profile
-              head without it;
+* ``shap``    DeepSHAP hypothetical scores for both heads as the original
+              computes them, and with the StopGradient handler on both sides
+              (``--contribs-profile-stopgrad``), which must leave the counts
+              head unchanged and change the profile head;
 * ``interop`` each side loading and predicting with the other side's model.
 
 The reference is first checked against itself, since a byte-identity claim
@@ -123,9 +122,9 @@ PINNED_ENV = {
 }
 
 
-#: Relative L2 distance between the engine's profile scores (StopGradient
-#: honoured) and the original's (midpoint weights) above which the departure
-#: counts as observed. Measured: 1.05 here and in jax_engine.py, 0.64 in
+#: Relative L2 distance between the profile scores with the StopGradient
+#: honoured and without it (the original's midpoint weights) above which the
+#: two weightings count as told apart. Measured: 1.05 here and in jax_engine.py, 0.64 in
 #: deepshap_engines.py; float32 agreement is 1e-6 or better.
 MIN_PROFILE_DEPARTURE = 1e-3
 
@@ -367,9 +366,10 @@ class Reference:
         bias_model = param_utils.load_model_wrapper(bias_path)
         finder.adjust_bias_model_logcounts(bias_model, seqs, cts).save(out)
 
-    def shap(self, model_path, seqs, head, seed, stop_gradient=True):
+    def shap(self, model_path, seqs, head, seed, stop_gradient=False):
         """``stop_gradient``: with the harness's StopGradient handler, as the
-        engine runs; without it, the original exactly."""
+        engine runs under --contribs-profile-stopgrad; without it, the
+        original exactly."""
         # Importing interpret disables eager execution, as the original's CLI
         # did at startup; it must happen before the model is loaded.
         from chrombpnet.evaluation.interpret import interpret, input_utils, shap_utils
@@ -422,7 +422,7 @@ class EngineSide:
     def rescale(self, bias_path, out, seqs, cts):
         self.engine.rescale_bias_logcounts(bias_path, out, seqs, cts)
 
-    def shap(self, model_path, seqs, head, seed):
+    def shap(self, model_path, seqs, head, seed, stop_gradient=False):
         import tensorflow as tf
         tf.compat.v1.disable_eager_execution()
         _pin_tensorflow()
@@ -432,14 +432,15 @@ class EngineSide:
         model = load_model(model_path, compile=False)
         # The engine seeds its own references, a fresh RandomState(seed) per
         # head; the reference worker is given the same stream.
-        return attribution.explain(model, seqs, [head], 20, seed)[head]
+        return attribution.explain(model, seqs, [head], 20, seed,
+                                   stop_gradient=stop_gradient)[head]
 
-    def shap_end_to_end(self, model_path, seqs, seed):
+    def shap_end_to_end(self, model_path, seqs, seed, stop_gradient=False):
         """The CLI's path: a spawned graph-mode child, both heads in one go."""
         handle = self.engine.load_attribution_model(model_path, None)
         return dict(self.engine.attribute(
             handle, seqs, list(HEADS), device=None, batch_size=1,
-            num_shuffles=20, seed=seed))
+            num_shuffles=20, seed=seed, profile_stop_gradient=stop_gradient))
 
 
 # --------------------------------------------------------------------------
@@ -505,21 +506,20 @@ def task_rescale(side, workdir, out):
 
 
 def task_shap(side, workdir, out):
+    """Both heads without the StopGradient handler (the default, the original)
+    and with it (``stopgrad_``, --contribs-profile-stopgrad)."""
     fixture = np.load(os.path.join(workdir, "fixture.npz"))
+    model = os.path.join(workdir, "bias_init.h5")
     scores = {}
     for head in HEADS:
-        scores[head] = side.shap(os.path.join(workdir, "bias_init.h5"),
-                                 fixture["shap_x"], head, SHAP_SEED)
-    if side.name == "reference":
-        for head in HEADS:
-            scores["unpatched_" + head] = side.shap(
-                os.path.join(workdir, "bias_init.h5"), fixture["shap_x"], head,
-                SHAP_SEED, stop_gradient=False)
+        scores[head] = side.shap(model, fixture["shap_x"], head, SHAP_SEED)
+        scores["stopgrad_" + head] = side.shap(model, fixture["shap_x"], head, SHAP_SEED,
+                                               stop_gradient=True)
     if side.name == "engine":
-        end_to_end = side.shap_end_to_end(os.path.join(workdir, "bias_init.h5"),
-                                          fixture["shap_x"], SHAP_SEED)
-        for head in HEADS:
-            scores["end_to_end_" + head] = end_to_end[head]
+        for prefix, stop_gradient in (("", False), ("stopgrad_", True)):
+            end_to_end = side.shap_end_to_end(model, fixture["shap_x"], SHAP_SEED, stop_gradient)
+            for head in HEADS:
+                scores["end_to_end_" + prefix + head] = end_to_end[head]
     np.savez(os.path.join(out, "shap.npz"), **scores)
 
 
@@ -735,14 +735,16 @@ def compare(workdir, report):
     report.h5("rescale: bias_model_scaled.h5", os.path.join(ref, "bias_model_scaled.h5"),
               os.path.join(eng, "bias_model_scaled.h5"))
     shap_ref, shap_eng = np.load(os.path.join(ref, "shap.npz")), np.load(os.path.join(eng, "shap.npz"))
-    for head in HEADS:
-        report.arrays("shap: {} hypothetical scores".format(head), shap_ref[head], shap_eng[head])
-        report.arrays("shap: {} scores via the CLI's subprocess path".format(head),
-                      shap_eng[head], shap_eng["end_to_end_" + head])
+    for prefix, mode in (("", ""), ("stopgrad_", " with --contribs-profile-stopgrad")):
+        for head in HEADS:
+            report.arrays("shap: {} hypothetical scores{}".format(head, mode),
+                          shap_ref[prefix + head], shap_eng[prefix + head])
+            report.arrays("shap: {} scores{} via the CLI's subprocess path".format(head, mode),
+                          shap_eng[prefix + head], shap_eng["end_to_end_" + prefix + head])
     report.arrays("shap: counts unchanged by the StopGradient handler",
-                  shap_ref["unpatched_counts"], shap_ref["counts"])
-    departure = relative_l2(shap_eng["profile"], shap_ref["unpatched_profile"])
-    report.check("shap: profile departs from the original's midpoint",
+                  shap_ref["stopgrad_counts"], shap_ref["counts"])
+    departure = relative_l2(shap_eng["stopgrad_profile"], shap_ref["profile"])
+    report.check("shap: the StopGradient handler changes the profile head",
                  departure > MIN_PROFILE_DEPARTURE,
                  "relative L2 {:.3g} <= {:g}".format(departure, MIN_PROFILE_DEPARTURE))
     print("    (relative L2 between the two profile weightings: {:.3g})".format(departure))

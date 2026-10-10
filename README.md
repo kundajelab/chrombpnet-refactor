@@ -116,7 +116,10 @@ training step), `--dnase-convention` and `--data-aug` set how DNase cuts are
 recorded and which examples are reverse complemented (see
 [accessibility signal conventions](chrombpnet/helpers/preprocessing/README.md#accessibility-signal-conventions)),
 and `--reproducibility` / `--reproducibility-max` hold more of the run fixed
-(see [Reproducibility](#reproducibility)).
+(see [Reproducibility](#reproducibility)), and `--contribs-profile-stopgrad`
+weights the profile contribution target by the input's own predicted profile
+instead of chrombpnet 1.x's midpoint (see
+[engines](envs/README.md#how-the-engines-plug-in)).
 
 For guidance on preparing reads and peaks, see the
 [preprocessing notes](https://github.com/kundajelab/chrombpnet/wiki/Preprocessing).

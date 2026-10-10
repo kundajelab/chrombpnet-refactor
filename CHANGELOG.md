@@ -1,5 +1,50 @@
 # Changelog
 
+## Profile contribution scores weighted as in chrombpnet 1.x by default; `--contribs-profile-stopgrad`
+
+- **Behaviour change, profile contribution scores, all three engines.** The
+  profile DeepSHAP target is `sum(softmax(stop_gradient(mn)) * mn)` over the
+  mean-normalized logits `mn`. Its weights are now, by default, what the
+  original computes: each logit of an (input, reference) pair is weighted by
+  the midpoint `0.5 * (softmax(mn_x) + softmax(mn_r))`.
+  - chrombpnet 1.x (kundajelab/chrombpnet@09938fd, `kundajelab-shap==1`) and
+    bpnet (kundajelab/bpnet-refactor@0b11a7c, `kundajelab/shap@29d2ffa`) both
+    use the kundajelab shap fork. It has its `StopGradient` handler commented
+    out (`deep_tf.py:595`), which gives that weighting.
+  - Until now every engine honoured the stop-gradient (the input's own
+    `softmax(mn_x)`). The TensorFlow and JAX engines had done so since "DeepSHAP
+    honours the profile target's stop_gradient" below; PyTorch always had.
+- **`--contribs-profile-stopgrad`** on `pipeline`, `qc`, `bias pipeline`,
+  `bias qc` and `contribs_bw` gives the previous behaviour, the stop-gradient
+  honoured. It is left out of `args.json` unless given.
+  - TensorFlow registers the fork's `StopGradient` handler only with the flag.
+  - JAX uses `profile_weighting="chrombpnet"` by default and `"softmax_x"` with
+    the flag.
+  - PyTorch's `ProfileWrapper` computes the midpoint over Tangermeme's paired
+    `[inputs; references]` batch halves. As in the fork, a logit gets zero
+    weight where `|mn_x - mn_r| < 1e-7`.
+- **What moves, by default:** profile contribution scores and everything
+  built on them: `contribs_bw`'s profile bigwigs, and the profile TF-MoDISco
+  motifs and reports of `pipeline`, `qc`, `bias pipeline` and `bias qc`.
+  Counts scores are unchanged. On a real model (the atlas ENCSR868FGK fold-1
+  no-bias model, 200 peaks, identical references) the two weightings
+  correlate at 0.967 (hypothetical) and 0.972 (projected).
+- **Checks:**
+  - `tests/parity/deepshap_engines.py`, 12 checks: the TensorFlow and JAX
+    engines agree with PyTorch within 1.9e-6 relative L2 by default and 1e-6
+    with the flag.
+  - `tests/parity/tf_engine.py`: the TensorFlow engine's default is again
+    bitwise equal to the original, and with the flag bitwise equal to the
+    original with the handler registered.
+  - `tests/parity/jax_engine.py`, 71 checks: the JAX engine agrees with the
+    original within 3e-6 in both modes.
+  - Regression gate (PyTorch, against `main` on the same host): only the
+    profile head and what is built on it change. That is `bias qc`'s and
+    `qc`'s profile scores, their profile TF-MoDISco results, logos and
+    reports, and `contribs_bw`'s profile bigwig and scores. On the fixture
+    MoDISco matches a few different motifs, so some logo files are renamed.
+    Counts scores, counts TF-MoDISco and every other artifact are identical.
+
 ## The enzyme-shift read sample is seeded
 
 - **Behaviour change, preprocessing.** The enzyme shift is estimated from

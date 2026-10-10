@@ -16,8 +16,8 @@ Legacy semantics (kundajelab-shap==1, shap/explainers/deep/deep_tf.py):
   gets the two-input Shapley rule (nonlinearity_2d_handler, deep_tf.py:500-528). Its logits branch is
   ``0.5 * (s_x + s_r)`` (zeroed where ``|mn_x - mn_r| < 1e-7``); the softmax branch dies at the StopGradient. So
   the logit weights are the MIDPOINT of the input's and the reference's softmax, not ``softmax(mn_x)``.
-  This engine does not reproduce that: it uses ``softmax_x`` (``attribution.attribute``), the StopGradient
-  honoured, as the PyTorch engine and the TensorFlow engine (which registers the handler) compute it.
+  The engine reproduces that by default (``attribution.attribute``); with ``--contribs-profile-stopgrad`` it
+  uses ``softmax_x``, the StopGradient honoured.
 * Only the input half's multipliers are used; hypothetical scores are
   ``mean_k(m_k - sum_c r_k * m_k)`` (shap_utils.combine_mult_and_diffref).
 """
@@ -108,7 +108,7 @@ def profile_weights(mn_x, mn_r, mode="chrombpnet"):
                    (the kundajelab shap fork with its StopGradient handler commented out)
     chrombpnet_tf  same rule evaluated with the literal float formula of deep_tf.py:515-523 (diagnostics)
     softmax_x      plain autodiff of stop_gradient(softmax(mn)) * mn, i.e. softmax(mn_x): the StopGradient
-                   honoured, as in the PyTorch and TensorFlow engines (the JAX engine's weighting)
+                   honoured (every engine's weighting under --contribs-profile-stopgrad)
     tangermeme     bpnet-lite / tangermeme secant of mn * softmax(mn), (y_x - y_r) / (mn_x - mn_r); where
                    |mn_x - mn_r| < 1e-6 this uses softmax(mn_x), an approximation of torch's plain gradient
                    (comparison only)

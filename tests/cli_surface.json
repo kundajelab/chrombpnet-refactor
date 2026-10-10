@@ -95,6 +95,16 @@
     "required": true,
     "type": "str"
   },
+  "bias pipeline contribs_profile_stopgrad": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--contribs-profile-stopgrad"
+    ],
+    "required": false,
+    "type": "None"
+  },
   "bias pipeline data_aug": {
     "choices": [
       "augment",
@@ -630,6 +640,16 @@
     ],
     "required": true,
     "type": "str"
+  },
+  "bias qc contribs_profile_stopgrad": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--contribs-profile-stopgrad"
+    ],
+    "required": false,
+    "type": "None"
   },
   "bias qc data_aug": {
     "choices": [
@@ -1384,6 +1404,16 @@
     "required": true,
     "type": "str"
   },
+  "contribs_bw contribs_profile_stopgrad": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--contribs-profile-stopgrad"
+    ],
+    "required": false,
+    "type": "None"
+  },
   "contribs_bw debug_chr": {
     "choices": null,
     "default": "None",
@@ -1911,6 +1941,16 @@
     ],
     "required": true,
     "type": "str"
+  },
+  "pipeline contribs_profile_stopgrad": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--contribs-profile-stopgrad"
+    ],
+    "required": false,
+    "type": "None"
   },
   "pipeline data_aug": {
     "choices": [
@@ -3262,6 +3302,16 @@
     ],
     "required": true,
     "type": "str"
+  },
+  "qc contribs_profile_stopgrad": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--contribs-profile-stopgrad"
+    ],
+    "required": false,
+    "type": "None"
   },
   "qc data_aug": {
     "choices": [

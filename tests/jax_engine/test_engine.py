@@ -261,21 +261,25 @@ def test_attribute_yields_counts_then_profile(engine, tmp_path):
     np.testing.assert_allclose(again["counts"], heads[0][1], rtol=1e-5, atol=1e-7)
 
 
-def test_attribute_honours_the_profile_targets_stop_gradient(engine, tmp_path):
-    """The profile logits are weighted by softmax(mn_x), as in the PyTorch
-    engine, not by the shap fork's midpoint ("chrombpnet", the PR's default)."""
+def test_attribute_weights_the_profile_as_the_original_unless_stopgrad_is_asked_for(engine, tmp_path):
+    """By default the profile logits are weighted by the shap fork's midpoint
+    ("chrombpnet", as chrombpnet 1.x computes them); with
+    --contribs-profile-stopgrad, by softmax(mn_x) ("softmax_x")."""
     from chrombpnet.engines.jax.attribution.explainer import DeepLiftShap
 
     model, _ = engine.get_model(training_args(engine, "bias", tmp_path / "b"), parameters())
     seqs = onehot(np.random.RandomState(3), 3)
-    scores = dict(engine.attribute(model, seqs, ["profile"], device="cpu",
-                                   batch_size=K, num_shuffles=K, seed=11))["profile"]
+    def attribute(stop_gradient):
+        return dict(engine.attribute(model, seqs, ["profile"], device="cpu",
+                                     batch_size=K, num_shuffles=K, seed=11,
+                                     profile_stop_gradient=stop_gradient))["profile"]
 
     def explain(weighting):
         explainer = DeepLiftShap(model, heads=("profile",), profile_weighting=weighting,
                                  num_shuffles=K)
         return explainer.explain(seqs, references=SequentialReferences(K, 11))["profile"]
 
-    np.testing.assert_allclose(scores, explain("softmax_x"), rtol=1e-5, atol=1e-7)
-    midpoint = explain("chrombpnet")
-    assert np.linalg.norm(scores - midpoint) > 1e-3 * np.linalg.norm(midpoint)
+    midpoint, honoured = explain("chrombpnet"), explain("softmax_x")
+    np.testing.assert_allclose(attribute(False), midpoint, rtol=1e-5, atol=1e-7)
+    np.testing.assert_allclose(attribute(True), honoured, rtol=1e-5, atol=1e-7)
+    assert np.linalg.norm(honoured - midpoint) > 1e-3 * np.linalg.norm(midpoint)

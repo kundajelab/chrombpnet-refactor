@@ -120,11 +120,20 @@ class Engine:
         raise NotImplementedError
 
     def attribute(self, model, seqs, profile_or_counts, *, device, batch_size,
-                  num_shuffles, seed):
+                  num_shuffles, seed, profile_stop_gradient=False):
         """Yield ``(head, hypothetical_scores)`` for each requested head.
 
         ``seqs`` is an ``(N, L, 4)`` ACGT-only one-hot array and the scores
         have the same shape. Heads are yielded in the order counts, profile,
         so a caller can write each one before the next is computed.
+
+        The profile target is ``sum(softmax(stop_gradient(mn)) * mn)`` over
+        the mean-normalized logits ``mn``. By default every engine weights
+        the logits as chrombpnet 1.x and bpnet do, whose kundajelab shap fork
+        leaves the ``StopGradient`` handler off: for each (input, reference)
+        pair, by the midpoint ``0.5 * (softmax(mn_x) + softmax(mn_r))``.
+        ``profile_stop_gradient`` (``--contribs-profile-stopgrad``) honours the
+        stop-gradient instead: the input's own ``softmax(mn_x)``. The counts
+        head is the same either way.
         """
         raise NotImplementedError

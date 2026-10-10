@@ -6,9 +6,10 @@ DeepSHAP code are the original implementation's (kundajelab/chrombpnet
 batches and initial weights it reproduces that implementation's outputs
 byte for byte, which ``tests/parity/`` checks. Where it departs from the
 original it fixes a defect: ``--seed`` reaches the bias-factorized tower, the
-best validation epoch is kept when training runs out of epochs, DeepSHAP's
-references are seeded, and the profile DeepSHAP target's ``stop_gradient`` is
-honoured, as in the PyTorch engine. It needs the ``chrombpnet-tensorflow``
+best validation epoch is kept when training runs out of epochs, and
+DeepSHAP's references are seeded. The profile DeepSHAP target's
+``stop_gradient`` is ignored by default, as in the original, and honoured
+with ``--contribs-profile-stopgrad``. It needs the ``chrombpnet-tensorflow``
 environment (Python 3.8, TF 2.8.0).
 """
 
@@ -111,11 +112,12 @@ class TensorFlowEngine(Engine):
         return model.input_length
 
     def attribute(self, model, seqs, profile_or_counts, *, device, batch_size,
-                  num_shuffles, seed):
+                  num_shuffles, seed, profile_stop_gradient=False):
         from chrombpnet.engines.tensorflow import attribution
         return attribution.attribute(
             model.path, seqs, profile_or_counts, device=device,
-            num_shuffles=num_shuffles, seed=seed)
+            num_shuffles=num_shuffles, seed=seed,
+            profile_stop_gradient=profile_stop_gradient)
 
 
 ENGINE = TensorFlowEngine()
