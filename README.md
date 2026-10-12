@@ -1,11 +1,11 @@
 # ChromBPNet
 
-Bias-factorized, base-resolution deep learning models of chromatin
-accessibility. ChromBPNet learns to predict base-resolution ATAC-seq or
-DNase-seq coverage from DNA sequence, while explicitly factoring out the
-sequence bias of the assay enzyme (Tn5 or DNase I). The bias-free model can
-then be interpreted to recover cis-regulatory sequence syntax, transcription
-factor footprints, and the effect of regulatory variants.
+Bias-factorized, base-resolution deep learning models of chromatin accessibility. 
+ChromBPNet learns to predict base-resolution ATAC-seq or DNase-seq coverage from DNA sequence, while explicitly factoring out the sequence bias of the assay enzyme (Tn5 or DNase I). 
+The bias-free model can then be interpreted to recover cis-regulatory sequence syntax, transcription factor footprints, and the effect of regulatory variants.
+
+> [!NOTE]
+> This repo is a refactored version of the [original ChromBPNet model](https://github.com/kundajelab/chrombpnet/). The refactored implementation is more efficient, runs on modern hardware and packages (including PyTorch, TensorFlow, and JAX), and is near-perfectly reproducible of the original model, including user arguments. We highly recommend using the refactored version.
 
 ![ChromBPNet architecture](images/chrombpnet_arch.png)
 
