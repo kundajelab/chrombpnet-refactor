@@ -1,5 +1,17 @@
 # Changelog
 
+## `qc`, `bias qc` and `pred_bw` take `-s/--seed`
+
+- **New option.** `qc` and `bias qc` draw the test set's nonpeak sample, the
+  profile-metrics shuffle, the contribution-score peak subsample and DeepSHAP's
+  shuffled references, and `pred_bw -bw` the profile-metrics shuffle; none had
+  a `--seed`, so each used a fixed 1234. They now take `-s/--seed`, default
+  1234, as every other command that draws at random does.
+- **What moves, by default:** nothing but the record. `qc` and `bias qc`
+  write the seed into `auxiliary/interpret_subsample/<prefix>.interpret.args.json`
+  (`"seed": 1234`), as `pipeline` and `bias pipeline` always did; scores,
+  metrics and reports are unchanged.
+
 ## `--seed` reaches the interpretation subsample and the profile-metrics shuffle
 
 - **Behaviour change, for a seed other than the default only.** Two draws

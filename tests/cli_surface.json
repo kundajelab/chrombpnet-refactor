@@ -847,6 +847,17 @@
     "required": false,
     "type": "None"
   },
+  "bias qc seed": {
+    "choices": null,
+    "default": "1234",
+    "nargs": "None",
+    "options": [
+      "--seed",
+      "-s"
+    ],
+    "required": false,
+    "type": "int"
+  },
   "bias qc tomtom_lite": {
     "choices": null,
     "default": "None",
@@ -2620,6 +2631,17 @@
     "required": true,
     "type": "str"
   },
+  "pred_bw seed": {
+    "choices": null,
+    "default": "1234",
+    "nargs": "None",
+    "options": [
+      "--seed",
+      "-s"
+    ],
+    "required": false,
+    "type": "int"
+  },
   "pred_bw tqdm": {
     "choices": null,
     "default": "1",
@@ -3508,6 +3530,17 @@
     ],
     "required": false,
     "type": "None"
+  },
+  "qc seed": {
+    "choices": null,
+    "default": "1234",
+    "nargs": "None",
+    "options": [
+      "--seed",
+      "-s"
+    ],
+    "required": false,
+    "type": "int"
   },
   "qc tomtom_lite": {
     "choices": null,

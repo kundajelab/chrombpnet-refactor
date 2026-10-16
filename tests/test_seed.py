@@ -124,3 +124,21 @@ def test_pred_bw_shuffles_profiles_with_seed(tmp_path, monkeypatch):
         "pred_logits": np.log(np.full((2, 4), 0.25)), "pred_logcts": np.log1p(counts.sum(1)),
         "output_prefix": str(tmp_path / "prediction"), "obs_data": counts, "seed": 5})
     assert seen == [5]
+
+
+QC_REQUIRED = ["-bw", "obs.bw", "-g", "genome.fa", "-c", "chrom.sizes", "-o", "out", "-d", "ATAC",
+               "-p", "peaks.bed", "-n", "nonpeaks.bed", "-fl", "fold.json"]
+
+
+@pytest.mark.parametrize("argv", [
+    ["qc", *QC_REQUIRED, "-cm", "chrombpnet.pt", "-cmb", "chrombpnet_nobias.pt"],
+    ["bias", "qc", *QC_REQUIRED, "-bm", "bias.pt"],
+    ["pred_bw", "-cmb", "chrombpnet_nobias.pt", "-r", "regions.bed", "-g", "genome.fa",
+     "-c", "chrom.sizes", "-op", "out"],
+])
+def test_commands_without_training_take_seed(argv):
+    from chrombpnet import parsers
+
+    parser = parsers.build_parser()
+    assert parser.parse_args(argv).seed == DEFAULT_SEED
+    assert parser.parse_args(argv + ["-s", "7"]).seed == 7

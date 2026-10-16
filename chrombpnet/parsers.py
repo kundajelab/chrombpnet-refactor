@@ -333,6 +333,7 @@ def _add_qc_arguments(parser, model_arguments):
     required.add_argument("-n", "--nonpeaks", type=str, required=True, help="10 column bed file of non-peak regions, centered at summit (10th column)")
     required.add_argument("-fl", "--chr-fold-path", type=str, required=True, help="Fold information - dictionary with test,valid and train keys and values with corresponding chromosomes")
     optional.add_argument("-fp", "--file-prefix", type=str, required=False, default=None, help="File prefix for output to use. All the files will be prefixed with this string if provided.")
+    optional.add_argument("-s", "--seed", type=int, default=DEFAULT_SEED, help="seed for every random draw: the test set's nonpeak sample, the profile-metrics shuffled draw, the peak subsample contribution scores are computed on, and DeepSHAP's shuffled references")
     _add_batch_sizes(optional)
     optional.add_argument('-hp', '--html-prefix', required=False, default="./", help="The html prefix to use for the html file output.")
     _add_data_aug(optional)
@@ -465,6 +466,7 @@ def build_parser():
     optional_preds.add_argument("-t", "--tqdm", type=int, default=1, help="Use tqdm. If yes then you need to have it installed.")
     optional_preds.add_argument("-d", "--debug-chr", nargs="+", type=str, default=None, help="Run for specific chromosomes only (e.g. chr1 chr2) for debugging")
     optional_preds.add_argument("-bw", "--bigwig", type=str, default=None, help="If provided .h5 with predictions are output along with calculated metrics considering bigwig as groundtruth.")
+    optional_preds.add_argument("-s", "--seed", type=int, default=DEFAULT_SEED, help="seed for the profile-metrics shuffled draw (with -bw)")
     _add_device(optional_preds)
     _add_predict_fk(optional_preds)
 
