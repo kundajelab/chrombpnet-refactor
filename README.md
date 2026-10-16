@@ -277,7 +277,7 @@ chrombpnet export            a JAX-engine model in the original's .h5 layout
 Run `chrombpnet <command> --help` for the full argument list.
 
 `pipeline`, `qc`, `bias pipeline` and `bias qc` end with TF-MoDISco motif
-reports, built from contribution scores on a fixed-seed sample of the peaks.
+reports, built from contribution scores on a `--seed` sample of the peaks.
 Four options control them, all off by default:
 
 | option | default |
@@ -340,6 +340,8 @@ Triton forward are adapted from the
 
 ## Reproducibility
 
+### Compared with original ChromBPNet
+
 | Flag | Effect |
 |---|---|
 | `--reproducibility` | a pinned example schedule: jitter, reverse complements and negative subsamples come from a stream seeded by `--seed` and shared by every engine instead of the global RNG, epoch-start shuffling is off, and the validation set stops being re-cropped each epoch |
@@ -363,6 +365,31 @@ set this for you.
 Preprocessing is seeded too: the enzyme shift is estimated from a sample of
 2 x `--num-samples` reads (20 000 by default) drawn with `--seed`, which
 `prep bigwig` also takes.
+
+### Randomized seeds
+
+Every command that draws anything at random takes `-s/--seed` (default 1234)
+and draws all of it from that one seed:
+
+| Command | What `--seed` draws |
+|---|---|
+| `pipeline`, `train`, `bias pipeline`, `bias train` | training (initial weights, batch order, jitter, reverse complements, negatives), the shift-estimation read sample, and in the pipelines the `qc` draws below |
+| `qc`, `bias qc` | the test set's nonpeaks, the profile-metrics shuffle, the contribution-score peak subsample, DeepSHAP's references |
+| `predict`, `pred_bw` | the profile-metrics shuffle; `predict` also the test set's nonpeaks |
+| `contribs_bw` | DeepSHAP's references |
+| `prep nonpeaks`, `prep bigwig` | the GC-matched negatives; the shift-estimation read sample |
+
+`prep splits`, `footprints` and `export` draw nothing at random. Two notes:
+
+- **TF-MoDISco seeds itself.** modisco-lite takes no seed, so `--seed`
+  reaches the motifs only through the contribution scores they are built
+  from.
+- **chrombpnet 1.x drew the training negatives with a fixed seed of 1**;
+  `--seed 1` makes the same draw. That gives 1.x's exact negatives where the
+  outlier thresholds (an unseeded draw in 1.x) come out the same, as on
+  ENCSR868FGK fold 0, but never 1.x's `counts_loss_weight`, which that
+  unseeded draw sets. It also moves every other draw to 1, where 1.x used
+  1234.
 
 ## Python API
 

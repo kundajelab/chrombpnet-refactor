@@ -5,9 +5,12 @@ This package is a port of the TensorFlow ChromBPNet, so its training
 biases, Adam epsilon ``1e-7``, sample-weighted epoch losses the way Keras
 aggregates them, batches visited in the shuffled order Keras uses, a seeded
 count-threshold nonpeak draw, and restoration of the best-validation
-checkpoint. Every engine always trains that way; jitter, reverse
+checkpoint. Every engine always trains that way. Jitter, reverse
 complementation, per-epoch negative subsampling and within-epoch shuffling
-still vary from run to run. Two flags hold more fixed:
+come from the global NumPy stream, which each engine seeds from ``--seed``
+when training starts: repeatable on one engine, but each engine consumes the
+stream in its own order, so the engines' schedules differ. Two flags hold more
+fixed:
 
 ``--reproducibility``
     A pinned example schedule. All generator randomness is drawn from a
