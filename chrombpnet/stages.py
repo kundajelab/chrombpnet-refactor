@@ -24,11 +24,12 @@ import pandas as pd
 
 from chrombpnet.data import DefaultDataFile, get_default_data_path
 from chrombpnet.options import as_options
+from chrombpnet.seed import DEFAULT_SEED
 
 #: Contribution scores are computed on at most this many peaks, sampled with a
 #: fixed seed so a rerun scores the same regions (--interpret-subsample).
 INTERPRET_SUBSAMPLE_SIZE = 30_000
-INTERPRET_SUBSAMPLE_SEED = 1234
+INTERPRET_SUBSAMPLE_SEED = DEFAULT_SEED
 
 #: Width of the QC PWM built from the shifted bigwig.
 PWM_WIDTH = 24

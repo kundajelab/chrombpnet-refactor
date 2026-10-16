@@ -22,6 +22,7 @@ from chrombpnet.evaluation.interpret import input_utils
 
 
 from chrombpnet.regions import NARROWPEAK_SCHEMA
+from chrombpnet.seed import DEFAULT_SEED
 
 # Contribution scoring needs roughly four times the GPU memory of a training
 # step at the same batch size, for two compounding reasons: DeepLIFT pushes the
@@ -84,7 +85,7 @@ def fetch_interpret_args():
         ),
     )
     parser.add_argument("--num-shuffles", type=int, default=20)
-    parser.add_argument("--seed", type=int, default=1234)
+    parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("--contribs-profile-stopgrad", action="store_true", default=None)
     parser.add_argument("--device", default=None)
     return parser.parse_args()
@@ -119,7 +120,7 @@ def interpret(
     device,
     batch_size=64,
     num_shuffles=20,
-    seed=1234,
+    seed=DEFAULT_SEED,
     engine=None,
     profile_stop_gradient=False,
 ):
@@ -184,7 +185,7 @@ def main(args):
         device=device,
         batch_size=batch_size,
         num_shuffles=getattr(args, "num_shuffles", 20),
-        seed=getattr(args, "seed", 1234),
+        seed=getattr(args, "seed", DEFAULT_SEED),
         engine=engine,
         profile_stop_gradient=bool(getattr(args, "contribs_profile_stopgrad", None)),
     )

@@ -11,6 +11,7 @@ from termcolor import colored
 from chrombpnet.evaluation.custom_sequences import viz_sequence
 import chrombpnet.training.utils.one_hot as one_hot
 from chrombpnet.data import DefaultDataFile, get_default_data_path
+from chrombpnet.seed import DEFAULT_SEED
 
 def parse_args():
     parser=argparse.ArgumentParser(description="Automatically detect enzyme shift of input BAM/fragment/tagAlign File")
@@ -38,10 +39,6 @@ def convolve(to_scan, longer_seq):
         vals.append(np.sum(to_scan*longer_seq[i:i+len(to_scan)]))
     return vals
     
-#: Seed of the read sample the shift is estimated from when the caller gives
-#: none. The training commands and `prep bigwig` pass --seed, whose default
-#: is the same.
-DEFAULT_SAMPLE_SEED = 1234
 
 #: gzip's exit status when it decompressed the whole compressed stream and
 #: ignored data after it ("decompression OK, trailing garbage ignored"). A
@@ -189,7 +186,7 @@ class ReservoirSample:
 
 
 def sample_reads(bam_path, fragment_file_path, tagalign_file_path, num_samples, genome_fasta_path,
-                 seed=DEFAULT_SAMPLE_SEED):
+                 seed=DEFAULT_SEED):
     # only one of bam, fragment, tagalign is not None
     if bam_path:
         p1 = bam_to_tagalign_stream(bam_path)
@@ -328,7 +325,7 @@ def compute_shift_DNASE(ref_plus_pwms, ref_minus_pwms, plus_pwm, minus_pwm):
 
 
 def compute_shift(input_bam_file, input_fragment_file, input_tagalign_file, num_samples, genome_fasta_path, data_type, ref_motifs_file,
-                  seed=DEFAULT_SAMPLE_SEED):
+                  seed=DEFAULT_SEED):
     # only one of the 3 inputs should be non None
     if sum(value is not None for value in (input_bam_file, input_fragment_file, input_tagalign_file)) != 1:
         raise ValueError("Exactly one input file must be provided")

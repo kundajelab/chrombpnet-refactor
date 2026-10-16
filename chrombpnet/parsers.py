@@ -1,6 +1,7 @@
 import argparse
 
 from chrombpnet import conventions, engines
+from chrombpnet.seed import DEFAULT_SEED
 from chrombpnet.training.utils.benchmark_utils import add_reproducibility_arguments
 from argparse import RawTextHelpFormatter
 
@@ -116,7 +117,7 @@ def _add_training_options(optional):
     _add_shift_estimation(optional)
     optional.add_argument("-il", "--inputlen", type=int, default=2114, required=False, help="Sequence input length")
     optional.add_argument("-ol", "--outputlen", type=int, default=1000, required=False, help="Prediction output length")
-    optional.add_argument("-s", "--seed", type=int, default=1234, help="seed to use for model training, and for the read sample the enzyme shift is estimated from")
+    optional.add_argument("-s", "--seed", type=int, default=DEFAULT_SEED, help="seed to use for model training, and for the read sample the enzyme shift is estimated from")
     optional.add_argument("-e", "--epochs", type=int, default=50, help="Maximum epochs to train")
     optional.add_argument("-es", "--early-stop", type=int, default=5, help="Early stop limit, corresponds to 'patience' in callback")
     optional.add_argument("-l", "--learning-rate", type=float, default=0.001, help="Learning rate for model training")
@@ -419,7 +420,7 @@ def build_parser():
     optional_nonpeaks_parser.add_argument("-st", "--stride", type=int, default=1000, help="stride to use for shifting the bins")
     optional_nonpeaks_parser.add_argument("-npr", "--neg-to-pos-ratio-train", type=int, default=2, help="Ratio of negatives to positives to sample in training set (test set always has 1:1 positive to negatives ratio")
     optional_nonpeaks_parser.add_argument("-br", "--blacklist-regions", type=str, required=False, default=None, help="TSV file with 3 columns - chr, start, end")
-    optional_nonpeaks_parser.add_argument("-s", "--seed", type=int, default=1234, help="seed to use for generating nonpeaks")
+    optional_nonpeaks_parser.add_argument("-s", "--seed", type=int, default=DEFAULT_SEED, help="seed to use for generating nonpeaks")
 
     # Generate splits. Note -op/--output_prefix keeps its underscore, unlike
     # every other command's --output-prefix; renaming it would break callers.
@@ -483,7 +484,7 @@ def build_parser():
     optional_contribs.add_argument('--batch-size', type=int, default=64)
     _add_interpret_batch_size(optional_contribs)
     optional_contribs.add_argument('--num-shuffles', type=int, default=20)
-    optional_contribs.add_argument('--seed', type=int, default=1234)
+    optional_contribs.add_argument('--seed', type=int, default=DEFAULT_SEED)
     _add_contribs_profile_stopgrad(optional_contribs)
 
     # Get marginal footprints
@@ -527,7 +528,7 @@ def _add_prep_bigwig_arguments(parser):
     optional.add_argument('-ps', '--plus-shift', type=int, default=None, help="Plus strand shift applied to reads. Estimated if not specified")
     optional.add_argument('-ms', '--minus-shift', type=int, default=None, help="Minus strand shift applied to reads. Estimated if not specified")
     _add_shift_estimation(optional)
-    optional.add_argument("-s", "--seed", type=int, default=1234, help="seed for the read sample the enzyme shift is estimated from")
+    optional.add_argument("-s", "--seed", type=int, default=DEFAULT_SEED, help="seed for the read sample the enzyme shift is estimated from")
     _add_read_sorting(optional)
     _add_dnase_convention(optional)
 
@@ -572,7 +573,7 @@ def _add_predict_arguments(parser):
     required.add_argument("-op", "--output-prefix", type=str, required=True, help="Output prefix; _predictions.h5 and _metrics.json are appended")
     required.add_argument("-d", "--data-type", required=True, type=str, choices=['ATAC', 'DNASE'], help="assay type")
     optional.add_argument("-bs", "--batch-size", type=int, default=64, help="batch size to use for prediction")
-    optional.add_argument("-s", "--seed", type=int, default=1234, help="seed for the profile-metrics shuffled draw")
+    optional.add_argument("-s", "--seed", type=int, default=DEFAULT_SEED, help="seed for the profile-metrics shuffled draw")
     add_reproducibility_arguments(optional)
     _add_data_aug(optional)
     _add_device(optional)

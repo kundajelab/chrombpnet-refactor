@@ -2,6 +2,7 @@ import numpy as np
 
 from scipy.stats import spearmanr, pearsonr
 from scipy.spatial.distance import jensenshannon
+from chrombpnet.seed import DEFAULT_SEED
 import matplotlib
 matplotlib.use('Agg')
 from matplotlib import pyplot as plt
@@ -122,7 +123,7 @@ def _profile_metrics_looped(true_counts, pred_probs, seed):
             np.array(jsd_rnd), np.array(jsd_rnd_norm), empty, empty)
 
 
-def profile_metrics(true_counts, pred_probs, pseudocount=0.001, seed=1234):
+def profile_metrics(true_counts, pred_probs, pseudocount=0.001, seed=DEFAULT_SEED):
     '''
     Get profile metrics
     '''

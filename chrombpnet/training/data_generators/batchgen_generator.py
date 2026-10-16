@@ -8,11 +8,8 @@ from chrombpnet.training.utils.benchmark_utils import (
 )
 import numpy as np
 import math
+from chrombpnet.seed import DEFAULT_SEED
 
-#: Seed used for test-set nonpeak selection when the invoking command does not
-#: expose --seed. Matches the --seed default the training parsers use, so a
-#: pipeline and a standalone qc run on the same model agree.
-DEFAULT_TEST_SEED = 1234
 
 
 def subsample_nonpeak_data(nonpeak_seqs, nonpeak_cts, nonpeak_coords, peak_data_size, negative_sampling_ratio, rng=None):
@@ -95,7 +92,7 @@ class ChromBPNetBatchGenerator:
             # fixture, coords_center moved by up to 32475 and the reported
             # counts pearsonr went from -0.0 to -0.21.
             seed = (self.benchmark_seed if self.benchmark_seed is not None
-                    else DEFAULT_TEST_SEED)
+                    else DEFAULT_SEED)
             return np.random.RandomState(generator_seed(seed, "test", self.epoch))
         return make_generator_rng(self.benchmark, self.benchmark_seed, self.mode, self.epoch)
 

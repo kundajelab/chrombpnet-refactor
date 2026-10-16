@@ -16,6 +16,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from chrombpnet.seed import DEFAULT_SEED
 
 
 GROUP_NAMES = np.array(["chrom_train", "chrom_valid", "chrom_test"])
@@ -28,7 +29,7 @@ def parse_args():
     parser.add_argument("-o", "--output-prefix", required=True)
     parser.add_argument("-fl", "--chr-fold-path", required=True)
     parser.add_argument("-npr", "--neg-to-pos-ratio-train", type=int, default=1)
-    parser.add_argument("-s", "--seed", type=int, default=1234)
+    parser.add_argument("-s", "--seed", type=int, default=DEFAULT_SEED)
     return parser.parse_args()
 
 

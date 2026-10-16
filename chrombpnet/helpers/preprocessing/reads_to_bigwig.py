@@ -6,6 +6,7 @@ import os
 import chrombpnet.helpers.preprocessing.auto_shift_detect as auto_shift_detect
 from chrombpnet import conventions
 from chrombpnet.data import DefaultDataFile, get_default_data_path
+from chrombpnet.seed import DEFAULT_SEED
 
 def parse_args():
     parser=argparse.ArgumentParser(description="Convert input BAM/fragment/tagAlign file to appropriately shifted unstranded Bigwig")
@@ -159,7 +160,7 @@ def main(args):
         # The read sample is seeded by --seed where the command has one.
         seed = getattr(args, "seed", None)
         if seed is None:
-            seed = auto_shift_detect.DEFAULT_SAMPLE_SEED
+            seed = DEFAULT_SEED
         print("Estimating enzyme shift in input file")
         plus_shift, minus_shift = auto_shift_detect.compute_shift(args.input_bam_file,
                 args.input_fragment_file,
