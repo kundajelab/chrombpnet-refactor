@@ -1,5 +1,32 @@
 # Changelog
 
+## Training negatives drawn with `--seed`
+
+- **Behaviour change, `pipeline` and `train`.** The ChromBPNet model trains on
+  as many of the outlier-filtered train/valid nonpeaks as there are peaks
+  (`find_chrombpnet_hyperparams`). That subset was drawn with a fixed
+  `random_state=1`, as in chrombpnet 1.x, whatever `--seed` said; it is now
+  drawn with `--seed`.
+- **What moves, by default:** with the default seed, 1234, a different subset
+  of the same pool, so `auxiliary/filtered.nonpeaks.bed` and everything trained
+  or scored on it: the ChromBPNet model, its predictions, metrics,
+  contribution scores, motifs and reports. The bias model, `filtered.peaks.bed`
+  and the test-set nonpeaks are unchanged.
+- **`--seed 1` for chrombpnet 1.x's training negatives.** 1.x drew them with
+  a fixed seed of 1, so `--seed 1` makes its draw. That draw is from the
+  outlier-filtered nonpeaks, whose thresholds come from an earlier draw of
+  nonpeak counts that 1.x left unseeded and this package seeds with `--seed`.
+  Where the thresholds do not depend on it, `--seed 1` gives 1.x's negatives
+  exactly: ENCSR868FGK fold 0's `filtered.nonpeaks.bed` is byte-identical to a
+  1.x run's. On the regression's small fixture they do depend on it, and the
+  negatives differ.
+  - That earlier draw also sets `counts_loss_weight`, which no seed
+    reproduces from a 1.x run (ENCSR868FGK fold 0: 75.95 in 1.x, 75.9 at
+    `--seed 1`, 76.0 at 1234).
+  - `--seed 1` also moves every other `--seed` draw to 1, where 1.x used
+    1234: initial weights, the validation negatives, the interpretation
+    subsample.
+
 ## `qc`, `bias qc` and `pred_bw` take `-s/--seed`
 
 - **New option.** `qc` and `bias qc` draw the test set's nonpeak sample, the

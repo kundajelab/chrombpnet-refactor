@@ -142,3 +142,35 @@ def test_commands_without_training_take_seed(argv):
     parser = parsers.build_parser()
     assert parser.parse_args(argv).seed == DEFAULT_SEED
     assert parser.parse_args(argv + ["-s", "7"]).seed == 7
+
+
+def test_training_negatives_follow_seed(tmp_path, monkeypatch):
+    """The filtered nonpeaks' training part is a --seed draw (chrombpnet 1.x
+    used random_state=1, so --seed 1 makes its draw)."""
+    from chrombpnet import engines
+    from chrombpnet.helpers.hyperparameters import find_chrombpnet_hyperparams
+    from tests.test_hyperparameters import _args, _build_inputs
+
+    inputs = _build_inputs(tmp_path / "inputs", [100, 110, 120, 130, 140],
+                           [10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60])
+    monkeypatch.setattr(engines, "for_model", lambda path: SimpleNamespace(
+        checkpoint_suffix=".pt", rescale_bias_logcounts=lambda *a, **k: None))
+    states = []
+    real_sample = pd.DataFrame.sample
+
+    def sample(frame, *args, **kwargs):
+        states.append(kwargs.get("random_state"))
+        return real_sample(frame, *args, **kwargs)
+
+    monkeypatch.setattr(pd.DataFrame, "sample", sample)
+
+    def train_nonpeaks(seed, name):
+        args = _args(inputs, f"{name}_")
+        args.seed, args.bias_model_path = seed, "bias.pt"
+        find_chrombpnet_hyperparams.main(args)
+        return (inputs / f"{name}_filtered.nonpeaks.bed").read_text()
+
+    first, again, other = train_nonpeaks(1, "a"), train_nonpeaks(1, "b"), train_nonpeaks(2, "c")
+    assert states == [1, 1, 2]
+    assert first == again
+    assert first != other

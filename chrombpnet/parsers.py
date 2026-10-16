@@ -117,7 +117,7 @@ def _add_training_options(optional):
     _add_shift_estimation(optional)
     optional.add_argument("-il", "--inputlen", type=int, default=2114, required=False, help="Sequence input length")
     optional.add_argument("-ol", "--outputlen", type=int, default=1000, required=False, help="Prediction output length")
-    optional.add_argument("-s", "--seed", type=int, default=DEFAULT_SEED, help="seed to use for model training, and for the read sample the enzyme shift is estimated from")
+    optional.add_argument("-s", "--seed", type=int, default=DEFAULT_SEED, help="seed for every random draw: model training (initial weights, batch order, jitter, reverse complements, each epoch's negatives), the training and validation negatives drawn from the filtered nonpeaks (chrombpnet 1.x drew the training ones with a fixed seed of 1; --seed 1 makes the same draw), the read sample the enzyme shift is estimated from, the test set's nonpeak sample, the profile-metrics shuffled draw, the peak subsample contribution scores are computed on, and DeepSHAP's shuffled references")
     optional.add_argument("-e", "--epochs", type=int, default=50, help="Maximum epochs to train")
     optional.add_argument("-es", "--early-stop", type=int, default=5, help="Early stop limit, corresponds to 'patience' in callback")
     optional.add_argument("-l", "--learning-rate", type=float, default=0.001, help="Learning rate for model training")

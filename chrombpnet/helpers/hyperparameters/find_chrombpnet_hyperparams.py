@@ -69,9 +69,13 @@ def main(args):
     print("Number of peaks after removing outliers: ", peaks.shape[0])
     print("Number of nonpeaks after removing outliers: ", nonpeaks.shape[0])
 
-    # combine train valid and test peak set and store them in a new file
+    # combine train valid and test peak set and store them in a new file.
+    # The training negatives are a --seed draw of the filtered nonpeaks.
+    # chrombpnet 1.x drew them with random_state=1: --seed 1 makes its draw,
+    # and so gives its negatives wherever the outlier thresholds above (an
+    # unseeded draw in 1.x) come out the same.
     if nonpeaks.shape[0] > peaks.shape[0]:
-        train_nonpeaks = nonpeaks.sample(n=peaks.shape[0], random_state=1)
+        train_nonpeaks = nonpeaks.sample(n=peaks.shape[0], random_state=args.seed)
     else:
         train_nonpeaks = nonpeaks
         
