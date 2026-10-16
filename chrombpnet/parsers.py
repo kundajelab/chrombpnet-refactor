@@ -298,7 +298,7 @@ def _add_report_options(optional, interpretation=True):
     optional.add_argument("--tomtom-lite", action="store_true", default=None, help="Match the TF-MoDISco motifs with TOMTOM-lite (memelite) instead of MEME's tomtom: MEME is not needed, and the report gives uncorrected p-values (pval0..2) instead of q-values. Needs TF-MoDISco 2.5 or later, so not in the TensorFlow environment")
     if not interpretation:
         return
-    optional.add_argument("--interpret-subsample", type=positive_int, default=None, help="Number of peaks, sampled with a fixed seed, whose contribution scores the TF-MoDISco motif reports are built from (default 30000; all peaks if there are fewer). The sample is written to auxiliary/30K_subsample_peaks.bed whatever its size")
+    optional.add_argument("--interpret-subsample", type=positive_int, default=None, help="Number of peaks, sampled with --seed, whose contribution scores the TF-MoDISco motif reports are built from (default 30000; all peaks if there are fewer). The sample is written to auxiliary/30K_subsample_peaks.bed whatever its size")
     optional.add_argument("--modisco-max-seqlets", type=positive_int, default=None, help="Maximum seqlets per positive/negative pattern group in TF-MoDISco motif discovery (default 50000)")
     optional.add_argument("--modisco-window", type=even_positive_int, default=None, help="Width in bp of the window, centred on each scored sequence, in which TF-MoDISco discovers motifs (default 500). Must be even and no longer than the model input length")
     _add_contribs_profile_stopgrad(optional)
@@ -573,7 +573,7 @@ def _add_predict_arguments(parser):
     required.add_argument("-op", "--output-prefix", type=str, required=True, help="Output prefix; _predictions.h5 and _metrics.json are appended")
     required.add_argument("-d", "--data-type", required=True, type=str, choices=['ATAC', 'DNASE'], help="assay type")
     optional.add_argument("-bs", "--batch-size", type=int, default=64, help="batch size to use for prediction")
-    optional.add_argument("-s", "--seed", type=int, default=DEFAULT_SEED, help="seed for the profile-metrics shuffled draw")
+    optional.add_argument("-s", "--seed", type=int, default=DEFAULT_SEED, help="seed for the test set's nonpeak sample and the profile-metrics shuffled draw")
     add_reproducibility_arguments(optional)
     _add_data_aug(optional)
     _add_device(optional)

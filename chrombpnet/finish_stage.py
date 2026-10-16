@@ -78,7 +78,7 @@ def _run_finish(payload):
             payload["observed_bigwig"], payload["used_regions_df"],
             payload["regions"], payload["outputlen"], payload["pred_logits"],
             payload["pred_logcts"], payload["output_prefix"],
-            obs_data=payload["obs_data"])
+            obs_data=payload["obs_data"], seed=payload["seed"])
     return payload["output_prefix"]
 
 

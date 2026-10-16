@@ -106,7 +106,8 @@ def chrombpnet_train_pipeline(options):
     layout.move("evaluation", "auxiliary", "chrombpnet_nobias_footprints.h5")
 
     subsample = stages.subsample_peaks_for_interpretation(
-        layout, filtered_peaks, getattr(options, "interpret_subsample", None))
+        layout, filtered_peaks, getattr(options, "interpret_subsample", None),
+        seed=getattr(options, "seed", None))
     # Both heads are scored and kept, as the bias pipelines do, so the
     # subsample's contribution scores can be compared across runs. MoDISco
     # stays profile-only: make_html renders just the profile table for
@@ -163,7 +164,8 @@ def chrombpnet_qc(options):
     layout.move("evaluation", "auxiliary", "chrombpnet_nobias_footprints.h5")
 
     subsample = stages.subsample_peaks_for_interpretation(
-        layout, options.peaks, getattr(options, "interpret_subsample", None))
+        layout, options.peaks, getattr(options, "interpret_subsample", None),
+        seed=getattr(options, "seed", None))
     stages.run_interpret(
         options, layout, model_path=options.chrombpnet_model_nb, regions=subsample,
         output_prefix=layout.interpret_subsample("chrombpnet_nobias"),
@@ -224,7 +226,8 @@ def train_bias_pipeline(options):
         peaks=filtered_peaks, nonpeaks=filtered_nonpeaks)
 
     subsample = stages.subsample_peaks_for_interpretation(
-        layout, filtered_peaks, getattr(options, "interpret_subsample", None))
+        layout, filtered_peaks, getattr(options, "interpret_subsample", None),
+        seed=getattr(options, "seed", None))
     stages.run_interpret(
         options, layout, model_path=bias_model, regions=subsample,
         output_prefix=layout.interpret_subsample("bias"),
@@ -248,7 +251,8 @@ def bias_model_qc(options):
         peaks=options.peaks, nonpeaks=options.nonpeaks)
 
     subsample = stages.subsample_peaks_for_interpretation(
-        layout, options.peaks, getattr(options, "interpret_subsample", None))
+        layout, options.peaks, getattr(options, "interpret_subsample", None),
+        seed=getattr(options, "seed", None))
     stages.run_interpret(
         options, layout, model_path=options.bias_model, regions=subsample,
         output_prefix=layout.interpret_subsample("bias"),

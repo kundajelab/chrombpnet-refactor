@@ -9,6 +9,7 @@ from chrombpnet.engines import load_model_wrapper
 from chrombpnet.predictions import softmax, write_predictions_h5py
 from chrombpnet import finish_stage, preimport
 from chrombpnet.regions import NARROWPEAK_SCHEMA
+from chrombpnet.seed import DEFAULT_SEED
 import contextlib
 import h5py
 import json
@@ -20,7 +21,8 @@ def read_observed_counts(bigwig, regions_df, outputlen):
 		return data_utils.get_cts(regions_df, obs_bw, outputlen)
 
 
-def compare_with_observed(bigwig, regions_df, regions, outputlen, pred_logits, pred_logcts, output_prefix, obs_data=None):
+def compare_with_observed(bigwig, regions_df, regions, outputlen, pred_logits, pred_logcts, output_prefix, obs_data=None,
+                          seed=DEFAULT_SEED):
 
 	import chrombpnet.training.metrics as metrics 
 	
@@ -37,7 +39,7 @@ def compare_with_observed(bigwig, regions_df, regions, outputlen, pred_logits, p
 		counts_sum_predictions, coordinates, include_peak_flag=False)
 	
 	# store regions, their predictions and corresponding pointwise metrics
-	mnll_pw, mnll_norm, jsd_pw, jsd_norm, jsd_rnd, jsd_rnd_norm, mnll_rnd, mnll_rnd_norm =  metrics.profile_metrics(true_counts,profile_probs_predictions)
+	mnll_pw, mnll_norm, jsd_pw, jsd_norm, jsd_rnd, jsd_rnd_norm, mnll_rnd, mnll_rnd_norm =  metrics.profile_metrics(true_counts,profile_probs_predictions, seed=seed)
 
 	spearman_cor, pearson_cor, mse = metrics.counts_metrics(true_counts_sum, counts_sum_predictions, output_prefix, "All regions provided")
 	
@@ -224,6 +226,7 @@ def _write_model_bigwig(args, model_path, name, shared, finish):
         "output_prefix": f"{args.output_prefix}_{name}",
         "obs_data": (shared.observed_counts(used_regions_df, inputlen, outputlen)
                      if args.bigwig else None),
+        "seed": getattr(args, "seed", DEFAULT_SEED),
     })
 
 

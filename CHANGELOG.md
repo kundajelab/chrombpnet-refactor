@@ -1,5 +1,22 @@
 # Changelog
 
+## `--seed` reaches the interpretation subsample and the profile-metrics shuffle
+
+- **Behaviour change, for a seed other than the default only.** Two draws
+  ignored `--seed` and always used 1234:
+  - the peak subsample the TF-MoDISco motif reports are built from
+    (`--interpret-subsample`, `auxiliary/30K_subsample_peaks.bed`) in
+    `pipeline`, `qc`, `bias pipeline` and `bias qc`;
+  - the shuffled-profile draw behind the test metrics' normalized JSD
+    (`median_norm_jsd` in `*_metrics.json`, and the JSD histograms) in every
+    evaluation, `predict` and `pred_bw -bw`.
+  Both now draw from `--seed`; with the default, 1234, nothing changes.
+  `qc`, `bias qc` and `pred_bw`, which take no `--seed` yet, keep 1234 (next
+  entry).
+- **`predict -s/--seed` now does what its help said.** It seeded only the test
+  set's nonpeak sample, not the profile-metrics draw; it now seeds both, and the
+  help says so.
+
 ## Profile contribution scores weighted as in chrombpnet 1.x by default; `--contribs-profile-stopgrad`
 
 - **Behaviour change, profile contribution scores, all three engines.** The

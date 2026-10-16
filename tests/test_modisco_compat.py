@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from chrombpnet.evaluation.modisco import api
+from chrombpnet.seed import DEFAULT_SEED
 
 
 def _write_scores(path, n=2, length=12):
@@ -299,5 +300,5 @@ def test_interpretation_subsample_size(tmp_path):
     # fewer peaks than the default size: all of them, in order
     pd.testing.assert_frame_equal(subsample(), peaks)
     pd.testing.assert_frame_equal(subsample(size=None), peaks)
-    expected = peaks.sample(20, random_state=stages.INTERPRET_SUBSAMPLE_SEED)
+    expected = peaks.sample(20, random_state=DEFAULT_SEED)
     pd.testing.assert_frame_equal(subsample(size=20), expected.reset_index(drop=True))

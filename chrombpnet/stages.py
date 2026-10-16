@@ -26,10 +26,9 @@ from chrombpnet.data import DefaultDataFile, get_default_data_path
 from chrombpnet.options import as_options
 from chrombpnet.seed import DEFAULT_SEED
 
-#: Contribution scores are computed on at most this many peaks, sampled with a
-#: fixed seed so a rerun scores the same regions (--interpret-subsample).
+#: Contribution scores are computed on at most this many peaks, sampled with
+#: --seed so a rerun scores the same regions (--interpret-subsample).
 INTERPRET_SUBSAMPLE_SIZE = 30_000
-INTERPRET_SUBSAMPLE_SEED = DEFAULT_SEED
 
 #: Width of the QC PWM built from the shifted bigwig.
 PWM_WIDTH = 24
@@ -188,9 +187,10 @@ def run_marginal_footprints(options, layout, model_path, regions, output_prefix,
         motifs_to_pwm=motifs_to_pwm, ylim=None))
 
 
-def subsample_peaks_for_interpretation(layout, peaks_path, size=None):
-    """Sample at most ``size`` (default INTERPRET_SUBSAMPLE_SIZE) peaks and
-    return the BED path, which keeps its ``30K_`` name whatever the size.
+def subsample_peaks_for_interpretation(layout, peaks_path, size=None, seed=None):
+    """Sample at most ``size`` (default INTERPRET_SUBSAMPLE_SIZE) peaks with
+    ``seed`` (--seed; default DEFAULT_SEED) and return the BED path, which keeps
+    its ``30K_`` name whatever the size.
 
     Also creates ``auxiliary/interpret_subsample/``, with ``exist_ok=False`` as
     before, so a rerun into a populated directory fails rather than mixing
@@ -200,7 +200,7 @@ def subsample_peaks_for_interpretation(layout, peaks_path, size=None):
         size = INTERPRET_SUBSAMPLE_SIZE
     peaks = pd.read_csv(peaks_path, sep="\t", header=None)
     if peaks.shape[0] > size:
-        sub_peaks = peaks.sample(size, random_state=INTERPRET_SUBSAMPLE_SEED)
+        sub_peaks = peaks.sample(size, random_state=DEFAULT_SEED if seed is None else seed)
     else:
         sub_peaks = peaks
     subsample_path = layout.aux("30K_subsample_peaks.bed")

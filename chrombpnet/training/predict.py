@@ -6,6 +6,7 @@ import chrombpnet.training.data_generators.initializers as initializers
 from chrombpnet.engines import load_model_wrapper
 from chrombpnet.predictions import softmax
 from chrombpnet.regions import is_disabled
+from chrombpnet.seed import DEFAULT_SEED
 from chrombpnet.predictions import (
     write_predictions_h5py as _write_predictions_h5py,
 )
@@ -99,7 +100,7 @@ def main(args):
                            counts_sum_predictions, coordinates)
 
     _, _, jsd_pw, jsd_norm, jsd_rnd, _, _, _ = metrics.profile_metrics(
-        true_counts, profile_probs_predictions)
+        true_counts, profile_probs_predictions, seed=getattr(args, "seed", DEFAULT_SEED))
     profile_cor = metrics.profile_pearsonr(true_counts, profile_probs_predictions)
 
     # Same sentinel test the generator uses. These used to compare
