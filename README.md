@@ -420,3 +420,23 @@ bias branch is frozen and stays in eval mode.
 Historical scripts and paper-analysis assets that the CLI does not reach are
 isolated under [`legacy/`](legacy/README.md). They are kept for provenance and
 are not installed with the package.
+
+## Publications
+
+The original ChromBPNet paper and codebase can be found here:
+- Paper (bioRxiv): [ChromBPNet: bias factorized, base-resolution deep learning models of chromatin accessibility reveal cis-regulatory sequence syntax, transcription factor footprints and regulatory variants](https://www.biorxiv.org/content/10.1101/2024.12.25.630221v4)
+- Codebase (Github): [Bias factorized, base-resolution deep learning models of chromatin accessibility (kundajelab/chrombpnet)](https://github.com/kundajelab/chrombpnet):
+- Citation:
+```
+@article {Pampari2024.12.25.630221,
+	author = {Pampari, Anusri and Shcherbina, Anna and Kvon, Evgeny and Kosicki, Michael and Nair, Surag and Kundu, Soumya and Kathiria, Arwa S. and Risca, Viviana I. and Kuningas, Kristiina and Alasoo, Kaur and Greenleaf, William James and Pennacchio, Len A. and Kundaje, Anshul},
+	title = {ChromBPNet: bias factorized, base-resolution deep learning models of chromatin accessibility reveal cis-regulatory sequence syntax, transcription factor footprints and regulatory variants},
+	elocation-id = {2024.12.25.630221},
+	year = {2024},
+	doi = {10.1101/2024.12.25.630221},
+	publisher = {Cold Spring Harbor Laboratory},
+	URL = {https://www.biorxiv.org/content/early/2024/12/25/2024.12.25.630221},
+	eprint = {https://www.biorxiv.org/content/early/2024/12/25/2024.12.25.630221.full.pdf},
+	journal = {bioRxiv}
+}
+```
