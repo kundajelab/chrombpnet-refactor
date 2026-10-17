@@ -19,10 +19,10 @@ The bias-free model can then be interpreted to recover cis-regulatory sequence s
 - [Optimizations](#optimizations)
 - [Reproducibility](#reproducibility)
 - [Python API](#python-api)
-- Elsewhere:
-  [engines and environments](envs/README.md),
-  [accessibility signal conventions](chrombpnet/helpers/preprocessing/README.md#accessibility-signal-conventions),
-  [testing](tests/README.md)
+- Additional information:
+  - [Engines and environments](envs/README.md),
+  - [Accessibility signal conventions](chrombpnet/helpers/preprocessing/README.md#accessibility-signal-conventions),
+  - [Testing](tests/README.md)
 
 ## Installation
 
@@ -291,8 +291,7 @@ Four options control them, all off by default:
 
 ## Optimizations
 
-Compared with the original TensorFlow ChromBPNet
-([kundajelab/chrombpnet](https://github.com/kundajelab/chrombpnet)):
+### Compared with original ChromBPNet ([kundajelab/chrombpnet](https://github.com/kundajelab/chrombpnet)):
 
 - **Three engines instead of one.** PyTorch (the default), TensorFlow (the
   original Keras implementation, byte-identical to it given the same inputs)
@@ -340,7 +339,7 @@ Triton forward are adapted from the
 
 ## Reproducibility
 
-### Compared with original ChromBPNet
+### Compared with original ChromBPNet ([kundajelab/chrombpnet](https://github.com/kundajelab/chrombpnet)):
 
 | Flag | Effect |
 |---|---|
