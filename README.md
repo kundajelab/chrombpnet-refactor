@@ -33,12 +33,15 @@ share one. Create the ones you need from the repository root:
 |---|---|---|---|
 | PyTorch (default) | `conda env create -f envs/chrombpnet-pytorch.yml` | `conda activate chrombpnet-pytorch` | Python 3.12, PyTorch 2.14 |
 | TensorFlow | `conda env create -f envs/chrombpnet-tensorflow.yml` | `conda activate chrombpnet-tensorflow` | Python 3.12, TensorFlow 2.21 (tf-keras) |
-| JAX | `conda env create -f envs/chrombpnet-jax.yml` | `conda activate chrombpnet-jax` | Python 3.12, Keras 3.15, JAX 0.11.2 |
+| JAX | `conda env create -f envs/chrombpnet-jax.yml` | `conda activate chrombpnet-jax` | Python 3.12, JAX 0.11 (Keras 3.15) |
 
 - Each file installs this package in editable mode with its engine's extra,
   plus the command-line tools preprocessing uses (`bedtools`, `samtools`,
   `bedGraphToBigWig`), MEME's `tomtom` and the Pango/Cairo stack for the PDF
   reports.
+- GPUs need a CUDA 12 driver (525 or newer), and the framework wheels need
+  glibc 2.28 or newer: on older systems (e.g. CentOS 7), run in a container.
+  Blackwell GPUs need a different PyTorch build (see `envs/README.md`).
 - Pick the engine with `--engine` (the checkpoint suffix decides when it is
   omitted) and the device with `--device cpu`, `cuda` or e.g. `cuda:1`.
   [`envs/README.md`](envs/README.md) describes each engine, its GPU
@@ -293,9 +296,8 @@ Four options control them, all off by default:
 
 ### Compared with original ChromBPNet ([kundajelab/chrombpnet](https://github.com/kundajelab/chrombpnet)):
 
-- **Three engines instead of one.** PyTorch (the default), TensorFlow (the
-  original Keras implementation on TensorFlow 2.21, matching it within float
-  tolerance given the same inputs) and JAX (Keras 3 on JAX, from ChromBPNet 2.0), all behind one shared,
+- **Three engines instead of one.** PyTorch (default), TensorFlow (with
+  tf-keras, the Keras 2 API) and JAX (with Keras 3), all behind one shared,
   framework-neutral pipeline. Contribution scoring is batched over
   (sequence, reference) pairs in PyTorch, and computes both heads in one
   jitted pass in JAX, where the original explains one example at a time. See
