@@ -33,7 +33,7 @@ dependencies = [
 [project.optional-dependencies]
 pytorch = [
   "tangermeme @ git+https://github.com/jmschrei/tangermeme.git",
-  "torch>=2.5,<2.13",
+  "torch>=2.14,<2.15",
 ]
 # Pinned exactly: the TensorFlow engine is byte-identical to the original
 # Keras implementation only on these releases.

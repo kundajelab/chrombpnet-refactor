@@ -31,7 +31,7 @@ share one. Create the ones you need from the repository root:
 
 | Engine | Create the environment | Then | Python and framework |
 |---|---|---|---|
-| PyTorch (default) | `conda env create -f envs/chrombpnet-pytorch.yml` | `conda activate chrombpnet-pytorch` | Python 3.11, PyTorch 2.5.1 |
+| PyTorch (default) | `conda env create -f envs/chrombpnet-pytorch.yml` | `conda activate chrombpnet-pytorch` | Python 3.12, PyTorch 2.14 |
 | TensorFlow | `conda env create -f envs/chrombpnet-tensorflow.yml` | `conda activate chrombpnet-tensorflow` | Python 3.8, TensorFlow 2.8.0 |
 | JAX | `conda env create -f envs/chrombpnet-jax.yml` | `conda activate chrombpnet-jax` | Python 3.12, Keras 3.15, JAX 0.11.2 |
 

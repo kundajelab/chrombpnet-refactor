@@ -9,9 +9,9 @@ channels:
   - defaults
 dependencies:
   # Conda manages the compiled scientific and command-line stack.
-  - python=3.11
+  - python=3.12
   - pip
-  - numpy>=1.26,<2
+  - numpy>=2.1
   - h5py>=3.10
   - pandas>=2.1
   - scipy>=1.11
@@ -21,7 +21,7 @@ dependencies:
   - pillow
   # Native Pango/Cairo stack required by the pip-installed WeasyPrint package.
   - pango
-  - pytables>=3.9
+  - pytables>=3.10
   - tqdm>=4.66
   - termcolor>=2.4
   - bedtools

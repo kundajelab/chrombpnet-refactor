@@ -1,5 +1,27 @@
 # Changelog
 
+## PyTorch environment: PyTorch 2.14 on Python 3.12 and NumPy 2
+
+- **Environment.** `envs/chrombpnet-pytorch.yml` moves from Python 3.11,
+  NumPy 1.26 and PyTorch 2.5.1 (CUDA 11.8 build) to Python 3.12, NumPy 2 and
+  PyTorch 2.14.1, CUDA 12.6 build: any driver 525 or newer, kernels for
+  compute capability 5.0 to 9.0 (Maxwell to Hopper). For Blackwell, use the
+  `cu130` build (driver 580 or newer) or `torch==2.13.0` from
+  `whl/cu129`; `requirements-pytorch.txt` says where. The `pytorch` extra
+  requires `torch>=2.14,<2.15`.
+- `deepdish` is no longer installed: it does not import with NumPy 2, and
+  only two `legacy/` scripts use it. The igraph and leidenalg pins become
+  lower bounds, and the contourpy pin goes.
+- The PyTorch 2.14 wheels need glibc 2.28 or newer; on older systems
+  (CentOS 7's 2.17) run the environment in a container.
+- **What moves:** no model output. Golden sweep of the new environment
+  against the old on the same host: 121 of 149 artifacts byte-identical, and
+  every checkpoint tensor and footprint value bitwise equal. The other 28
+  differ in PDF bytes (WeasyPrint 70), the container bytes of the `.pt`
+  checkpoints and footprint `.h5` files (not their values), one plot, the
+  paths the two runs recorded, and metrics in the 15th digit. Two captures
+  in the new environment are identical.
+
 ## The environment's libstdc++ is preloaded only into a process without one
 
 - **Fix.** Importing `chrombpnet` loads the environment's `libstdc++` first,

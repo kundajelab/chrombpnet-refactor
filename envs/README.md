@@ -9,13 +9,13 @@ engines.
 ## Environments
 
 Each engine has its own conda environment, because their frameworks cannot
-share one: TensorFlow 2.8 needs Python <= 3.10, the PyTorch stack is on 3.11,
+share one: TensorFlow 2.8 needs Python <= 3.10, the PyTorch stack is on 3.12,
 and JAX 0.11 needs Python >= 3.12 and NumPy 2. Create them from the
 repository root:
 
 | Engine | Environment file | Python and framework | GPU libraries |
 |---|---|---|---|
-| PyTorch (default) | `chrombpnet-pytorch.yml` | Python 3.11, PyTorch 2.5.1 | CUDA 11.8 build from the PyTorch wheel; falls back to the CPU |
+| PyTorch (default) | `chrombpnet-pytorch.yml` | Python 3.12, PyTorch 2.14.1 | the PyTorch wheel's CUDA 12.6 build; falls back to the CPU |
 | TensorFlow | `chrombpnet-tensorflow.yml` | Python 3.8, TensorFlow 2.8.0 | CUDA 11.2 and cuDNN 8.1 from the system (modules, or `/usr/local`) |
 | JAX | `chrombpnet-jax.yml` | Python 3.12, Keras 3.15, JAX 0.11.2 | `jax[cuda12]`: CUDA 12 and cuDNN 9 as pip wheels |
 
@@ -28,6 +28,11 @@ Pango/Cairo stack WeasyPrint needs for the PDF reports.
 
 Notes on GPUs:
 
+- **PyTorch**: the CUDA 12.6 build runs on any CUDA 12 driver (525 or newer)
+  and has kernels for compute capability 5.0 to 9.0, Maxwell to Hopper. For
+  Blackwell GPUs (10.0, 12.0) install the `cu130` build instead (driver 580
+  or newer), or `torch==2.13.0` from `https://download.pytorch.org/whl/cu129`
+  on an older driver; `requirements-pytorch.txt` says where.
 - **JAX**: the `jax[cuda12]` wheels need any CUDA 12 driver (525 or newer);
   `jax[cuda13]==0.11.2` also works, with driver 580 or newer. In practice
   the engine needs a GPU of compute capability 7.5 (Turing) or newer: the
@@ -40,6 +45,9 @@ Notes on GPUs:
   because contribution scoring runs in a second process on the same GPU
   while the first still holds what it trained with. For the same reason
   the GPU must not be in Exclusive_Process compute mode.
+- **glibc**: the PyTorch 2.14 wheels need glibc 2.28 or newer, and jaxlib
+  0.11's 2.27. On an older system (CentOS 7 has 2.17) run those
+  environments in a container with a newer base, such as Ubuntu 22.04.
 - Every command accepts `--device cpu`, `--device cuda`, or a specific
   device such as `--device cuda:1`.
 
@@ -63,7 +71,7 @@ three environments.
 
 | | PyTorch | TensorFlow | JAX |
 |---|---|---|---|
-| environment | `chrombpnet-pytorch` (Python 3.11) | `chrombpnet-tensorflow` (Python 3.8, TF 2.8.0) | `chrombpnet-jax` (Python 3.12, Keras 3.15, JAX 0.11) |
+| environment | `chrombpnet-pytorch` (Python 3.12, PyTorch 2.14) | `chrombpnet-tensorflow` (Python 3.8, TF 2.8.0) | `chrombpnet-jax` (Python 3.12, Keras 3.15, JAX 0.11) |
 | checkpoints | `.pt` | `.h5` (Keras 2) | `.keras` (Keras 3); also reads `.h5` |
 | DeepLIFT/DeepSHAP | Tangermeme | kundajelab `shap` fork | native JAX (ChromBPNet 2.0) |
 | TF-MoDISco | git checkout (2.6 API) | modisco-lite 2.3.2 (newest for Python 3.8) | git checkout |
