@@ -837,12 +837,13 @@
     "required": true,
     "type": "str"
   },
-  "bias qc predict_fk": {
+  "bias qc predict_fused_kernel": {
     "choices": null,
     "default": "False",
     "nargs": "0",
     "options": [
-      "--predict-fk"
+      "--predict-fk",
+      "--predict-fused-kernel"
     ],
     "required": false,
     "type": "None"
@@ -1739,12 +1740,13 @@
     "required": true,
     "type": "str"
   },
-  "footprints predict_fk": {
+  "footprints predict_fused_kernel": {
     "choices": null,
     "default": "False",
     "nargs": "0",
     "options": [
-      "--predict-fk"
+      "--predict-fk",
+      "--predict-fused-kernel"
     ],
     "required": false,
     "type": "None"
@@ -2610,12 +2612,13 @@
     "required": false,
     "type": "str"
   },
-  "pred_bw predict_fk": {
+  "pred_bw predict_fused_kernel": {
     "choices": null,
     "default": "False",
     "nargs": "0",
     "options": [
-      "--predict-fk"
+      "--predict-fk",
+      "--predict-fused-kernel"
     ],
     "required": false,
     "type": "None"
@@ -2831,12 +2834,13 @@
     "required": true,
     "type": "str"
   },
-  "predict predict_fk": {
+  "predict predict_fused_kernel": {
     "choices": null,
     "default": "False",
     "nargs": "0",
     "options": [
-      "--predict-fk"
+      "--predict-fk",
+      "--predict-fused-kernel"
     ],
     "required": false,
     "type": "None"
@@ -3521,12 +3525,13 @@
     "required": true,
     "type": "str"
   },
-  "qc predict_fk": {
+  "qc predict_fused_kernel": {
     "choices": null,
     "default": "False",
     "nargs": "0",
     "options": [
-      "--predict-fk"
+      "--predict-fk",
+      "--predict-fused-kernel"
     ],
     "required": false,
     "type": "None"

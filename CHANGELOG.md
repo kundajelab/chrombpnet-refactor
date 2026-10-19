@@ -1,8 +1,19 @@
 # Changelog
 
-## `--predict-fk` runs on any CUDA GPU
+## `--predict-fk` is now `--predict-fused-kernel`
 
-- **Behaviour change, `--predict-fk` only.** The fused Triton forward refused
+- **Renamed** on `pred_bw`, `footprints`, `predict`, `qc` and `bias qc`.
+  `--predict-fk` still works -- scripts written for it keep running -- but
+  `--help` shows only the new name.
+- **What moves:** `qc` and `bias qc` record their arguments in
+  `auxiliary/interpret_subsample/<prefix>.interpret.args.json`, where the
+  setting is now `"predict_fused_kernel": false` instead of
+  `"predict_fk": false`. Nothing else, with or without the flag.
+- `tests/cli_surface.json` records both spellings under the one setting.
+
+## `--predict-fused-kernel` runs on any CUDA GPU
+
+- **Behaviour change, `--predict-fused-kernel` only.** The fused Triton forward refused
   every GPU but H100/H200 (compute capability 9.0) and L40S (8.9). It read the
   optimization kit's *route* table, which names the forward the kit uses by
   default on each card -- chosen for bitwise equality with stock TensorFlow's
@@ -17,7 +28,7 @@
   differ by more than 1e-3.
 - **Unchanged:** the refusals that guard against wrong results (filter widths
   other than 128 and 512, Triton outside 3.x, the int32 index bound, the
-  geometry checks); every output without `--predict-fk`; and with it, every
+  geometry checks); every output without `--predict-fused-kernel`; and with it, every
   output on H100/H200 and L40S.
 - The model is now checked before Triton and the device, so a model the
   kernels cannot serve is refused for that reason on any host. The two

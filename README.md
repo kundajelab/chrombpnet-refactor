@@ -325,7 +325,7 @@ Four options control them, all off by default:
 - **Start-up and shutdown**: heavy imports are started in the background, and
   the CLI exits without interpreter teardown once every output is verified
   and synced to disk.
-- **Fused Triton forward** (`--predict-fk`, optional; on `pred_bw`,
+- **Fused Triton forward** (`--predict-fused-kernel`, optional; on `pred_bw`,
   `footprints`, `qc` and `bias qc`): fp32-exact kernels in place of the
   eager TF32 convolutions, so predictions move by about 1e-5 (closer to an
   fp64 reference). On any CUDA GPU: the kit's measured tile on H100/H200,

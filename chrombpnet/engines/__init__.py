@@ -5,7 +5,7 @@ footprinting, motif discovery and reports are framework-neutral and shared.
 Everything that needs a deep-learning framework sits behind
 :class:`chrombpnet.engines.base.Engine`, with one implementation per framework.
 
-The choice is process-global for the same reason ``--predict-fk`` is (see
+The choice is process-global for the same reason ``--predict-fused-kernel`` is (see
 :mod:`chrombpnet.fused_kernels`): the code that loads and saves models runs
 several frames below the CLI, in stages shared by every pipeline, and threading
 an engine argument through all of them would change signatures that have
@@ -194,9 +194,9 @@ def _check_combinations(engine, args):
                 f"{flags} only apply to the JAX engine, not the {engine.name} engine")
     if engine.name == "pytorch":
         return
-    if getattr(args, "predict_fk", False):
+    if getattr(args, "predict_fused_kernel", False):
         raise ValueError(
-            f"--predict-fk runs PyTorch's fused Triton forward and cannot be "
+            f"--predict-fused-kernel runs PyTorch's fused Triton forward and cannot be "
             f"combined with the {engine.name} engine")
 
 

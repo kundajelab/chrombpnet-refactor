@@ -1,4 +1,4 @@
-"""Whether prediction runs on the fused Triton kernels (``--predict-fk``).
+"""Whether prediction runs on the fused Triton kernels (``--predict-fused-kernel``).
 
 Every other optimization in this package is unconditional: they were measured
 phase by phase behind a ``--optimize`` switch, the measurement is recorded in
@@ -17,7 +17,7 @@ once, from ``CHROMBPNET.main``, before any work starts.
 
 from __future__ import annotations
 
-#: Set by `configure`. False unless a command was given ``--predict-fk``.
+#: Set by `configure`. False unless a command was given ``--predict-fused-kernel``.
 _ENABLED = False
 
 
@@ -34,11 +34,11 @@ def enabled():
 
 
 def configure_from_args(args):
-    """Apply ``args.predict_fk``.
+    """Apply ``args.predict_fused_kernel``.
 
     Commands without the flag -- the pipelines, ``train``, ``prep``,
     ``contribs_bw`` -- leave it off. ``contribs_bw`` deliberately has no flag:
     DeepLIFT needs autograd and hooks on the ``nn.ReLU`` modules, which a
     fused kernel cannot provide.
     """
-    return configure(getattr(args, "predict_fk", False))
+    return configure(getattr(args, "predict_fused_kernel", False))

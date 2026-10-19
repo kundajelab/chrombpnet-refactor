@@ -230,14 +230,16 @@ def _add_engine(optional):
              "envs/chrombpnet-<engine>.yml.")
 
 
-def _add_predict_fk(optional):
-    """Register ``--predict-fk`` on a command that predicts.
+def _add_predict_fused_kernel(optional):
+    """Register ``--predict-fused-kernel`` on a command that predicts.
 
     Not on ``contribs_bw``: DeepLIFT needs autograd and hooks on the
-    ``nn.ReLU`` modules, which a fused kernel cannot provide.
+    ``nn.ReLU`` modules, which a fused kernel cannot provide. Its first name,
+    ``--predict-fk``, is still accepted, without a help entry, so scripts
+    written for it keep running.
     """
     optional.add_argument(
-        "--predict-fk", action="store_true",
+        "--predict-fused-kernel", action="store_true",
         help="Prediction using fused kernels: run the forward on the Triton "
              "chrombpnet_k1 kernels instead of the eager graph. They are "
              "fp32-exact where the default runs TF32 convolutions, so they "
@@ -247,6 +249,8 @@ def _add_predict_fk(optional):
              "L40S and A100, a tile chosen from the GPU's shared memory "
              "elsewhere (checked against the default forward first). It has "
              "not been faster end to end on the GPUs measured.")
+    optional.add_argument("--predict-fk", dest="predict_fused_kernel", action="store_true",
+                          help=argparse.SUPPRESS)
 
 
 def _add_jax_training_options(optional):
@@ -341,7 +345,7 @@ def _add_qc_arguments(parser, model_arguments):
     optional.add_argument('-hp', '--html-prefix', required=False, default="./", help="The html prefix to use for the html file output.")
     _add_data_aug(optional)
     _add_device(optional)
-    _add_predict_fk(optional)
+    _add_predict_fused_kernel(optional)
     _add_report_options(optional)
 
 
@@ -471,7 +475,7 @@ def build_parser():
     optional_preds.add_argument("-bw", "--bigwig", type=str, default=None, help="If provided .h5 with predictions are output along with calculated metrics considering bigwig as groundtruth.")
     optional_preds.add_argument("-s", "--seed", type=int, default=DEFAULT_SEED, help="seed for the profile-metrics shuffled draw (with -bw)")
     _add_device(optional_preds)
-    _add_predict_fk(optional_preds)
+    _add_predict_fused_kernel(optional_preds)
 
     # Make contribution score bigwigs
     required_contribs, optional_contribs = _required_optional(contribs_parser)
@@ -502,7 +506,7 @@ def build_parser():
     required_ftps.add_argument("-pwm_f", "--motifs-to-pwm", type=str, required=True, help="Path to a TSV file containing motifs in first column and motif string to use for footprinting in second column")
     optional_ftps.add_argument("-bs", "--batch-size", type=int, default=64, help="batch size to use for prediction")
     _add_device(optional_ftps)
-    _add_predict_fk(optional_ftps)
+    _add_predict_fused_kernel(optional_ftps)
     optional_ftps.add_argument("--ylim", default=None, type=ylim_pair, required=False, help="lower and upper y-limits for plotting the motif footprint, in the form of a tuple i.e. \
         (0,0.8). If this is set to None, ylim will be autodetermined.")
 
@@ -582,7 +586,7 @@ def _add_predict_arguments(parser):
     add_reproducibility_arguments(optional)
     _add_data_aug(optional)
     _add_device(optional)
-    _add_predict_fk(optional)
+    _add_predict_fused_kernel(optional)
 
 
 def read_parser(argv=None):

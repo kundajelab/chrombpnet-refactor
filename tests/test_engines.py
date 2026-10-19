@@ -94,13 +94,13 @@ def test_an_omitted_engine_leaves_no_trace_in_the_namespace():
 
 
 def test_pytorch_only_flags_are_refused_for_other_engines():
-    with pytest.raises(ValueError, match="--predict-fk"):
+    with pytest.raises(ValueError, match="--predict-fused-kernel"):
         engines.configure_from_args(
-            Namespace(engine="tensorflow", predict_fk=True), require=False)
+            Namespace(engine="tensorflow", predict_fused_kernel=True), require=False)
     # Inferred engines get the same check.
-    with pytest.raises(ValueError, match="--predict-fk"):
+    with pytest.raises(ValueError, match="--predict-fused-kernel"):
         engines.configure_from_args(
-            Namespace(model_h5="m.h5", predict_fk=True), require=False)
+            Namespace(model_h5="m.h5", predict_fused_kernel=True), require=False)
 
 
 def test_reproducibility_max_reaches_xla_before_jax_starts(monkeypatch):

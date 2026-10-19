@@ -46,6 +46,6 @@ def _fused_kernels_off():
 
 
 @pytest.fixture
-def predict_fk():
-    """Turn the fused-kernel route on for one test: `predict_fk(True)`."""
+def predict_fused_kernel():
+    """Turn the fused-kernel route on for one test: `predict_fused_kernel(True)`."""
     return fused_kernels.configure

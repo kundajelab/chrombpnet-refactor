@@ -175,6 +175,6 @@ logit by the input's own softmax. The counts head is the same either way.
 1e-4 in both modes; on a real model the two profile weightings correlate at
 about 0.97.
 
-`--predict-fk` (the fused Triton forward) is PyTorch-only and refused for the
+`--predict-fused-kernel` (the fused Triton forward) is PyTorch-only and refused for the
 other engines. `--reproducibility` and `--reproducibility-max` work on all
 three.

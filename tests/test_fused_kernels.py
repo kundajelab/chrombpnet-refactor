@@ -1,4 +1,4 @@
-"""`--predict-fk`: where the flag lives, and what it switches.
+"""`--predict-fused-kernel`: where the flag lives, and what it switches.
 
 The other optimizations are unconditional now, so what remains testable about
 them is that the legacy bodies kept beside them still agree -- those functions
@@ -24,15 +24,28 @@ PREDICTING_COMMANDS = {
 def test_the_default_is_off():
     """It moves the output, so it cannot be a default."""
     args = read_parser(["pred_bw", *PREDICTING_COMMANDS["pred_bw"]])
-    assert args.predict_fk is False
+    assert args.predict_fused_kernel is False
     assert fused_kernels.configure_from_args(args) is False
 
 
 @pytest.mark.parametrize("command", sorted(PREDICTING_COMMANDS))
 def test_the_flag_reaches_the_commands_that_predict(command):
-    args = read_parser([command, *PREDICTING_COMMANDS[command], "--predict-fk"])
-    assert args.predict_fk is True
+    args = read_parser([command, *PREDICTING_COMMANDS[command], "--predict-fused-kernel"])
+    assert args.predict_fused_kernel is True
     assert fused_kernels.configure_from_args(args) is True
+
+
+@pytest.mark.parametrize("command", sorted(PREDICTING_COMMANDS))
+def test_the_first_name_still_works_but_is_not_advertised(command, capsys):
+    """``--predict-fk`` was the flag's name before ``--predict-fused-kernel``;
+    scripts written for it must keep running, and ``--help`` shows only the
+    new name."""
+    args = read_parser([command, *PREDICTING_COMMANDS[command], "--predict-fk"])
+    assert args.predict_fused_kernel is True
+    with pytest.raises(SystemExit):
+        read_parser([command, "--help"])
+    shown = capsys.readouterr().out
+    assert "--predict-fused-kernel" in shown and "--predict-fk" not in shown
 
 
 def test_contribs_bw_has_no_flag():
@@ -41,7 +54,7 @@ def test_contribs_bw_has_no_flag():
     something that could only refuse."""
     args = read_parser(["contribs_bw", "-m", "m.pt", "-r", "r.bed", "-g",
                         "g.fa", "-c", "c.sizes", "-op", "out"])
-    assert not hasattr(args, "predict_fk")
+    assert not hasattr(args, "predict_fused_kernel")
     assert fused_kernels.configure_from_args(args) is False
 
 
@@ -56,8 +69,8 @@ def test_qc_carries_it_so_a_model_can_be_scored_on_the_fused_route():
     args = read_parser(["qc", "-bw", "o.bw", "-cm", "c.pt", "-cmb", "n.pt",
                         "-g", "g.fa", "-c", "c.sizes", "-o", "out",
                         "-d", "DNASE", "-p", "p.bed", "-n", "n.bed",
-                        "-fl", "f.json", "--predict-fk"])
-    assert args.predict_fk is True
+                        "-fl", "f.json", "--predict-fused-kernel"])
+    assert args.predict_fused_kernel is True
 
 
 def test_the_optimize_flag_is_gone():

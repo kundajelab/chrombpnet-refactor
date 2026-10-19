@@ -1,4 +1,4 @@
-"""The ChromBPNet forward on the kit's Triton kernels (``--predict-fk``).
+"""The ChromBPNet forward on the kit's Triton kernels (``--predict-fused-kernel``).
 
 `chrombpnet/engines/pytorch/_vendor/chrombpnet_k1/kernels.py` is the ChromBPNet forward
 re-expressed as Triton kernels, taken byte-identical from the ChromBPNet
@@ -118,14 +118,14 @@ def describe(device=None):
     if not torch.cuda.is_available():
         raise TritonRouteRefused(
             "the Triton forward needs a CUDA device; none is available "
-            "(leave out --predict-fk)")
+            "(leave out --predict-fused-kernel)")
     index = None
     if device is not None:
         resolved = torch.device(device)
         if resolved.type != "cuda":
             raise TritonRouteRefused(
                 f"the Triton forward needs a CUDA device; asked for "
-                f"'{resolved}' (leave out --predict-fk)")
+                f"'{resolved}' (leave out --predict-fused-kernel)")
         index = resolved.index
     major, minor = torch.cuda.get_device_capability(index)
     arch = f"cuda-{major}{minor}"
@@ -309,7 +309,7 @@ def _check_against_eager(forward, model, device, arch, tile):
             except Exception as exc:
                 raise TritonRouteRefused(
                     f"the fused kernels do not run on {arch} at tile {tile}: {exc!r} "
-                    f"(leave out --predict-fk)") from exc
+                    f"(leave out --predict-fused-kernel)") from exc
     finally:
         torch.backends.cudnn.allow_tf32 = previous
     worst = max(float((a - b).abs().max()) for a, b in zip(fused, eager))
@@ -317,7 +317,7 @@ def _check_against_eager(forward, model, device, arch, tile):
         raise TritonRouteRefused(
             f"the fused kernels disagree with the eager forward on {arch} at tile "
             f"{tile} (max |difference| {worst:.3g} > {UNLISTED_CHECK_ATOL:g}); "
-            f"leave out --predict-fk")
+            f"leave out --predict-fused-kernel")
 
 
 def _prepare(x):

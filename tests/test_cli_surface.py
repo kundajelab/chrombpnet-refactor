@@ -58,8 +58,14 @@ def describe(parser: argparse.ArgumentParser, path: tuple[str, ...] = ()) -> dic
             for name, subparser in action.choices.items():
                 described.update(describe(subparser, path + (name,)))
             continue
-        described[" ".join(path + (action.dest,))] = {
-            "options": sorted(action.option_strings),
+        key = " ".join(path + (action.dest,))
+        options = set(action.option_strings)
+        if key in described:
+            # An alias kept as its own, help-suppressed action shares the
+            # flag's dest; record its spelling with the flag's.
+            options |= set(described[key]["options"])
+        described[key] = {
+            "options": sorted(options),
             "default": repr(action.default),
             "required": bool(action.required),
             "choices": sorted(map(str, action.choices)) if action.choices else None,

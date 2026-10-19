@@ -237,10 +237,10 @@ def test_it_agrees_with_the_eager_forward(route_and_model):
 
 
 @gpu
-def test_the_adapter_uses_the_route_only_under_predict_fk(predict_fk):
+def test_the_adapter_uses_the_route_only_under_predict_fused_kernel(predict_fused_kernel):
     from chrombpnet.model import PredictionAdapter
     model = _production().cuda().eval()
-    predict_fk(False)
+    predict_fused_kernel(False)
     assert PredictionAdapter(model, device="cuda")._forward is model
-    predict_fk(True)
+    predict_fused_kernel(True)
     assert PredictionAdapter(model, device="cuda")._forward is not model
