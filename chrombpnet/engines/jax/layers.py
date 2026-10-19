@@ -1,10 +1,14 @@
 # JAX engine. From kundajelab/chrombpnet#284 (NNFC-GMD/chrombpnet@14ca773),
 # chrombpnet/training/utils/layers.py,
-# except that an error message names this module.
-import base64
-
+# except that an error message names this module, and that the Lambda
+# recognition, which the TensorFlow engine shares, is in chrombpnet.legacy_lambda.
 import keras
 from keras import ops
+
+from chrombpnet.legacy_lambda import LAMBDA_ONLY_KEYS as _LAMBDA_ONLY_KEYS
+from chrombpnet.legacy_lambda import LOGSUMEXP_LAMBDA_FUNCTION  # noqa: F401  (re-exported)
+from chrombpnet.legacy_lambda import is_logsumexp_lambda as _is_logsumexp_lambda
+from chrombpnet.legacy_lambda import lambda_code_bytes as _lambda_code_bytes  # noqa: F401
 
 
 @keras.saving.register_keras_serializable(package="chrombpnet")
@@ -20,43 +24,6 @@ class LogSumExp(keras.layers.Layer):
 
     def compute_output_shape(self, input_shape):
         return tuple(input_shape[:-1]) + (1,)
-
-
-_LAMBDA_ONLY_KEYS = ("function", "output_shape", "mask", "arguments", "module", "function_type",
-                     "output_shape_type", "output_shape_module")
-
-# Name of the function the count-head Lambda of `chrombpnet export --legacy-h5 --count-head named` files refers to
-# (function_type "function"): TF-Keras 2.x resolves it through custom_objects, chrombpnet maps it to LogSumExp.
-LOGSUMEXP_LAMBDA_FUNCTION = "chrombpnet_logsumexp"
-
-
-def _lambda_code_bytes(function):
-    """Raw marshalled code of a serialized Lambda function (list or dict form), or b"" if unknown."""
-    code = None
-    if isinstance(function, (list, tuple)) and function:
-        code = function[0]
-    elif isinstance(function, dict):
-        code = function.get("config", {}).get("code", function.get("code"))
-    elif isinstance(function, str):
-        code = function
-    if not isinstance(code, str):
-        return b""
-    try:
-        return base64.decodebytes(code.encode("ascii"))
-    except (ValueError, TypeError):
-        return b""
-
-
-def _is_logsumexp_lambda(config):
-    """The 1.x bytecode Lambda (`tf.math.reduce_logsumexp`) or the named-function Lambda of legacy exports.
-
-    Keras 3's legacy loader drops `function_type` / `module` before from_config, so a named function arrives as
-    just the name.
-    """
-    function = config.get("function")
-    if config.get("function_type", "function") == "function" and function == LOGSUMEXP_LAMBDA_FUNCTION:
-        return True
-    return b"reduce_logsumexp" in _lambda_code_bytes(function)
 
 
 class LogSumExpCompat(LogSumExp):

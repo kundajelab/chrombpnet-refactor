@@ -70,20 +70,14 @@ from keras.src.models.functional import Functional
 from keras.src.ops.function import make_node_key
 from keras.src.utils.naming import to_snake_case
 
-from chrombpnet.engines.jax.layers import LOGSUMEXP_LAMBDA_FUNCTION, LogSumExp
+from chrombpnet.engines.jax.layers import LogSumExp
+from chrombpnet.legacy_lambda import (  # noqa: F401  (re-exported)
+    COUNT_HEADS, LEGACY_LOGSUMEXP_BYTECODE, LEGACY_LOGSUMEXP_MODULE, LOGSUMEXP_LAMBDA_FUNCTION,
+    logsumexp_lambda_fields)
 
 LEGACY_KERAS_VERSION = "2.12.0"   # the TF-Keras version that wrote the chrombpnet 1.x reference files
 LEGACY_BACKEND = "tensorflow"
 
-# The count-head Lambda of the chrombpnet 1.x chrombpnet.h5 files (TF-Keras 2.12 on Python 3.8), verbatim:
-# `lambda x: tf.math.reduce_logsumexp(x, axis=-1, keepdims=True)` as base64 marshalled Python 3.8 bytecode
-LEGACY_LOGSUMEXP_BYTECODE = (
-    "4wEAAAAAAAAAAAAAAAEAAAAFAAAAUwAAAHMSAAAAdABqAWoCfABkAWQCZAONA1MAKQRO6f////9U\n"
-    "KQLaBGF4aXPaCGtlZXBkaW1zKQPaAnRm2gRtYXRo2hByZWR1Y2VfbG9nc3VtZXhwKQHaAXipAHII\n"
-    "AAAA+kgvb3B0L2Nocm9tYnBuZXQvY2hyb21icG5ldC90cmFpbmluZy9tb2RlbHMvY2hyb21icG5l\n"
-    "dF93aXRoX2JpYXNfbW9kZWwucHnaCDxsYW1iZGE+gAAAAPMAAAAA\n")
-LEGACY_LOGSUMEXP_MODULE = "chrombpnet.training.models.chrombpnet_with_bias_model"
-COUNT_HEADS = ("bytecode", "named")   # the default first
 
 # Keras 2 initializers and the config keys TF-Keras 2.x accepts for them
 _INITIALIZER_KEYS = {
@@ -111,19 +105,6 @@ _LAYER_KEYS = {
 # weightless layers whose Keras auto-names (class name in snake case) are renumbered per model
 _RENUMBERED = (keras.layers.Add, keras.layers.Concatenate, keras.layers.Cropping1D, keras.layers.Flatten,
                keras.layers.GlobalAveragePooling1D)
-
-
-def logsumexp_lambda_fields(count_head="bytecode"):
-    """The Lambda config keys of the exported count head after name / trainable / dtype, in TF-Keras 2.12's
-    order: the 1.x bytecode Lambda ("bytecode") or the named-function one ("named"), see the module docstring."""
-    if count_head == "bytecode":
-        function, function_type, module = [LEGACY_LOGSUMEXP_BYTECODE, None, None], "lambda", LEGACY_LOGSUMEXP_MODULE
-    elif count_head == "named":
-        function, function_type, module = LOGSUMEXP_LAMBDA_FUNCTION, "function", None
-    else:
-        raise ValueError("count_head must be one of {}, got {!r}.".format(", ".join(COUNT_HEADS), count_head))
-    return {"function": function, "function_type": function_type, "module": module, "output_shape": None,
-            "output_shape_type": "raw", "output_shape_module": None, "arguments": {}}
 
 
 def _native(value):
