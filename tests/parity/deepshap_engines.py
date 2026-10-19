@@ -120,12 +120,14 @@ def sequences():
 
 def tensorflow_worker(workdir):
     _import_this_package()
+    from chrombpnet import engines
+
+    # Before TensorFlow is imported: the engine sets TF_USE_LEGACY_KERAS.
+    engine = engines.configure("tensorflow")
     tf_engine = _parity_module("tf_engine")
     tf_engine._pin_tensorflow()
-    from chrombpnet import engines
     from chrombpnet.engines.tensorflow import shap_utils
 
-    engine = engines.configure("tensorflow")
     values, seqs = model_weights(), sequences()
     args = types.SimpleNamespace(seed=SEED, learning_rate=1e-3,
                                  architecture_from_file=engine.default_architecture("bias"))

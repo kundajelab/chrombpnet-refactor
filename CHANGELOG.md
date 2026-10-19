@@ -1,5 +1,75 @@
 # Changelog
 
+## TensorFlow engine on TensorFlow 2.21, tf-keras and Python 3.12
+
+- **Environment.** `envs/chrombpnet-tensorflow.yml` moves from Python 3.8,
+  TensorFlow 2.8.0 (with the system's CUDA 11.2 and cuDNN 8.1),
+  `kundajelab-shap` and modisco-lite 2.3.2 to Python 3.12, NumPy 2,
+  TensorFlow 2.21 with tf-keras 2.21 (the Keras 2 API), TensorFlow
+  Probability 0.25, CUDA 12.5 and cuDNN 9.3 as pip wheels, and TF-MoDISco
+  from git, as in the other environments. The package now needs Python 3.10
+  or newer.
+  - cuDNN is pinned at 9.3, the release TensorFlow 2.21 is built against:
+    newer 9.x releases have kernels only for compute capability 7.5 and up,
+    and convolutions fail on Pascal and Volta GPUs.
+  - The engine loads its pip CUDA libraries ahead of a system CUDA or cuDNN
+    of the same names on `LD_LIBRARY_PATH`, as the JAX engine does (the
+    loader moves to `chrombpnet/engines/bundled_cuda.py`, shared by both).
+  - TF-MoDISco 2.6 gives the TensorFlow environment `--tomtom-lite` too.
+  - TensorFlow 2.21's wheels need glibc 2.27 or newer; on older systems
+    (CentOS 7's 2.17) run the environment in a container.
+- **Behaviour change: within float tolerance of chrombpnet 1.x, no longer
+  byte-identical.** TensorFlow 2.21's kernels round differently from 2.8's.
+  `tests/parity/tf_engine.py` now runs the original in its own environment
+  (`chrombpnet`, or `--reference-python`) and checks every output within a
+  tolerance, on identical batches, initial weights and references. 58
+  checks; 18 of the engine-vs-original comparisons come out bitwise:
+  - predictions of untrained models, the bias rescale and each side loading
+    the other's models: bitwise or within 1e-7;
+  - DeepSHAP hypothetical scores: within 2.1e-6 relative L2;
+  - five epochs of training: losses within 1.2e-7, Adam state within 1.1e-6
+    and weights within 4.6e-6, early stopping on the same epoch. The bias
+    of each profile head's output convolution is left out: the multinomial
+    loss cannot see it, so its trajectory is rounding noise on both sides.
+- **What the port took**, each stated in its module:
+  - DeepSHAP is the shap fork's `TFDeepExplainer`, copied into
+    `chrombpnet/engines/tensorflow/deep_tf.py` (MIT, as the fork): the fork
+    no longer imports on Python 3.12 with NumPy 2.
+  - The bias-factorized model's count head is a `Lambda` of a named
+    function: 1.x's `lambda` is saved as Python 3.8 bytecode, which Python
+    3.11 and newer cannot unmarshal. Original models load as before; their
+    head is recognised without being unmarshalled.
+  - Every `.h5` the engine saves is rewritten so that chrombpnet 1.x's Keras
+    2.8 loads it: the count head as 1.x's bytecode, and without two config
+    fields tf-keras added (`InputLayer.optional`, the model's `trainable`),
+    both at their defaults.
+  - Training uses tf-keras's legacy `Adam`, TensorFlow 2.8's optimizer. The
+    newer one rounds differently (20 steps of a small model: 3e-7 from
+    TensorFlow 2.8's weights, against 4e-9), and saves a configuration Keras
+    2.8 cannot rebuild, so 1.x could not load the models compiled (as
+    `chrombpnet train -b` loads a bias model).
+  - Training is seeded with `tf.keras.utils.set_random_seed`, which gives
+    tf-keras a generator of its own for initializer seeds. tf-keras otherwise
+    draws them from Python's `random`, which `fit(shuffle=True)` also orders
+    batches with, and the bias model trained on its batches in a different
+    order from 1.x's.
+  - The engine sets `TF_USE_LEGACY_KERAS=1` when it is imported and refuses
+    to run if TensorFlow was imported before it without it: TensorFlow then
+    gives Keras 3 to `import tensorflow.keras...` statements.
+- **What moves:** every output the TensorFlow engine computes from a model.
+  Initial weights for a given `--seed` are no longer 1.x's or the previous
+  engine's, because tf-keras draws them differently, so trained models
+  differ by more than rounding, and with them predictions, metrics,
+  contribution scores, footprints, and the motifs and reports built on them.
+  Golden sweep of the new environment against the old on the same host: the
+  preprocessing outputs (splits, negatives, filtered peaks, bigwigs, the
+  interpretation subsamples) are byte-identical; everything trained or
+  scored differs, as do the plots (Matplotlib) and PDFs (WeasyPrint 70).
+  Both capture 147 artifacts, with a slightly different set of motif logos,
+  and two captures in the new environment are identical.
+- **Original models** load as before, and every downstream command works on
+  them. Models the engine writes load in chrombpnet 1.x, for prediction and
+  compiled.
 ## PyTorch environment: PyTorch 2.14 on Python 3.12 and NumPy 2
 
 - **Environment.** `envs/chrombpnet-pytorch.yml` moves from Python 3.11,

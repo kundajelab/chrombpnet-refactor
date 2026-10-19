@@ -8,15 +8,16 @@ engines.
 
 ## Environments
 
-Each engine has its own conda environment, because their frameworks cannot
-share one: TensorFlow 2.8 needs Python <= 3.10, the PyTorch stack is on 3.12,
-and JAX 0.11 needs Python >= 3.12 and NumPy 2. Create them from the
-repository root:
+Each engine has its own conda environment. All three run Python 3.12 and
+NumPy 2, but their frameworks cannot share one: each brings its own CUDA and
+cuDNN wheels, at releases the others do not accept, and the TensorFlow
+engine needs Keras 2 (tf-keras) where the JAX engine needs Keras 3. Create
+them from the repository root:
 
 | Engine | Environment file | Python and framework | GPU libraries |
 |---|---|---|---|
 | PyTorch (default) | `chrombpnet-pytorch.yml` | Python 3.12, PyTorch 2.14.1 | the PyTorch wheel's CUDA 12.6 build; falls back to the CPU |
-| TensorFlow | `chrombpnet-tensorflow.yml` | Python 3.8, TensorFlow 2.8.0 | CUDA 11.2 and cuDNN 8.1 from the system (modules, or `/usr/local`) |
+| TensorFlow | `chrombpnet-tensorflow.yml` | Python 3.12, TensorFlow 2.21 with tf-keras 2.21 | `tensorflow[and-cuda]`: CUDA 12.5 and cuDNN 9.3 as pip wheels |
 | JAX | `chrombpnet-jax.yml` | Python 3.12, Keras 3.15, JAX 0.11.2 | `jax[cuda12]`: CUDA 12 and cuDNN 9 as pip wheels |
 
 Each file installs the package in editable mode with its engine's extra
@@ -33,6 +34,17 @@ Notes on GPUs:
   Blackwell GPUs (10.0, 12.0) install the `cu130` build instead (driver 580
   or newer), or `torch==2.13.0` from `https://download.pytorch.org/whl/cu129`
   on an older driver; `requirements-pytorch.txt` says where.
+- **TensorFlow**: the wheels need any CUDA 12 driver (525 or newer).
+  `requirements-tensorflow.txt` pins cuDNN at 9.3, the release TensorFlow
+  2.21 is built against: newer cuDNN 9 releases have precompiled kernels
+  only for compute capability 7.5 and up, and convolutions then fail on
+  Pascal and Volta GPUs (P100, TITAN Xp, V100). For the same reason the
+  engine loads its bundled CUDA libraries first where a system CUDA or
+  cuDNN on `LD_LIBRARY_PATH` has the same names, as the JAX engine does.
+  Memory growth is on (`TF_FORCE_GPU_ALLOW_GROWTH=true`),
+  because contribution scoring runs in a second process on the same GPU
+  while the first still holds what it trained with. For the same reason
+  the GPU must not be in Exclusive_Process compute mode.
 - **JAX**: the `jax[cuda12]` wheels need any CUDA 12 driver (525 or newer);
   `jax[cuda13]==0.11.2` also works, with driver 580 or newer. In practice
   the engine needs a GPU of compute capability 7.5 (Turing) or newer: the
@@ -41,13 +53,9 @@ Notes on GPUs:
   A system CUDA or cuDNN on `LD_LIBRARY_PATH` would shadow the libraries the
   wheels bring, so the engine loads the bundled ones first when it finds
   namesakes there.
-- **TensorFlow**: memory growth is on (`TF_FORCE_GPU_ALLOW_GROWTH=true`),
-  because contribution scoring runs in a second process on the same GPU
-  while the first still holds what it trained with. For the same reason
-  the GPU must not be in Exclusive_Process compute mode.
-- **glibc**: the PyTorch 2.14 wheels need glibc 2.28 or newer, and jaxlib
-  0.11's 2.27. On an older system (CentOS 7 has 2.17) run those
-  environments in a container with a newer base, such as Ubuntu 22.04.
+- **glibc**: the PyTorch 2.14 wheels need glibc 2.28 or newer, TensorFlow
+  2.21's and jaxlib 0.11's 2.27. On an older system (CentOS 7 has 2.17) run
+  the environments in a container with a newer base, such as Ubuntu 22.04.
 - Every command accepts `--device cpu`, `--device cuda`, or a specific
   device such as `--device cuda:1`.
 
@@ -71,11 +79,11 @@ three environments.
 
 | | PyTorch | TensorFlow | JAX |
 |---|---|---|---|
-| environment | `chrombpnet-pytorch` (Python 3.12, PyTorch 2.14) | `chrombpnet-tensorflow` (Python 3.8, TF 2.8.0) | `chrombpnet-jax` (Python 3.12, Keras 3.15, JAX 0.11) |
-| checkpoints | `.pt` | `.h5` (Keras 2) | `.keras` (Keras 3); also reads `.h5` |
-| DeepLIFT/DeepSHAP | Tangermeme | kundajelab `shap` fork | native JAX (ChromBPNet 2.0) |
-| TF-MoDISco | git checkout (2.6 API) | modisco-lite 2.3.2 (newest for Python 3.8) | git checkout |
-| status | default | byte-identical to the original | within float32 tolerances of the original |
+| environment | `chrombpnet-pytorch` (Python 3.12, PyTorch 2.14) | `chrombpnet-tensorflow` (Python 3.12, TF 2.21, tf-keras) | `chrombpnet-jax` (Python 3.12, Keras 3.15, JAX 0.11) |
+| checkpoints | `.pt` | `.h5` (Keras 2, readable by chrombpnet 1.x) | `.keras` (Keras 3); also reads `.h5` |
+| DeepLIFT/DeepSHAP | Tangermeme | the kundajelab `shap` fork's, vendored | native JAX (ChromBPNet 2.0) |
+| TF-MoDISco | git checkout (2.6 API) | git checkout | git checkout |
+| status | default | within float tolerance of the original | within float32 tolerances of the original |
 | reproducibility gate | `tests/regression` (golden artifacts) | `tests/parity/tf_engine.py` | `tests/parity/jax_engine.py` |
 
 ## How the engines plug in
@@ -90,13 +98,39 @@ out).
 **TensorFlow** is the original implementation (kundajelab/chrombpnet@09938fd)
 behind that interface: its model definitions, loss, callbacks, `model.fit`
 call, bias rescale and DeepSHAP code, each module stating what it changes.
-Given identical batches, initial weights and shuffle references it reproduces
-the original's checkpoints, logs, predictions and contribution scores byte for
-byte, which `tests/parity/tf_engine.py` checks against a checkout of the
-original. It loads models trained by the original package, so every
-downstream command works on existing `.h5` models. It differs from the
-original only where this package fixes a defect, each in its own commit and
-CHANGELOG entry: `--seed` now seeds the bias-factorized model's trainable
+It runs them on TensorFlow 2.21 with tf-keras, the Keras 2 API (the engine
+sets `TF_USE_LEGACY_KERAS=1` before TensorFlow is imported, and refuses to
+run on Keras 3), where the original ran TensorFlow 2.8 on Python 3.8. The
+two releases' kernels round differently, so given identical batches, initial
+weights and shuffle references the engine reproduces the original's
+checkpoints, logs, predictions and contribution scores within float
+tolerance rather than byte for byte: `tests/parity/tf_engine.py` runs the
+original in its own environment and compares every output. Porting it to
+TensorFlow 2.21 took four changes, each stated in its module:
+
+- DeepSHAP is the kundajelab `shap` fork's `TFDeepExplainer`, copied into
+  `chrombpnet/engines/tensorflow/deep_tf.py`, because the fork no longer
+  imports on Python 3.12 with NumPy 2.
+- The bias-factorized model's count head is a `Lambda` of a named function:
+  1.x saved its `lambda` as Python 3.8 bytecode, which Python 3.11 and newer
+  cannot unmarshal. The engine recognises that head in the original's models
+  without running it, and writes every `.h5` it saves in the form chrombpnet
+  1.x's Keras 2.8 reads: the head as 1.x's bytecode, and without two config
+  fields tf-keras added since.
+- Training uses tf-keras's legacy `Adam`, the optimizer of TensorFlow 2.8.
+  The newer default rounds differently, and saves an optimizer
+  configuration Keras 2.8 cannot rebuild, so chrombpnet 1.x could not load
+  the models compiled (as `chrombpnet train -b` loads a bias model).
+- `tf.keras.utils.set_random_seed` seeds training, so that tf-keras draws
+  its initializers' seeds from a generator of its own: drawn from Python's
+  `random`, as tf-keras otherwise does, they would move the batch order
+  `fit` shuffles with it away from the original's.
+
+It loads models trained by the original package, so every downstream
+command works on existing `.h5` models. Initial weights for a given `--seed`
+are not 1.x's, because tf-keras draws them differently. Beyond the port,
+it differs from the original only where this package fixes a defect, each in
+its own commit and CHANGELOG entry: `--seed` now seeds the bias-factorized model's trainable
 tower; the best validation checkpoint is restored even when training runs out
 of epochs; and DeepSHAP's dinucleotide shuffles are seeded by `--seed`.
 Attribution runs in a spawned

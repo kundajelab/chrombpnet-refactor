@@ -54,16 +54,14 @@ For `--engine tensorflow` the harness swaps every `.pt` path for `.h5`,
 appends `--engine tensorflow` to each command that takes it, and pins
 TensorFlow's own thread pools (`TF_NUM_INTRAOP_THREADS`,
 `TF_NUM_INTEROP_THREADS`) and `SOURCE_DATE_EPOCH`, which fontTools stamps into
-the font subsets WeasyPrint 61.2 embeds in every PDF. PyTorch runs get none of
+the font subsets WeasyPrint embeds in every PDF. PyTorch runs get none of
 that: not even an explicit
 `--engine pytorch`, which `<prefix>.args.json` would record. A baseline
 records its engine in `engine.txt`, and `compare` refuses a mismatch.
 
-A healthy TensorFlow sweep captures **149 artifacts across 10 scenarios**
-(PyTorch: 150). The difference is all in the qc scenarios' motif logos, whose
-number depends on which patterns TF-MoDISco finds for each engine's model --
-and the TensorFlow environment runs TF-MoDISco 2.3.2, the newest release that
-installs on Python 3.8, where the PyTorch one runs the git checkout.
+A healthy TensorFlow sweep captures **147 artifacts across 10 scenarios**
+(PyTorch: 149). The difference is all in the qc scenarios' motif logos, whose
+number depends on which patterns TF-MoDISco finds for each engine's model.
 
 Keras serializes the bias-factorized model's logsumexp `Lambda` as marshalled
 bytecode that embeds its defining file's absolute path, so
@@ -80,10 +78,10 @@ motif-logo count differs. `.keras` archives are digested by content
 one and marks shared objects with a memory address, so their bytes differ
 between two saves of the same model.
 
-The TensorFlow engine's *byte-identity with the original Keras ChromBPNet*, and
-the JAX engine's agreement with it, are different questions from "did my
-change move the output", and they have their own harnesses:
-`tests/parity/tf_engine.py` and `tests/parity/jax_engine.py`.
+The TensorFlow and JAX engines' *agreement with the original Keras
+ChromBPNet* is a different question from "did my change move the output",
+and it has its own harnesses: `tests/parity/tf_engine.py` and
+`tests/parity/jax_engine.py`.
 
 **Checkouts other than the installed one.** `capture` and `compare` run the
 CLI as `python -m chrombpnet.CHROMBPNET` from the workspace, so it imports

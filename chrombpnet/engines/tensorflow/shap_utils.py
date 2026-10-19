@@ -1,11 +1,11 @@
 # TensorFlow engine. Verbatim from kundajelab/chrombpnet@09938fd,
 # chrombpnet/evaluation/interpret/shap_utils.py, except that
-# shuffle_several_times passes an optional RandomState to dinuc_shuffle.
+# shuffle_several_times passes an optional RandomState to dinuc_shuffle, and
+# the unused `import shap` is gone (the explainer is in deep_tf).
 # Av's code with a bit of reformatting
 # Adapted from Zahoor's mtbatchgen
 
 import numpy as np
-import shap
 import tensorflow as tf
 
 from deeplift.dinuc_shuffle import dinuc_shuffle

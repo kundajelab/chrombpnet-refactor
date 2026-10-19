@@ -16,20 +16,29 @@ differs:
   shuffles batches exactly as the original's default ``shuffle=True`` does;
 * fixed defects of the original: ``--seed`` is applied before the model is
   built, and the best validation checkpoint is restored even when training
-  runs out of epochs.
+  runs out of epochs;
+* tf-keras draws its initializers' seeds from a generator of its own
+  (``tf.keras.utils.set_random_seed``), not from ``random``, so that ``fit``
+  shuffles batches in the original's order;
+* the saved models are rewritten so that the original's Keras 2.8 loads
+  them (``layers.make_original_readable``): the count head in its Python 3.8
+  bytecode form, and two newer config fields dropped at their defaults.
 """
 
 from __future__ import annotations
 
 import importlib.machinery
 import os
-import random
 
-import numpy as np
 import tensorflow as tf
-import tensorflow.keras.callbacks as tfcallbacks
+
+from chrombpnet.engines.tensorflow import require_tf_keras
+
+require_tf_keras()  # before tensorflow.keras.callbacks, which could be Keras 3's
+import tensorflow.keras.callbacks as tfcallbacks  # noqa: E402
 
 from chrombpnet.engines.tensorflow import callbacks
+from chrombpnet.engines.tensorflow.layers import make_original_readable
 from chrombpnet.engines.tensorflow.predictor import configure_device
 from chrombpnet.engines.tensorflow.sequence_adapter import KerasSequence
 from chrombpnet.engines.keras_weights import assign_canonical_weights
@@ -66,9 +75,14 @@ def get_model(args, parameters):
     # --seed never reached that tower's initial weights (defect 6 in
     # chrombpnet_bugs.md). The builders still re-seed where they always did,
     # so everything drawn after construction is unchanged.
-    np.random.seed(args.seed)
-    tf.random.set_seed(args.seed)
-    random.seed(args.seed)
+    #
+    # set_random_seed seeds `random`, NumPy and TensorFlow, and also gives
+    # tf-keras its own generator for the seeds of unseeded initializers.
+    # Without it tf-keras draws them from `random` as it builds each layer
+    # (TF 2.8 drew them from TensorFlow's seed), and fit(shuffle=True) orders
+    # batches with `random`: building the bias model after its builder
+    # seeds `random` would move the batch order away from the original's.
+    tf.keras.utils.set_random_seed(args.seed)
     architecture_module = importlib.machinery.SourceFileLoader(
         '', args.architecture_from_file).load_module()
     builder = getattr(
@@ -119,5 +133,10 @@ def fit_and_evaluate(model, train_gen, valid_gen, args, architecture_module):
 
     print('save model')
     model.save(model_output_path_h5_name)
+    # In the form chrombpnet 1.x's Keras 2.8 loads (layers).
+    make_original_readable(model_output_path_h5_name)
 
     architecture_module.save_model_without_bias(model, args.output_prefix)
+    nobias = args.output_prefix + "_nobias.h5"
+    if os.path.exists(nobias):
+        make_original_readable(nobias)

@@ -1,11 +1,15 @@
 # TensorFlow engine. Verbatim from kundajelab/chrombpnet@09938fd,
 # chrombpnet/training/models/chrombpnet_with_bias_model.py,
-# except that multinomial_nll is imported from this engine.
+# except that multinomial_nll is imported from this engine, and the count
+# head's Lambda calls a named function (layers.count_head) instead of a lambda,
+# so that it saves and loads on any Python, and Adam is tf-keras's legacy Adam
+# (see bpnet_model.py).
 import numpy as np ;
 from tensorflow.keras.backend import int_shape
-from tensorflow.keras.layers import Input, Cropping1D, add, Conv1D, GlobalAvgPool1D, Dense, Add, Concatenate, Lambda, Flatten
-from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.layers import Input, Cropping1D, add, Conv1D, GlobalAvgPool1D, Dense, Add, Concatenate, Flatten
+from tensorflow.keras.optimizers.legacy import Adam
 from tensorflow.keras.models import Model
+from chrombpnet.engines.tensorflow.layers import count_head
 from chrombpnet.engines.tensorflow.losses import multinomial_nll
 import tensorflow as tf
 import random as rn
@@ -128,8 +132,7 @@ def getModelGivenModelOptionsAndWeightInits(args, model_params):
 
     profile_out = Add(name="logits_profile_predictions")([output_wo_bias[0],bias_output[0]])
     concat_counts = Concatenate(axis=-1)([output_wo_bias[1], bias_output[1]])
-    count_out = Lambda(lambda x: tf.math.reduce_logsumexp(x, axis=-1, keepdims=True),
-                        name="logcount_predictions")(concat_counts)
+    count_out = count_head()(concat_counts)
 
     # instantiate keras Model with inputs and outputs
     model=Model(inputs=[inp],outputs=[profile_out, count_out])

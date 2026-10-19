@@ -1,9 +1,9 @@
 """Keras-layout BPNet weights shared by the Keras-based engines.
 
 ``--reproducibility-max`` starts every engine from the same arrays, drawn from one
-framework-neutral NumPy stream (``canonical_bpnet_weights``). TensorFlow 2.8's
-tf.keras and Keras 3 address layers and their weights identically, so the
-TensorFlow and JAX engines assign them with the same function.
+framework-neutral NumPy stream (``canonical_bpnet_weights``). tf-keras (Keras 2)
+and Keras 3 address layers and their weights identically, so the TensorFlow
+and JAX engines assign them with the same function.
 """
 
 from __future__ import annotations

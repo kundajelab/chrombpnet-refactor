@@ -1,60 +1,73 @@
 #!/usr/bin/env python3
-"""Byte-identity of the TensorFlow engine with the original Keras ChromBPNet.
+"""Agreement of the TensorFlow engine with the original Keras ChromBPNet.
 
 The TensorFlow engine (``chrombpnet/engines/tensorflow``) claims to reproduce
-the original implementation (kundajelab/chrombpnet@09938fd) exactly, given
-the same inputs. "The same inputs" is deliberately narrow: the data pipeline,
+the original implementation (kundajelab/chrombpnet@09938fd), given the same
+inputs. "The same inputs" is deliberately narrow: the data pipeline,
 preprocessing and seeding are this package's and may differ, so this harness
 feeds both implementations identical batches, identical initial weights and
-identical DeepSHAP references, and then requires every output to be equal --
-not close, equal.
+identical DeepSHAP references, and then compares every output.
+
+The two run different TensorFlows: the original its own pinned stack (TF 2.8
+on Python 3.8, its own conda environment, ``--reference-python``), the engine
+TF 2.21 with tf-keras on Python 3.12 (this environment). Their CPU kernels
+round differently, so outputs are compared within ``TOLERANCE`` -- the
+relative L2 distance of each array -- and every check says whether it came
+out bitwise equal or by how much it differs. Model configurations, which the
+two Keras releases write with different fields, are compared by structure:
+each layer's class, name and inputs.
 
 DeepSHAP is compared in both of the engine's modes. By default it scores as
 the original does, whose shap fork has the ``StopGradient`` handler commented
 out (``deep_tf.py:595``). With ``--contribs-profile-stopgrad`` it registers
 that handler for the profile head; the harness registers it on the reference
-side too, and the two must still be equal. The handler must change the
-profile head and leave the counts head alone.
+side too, and the two must still agree. The handler must change the profile
+head and leave the counts head alone.
 
-Everything runs in the ``chrombpnet-tensorflow`` environment, in separate
-processes, because both code bases are the package ``chrombpnet``:
+Each side runs in its own processes, because both code bases are the package
+``chrombpnet``:
 
 ``prepare``   this package: builds the regression fixture, records a batch
-              stream from the shared generator, draws initial weights, and
-              writes a bias model to start the bias-factorized model from.
-``reference`` the original repository on ``sys.path``, nothing of this one.
+              stream from the shared generator and draws initial weights.
+``bias_init`` the original: writes the bias model the bias-factorized model
+              starts from, as a 1.x checkpoint the engine must load.
+``reference`` the original repository on ``sys.path``, nothing of this one,
+              in the original's environment.
 ``engine``    this package's TensorFlow engine.
 
 Each training run is its own process, as it is on the command line, so that
 TensorFlow's process-global state (seeds, layer-name counters, graph mode)
 cannot leak between cases. The harness -- not either implementation -- pins
 TensorFlow to one thread, for both sides alike. It does not set
-``TF_DETERMINISTIC_OPS``: under it TF 2.8 refuses any unseeded random op, and
-the original builds its bias-factorized model before seeding. Single-threaded
-CPU execution is deterministic instead, which the self-check confirms.
+``TF_DETERMINISTIC_OPS``: under it TF refuses any unseeded random op, and the
+original builds its bias-factorized model before seeding. Single-threaded CPU
+execution is deterministic instead, which the self-check confirms.
 
-What is compared, exactly:
+What is compared:
 
-* ``build``   model configuration, predictions of the bias, combined and
-              no-bias models, and ``test_on_batch`` losses;
-* ``train``   checkpoints (every weight, the optimizer state, the Keras
-              attributes), ``.log`` and ``.log.batch``, and the no-bias model,
-              for a bias model and a bias-factorized model where early stopping
-              fires, and a bias-factorized model that runs out of epochs;
+* ``build``   model structure, predictions of the bias, combined and no-bias
+              models, and ``test_on_batch`` losses;
+* ``train``   checkpoint weights and Adam state, the ``.log`` and
+              ``.log.batch`` losses, and the no-bias model, for a bias model
+              and a bias-factorized model where early stopping fires, and a
+              bias-factorized model that runs out of epochs. The profile
+              heads' output biases are left out (``UNIDENTIFIED_WEIGHTS``):
+              the loss cannot see them, so their values are rounding noise;
 * ``rescale`` the hyperparameter finder's bias count-head rescale;
 * ``shap``    DeepSHAP hypothetical scores for both heads as the original
               computes them, and with the StopGradient handler on both sides
               (``--contribs-profile-stopgrad``), which must leave the counts
               head unchanged and change the profile head;
-* ``interop`` each side loading and predicting with the other side's model.
+* ``interop`` each side loading and predicting with the other side's
+              models: the engine reads 1.x's Python 3.8 count head, the
+              original reads the one the engine writes back in that form, and
+              loads the engine's bias model compiled, as its ``chrombpnet
+              train -b`` does; and the two sides' trained models predicting
+              alike (profiles as log-probabilities).
 
-The reference is first checked against itself, since a byte-identity claim
-means nothing if the reference does not reproduce its own output.
-
-Keras serializes the bias-factorized model's ``Lambda`` count head as
-marshalled bytecode, which embeds the defining file's path and line number.
-Those necessarily differ between the two code bases, so the comparison
-decodes the bytecode and compares the instructions, constants and names.
+The reference is first checked against itself, exactly, since an agreement
+claim means nothing if the reference does not reproduce its own output; so
+are the engine's in-process and CLI DeepSHAP paths.
 
 Usage::
 
@@ -63,11 +76,9 @@ Usage::
 """
 
 import argparse
-import base64
 import contextlib
 import functools
 import json
-import marshal
 import os
 from pathlib import Path
 import shutil
@@ -80,6 +91,12 @@ import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ORIGINAL_REPO = "/path/to/workdir/software/chrombpnet"
+#: The original's interpreter: its own conda environment, ``chrombpnet``, beside
+#: this one (Python 3.8, TF 2.8, the kundajelab shap fork). Override with
+#: --reference-python or CHROMBPNET_ORIGINAL_PYTHON.
+DEFAULT_REFERENCE_PYTHON = os.environ.get(
+    "CHROMBPNET_ORIGINAL_PYTHON",
+    str(Path(sys.prefix).parent / "chrombpnet" / "bin" / "python"))
 ORIGINAL_COMMIT = "09938fdb4397ec0006510e5251e48920a505d4de"
 PARITY_OPT_IN = "CHROMBPNET_TF_ENGINE_PARITY"
 
@@ -122,11 +139,46 @@ PINNED_ENV = {
 }
 
 
+#: Largest relative L2 distance (||engine - original|| / ||original||) each
+#: kind of output may show. Measured with TF 2.21 against TF 2.8 on one CPU
+#: thread (each run prints its own): predictions of untrained models, the
+#: bias rescale and each side's loading of the other's models come out
+#: bitwise equal or within 1e-7; DeepSHAP scores within 2.1e-6; five epochs
+#: of training within 1.2e-7 (losses), 1.1e-6 (Adam state) and 4.6e-6
+#: (weights). The limits leave a factor of 20 or more, and stay well below
+#: what a real departure shows: a different batch order moved the trained
+#: bias model's weights by 0.3.
+TOLERANCE = {
+    "build": 1e-5,
+    "train": 1e-4,
+    "rescale": 1e-5,
+    "shap": 1e-4,
+    "interop": 1e-5,
+}
+
 #: Relative L2 distance between the profile scores with the StopGradient
 #: honoured and without it (the original's midpoint weights) above which the
 #: two weightings count as told apart. Measured: 1.05 here and in jax_engine.py, 0.64 in
 #: deepshap_engines.py; float32 agreement is 1e-6 or better.
 MIN_PROFILE_DEPARTURE = 1e-3
+
+#: Weights the loss cannot see, left out of the weight and optimizer-state
+#: checks: the bias of a profile head's output convolution adds one constant
+#: to every logit of a profile, which the multinomial loss (a softmax) does
+#: not depend on. Its gradient is rounding noise, which Adam scales up to
+#: full-sized steps, so each implementation walks it at random from the same
+#: start. Profile predictions are compared as log-probabilities, which it does
+#: not move.
+UNIDENTIFIED_WEIGHTS = ("prof_out_precrop/bias",)
+
+#: Models each side loads from both sides' training runs: (key, case, file,
+#: compiled). The bias model is loaded compiled, as chrombpnet 1.x's
+#: ``chrombpnet train -b`` and hyperparameter finder load it, so its saved
+#: optimizer must be one Keras 2.8 can rebuild.
+INTEROP_MODELS = (
+    ("chrombpnet", "chrombpnet_A", "chrombpnet.h5", False),
+    ("bias", "bias_A", "bias.h5", True),
+)
 
 
 # --------------------------------------------------------------------------
@@ -311,14 +363,15 @@ def prepare(workdir):
     arrays["rescale_x"], arrays["rescale_cts"] = bias_valid, bias_counts
     np.savez(os.path.join(workdir, "fixture.npz"), **arrays)
 
-    # The starting bias model for the bias-factorized cases: the engine's
-    # bias architecture with the shared weights, saved as a Keras checkpoint.
+
+def task_bias_init(side, workdir):
+    """The starting bias model for the bias-factorized cases: the original's
+    bias architecture with the shared weights, saved by the original -- a 1.x
+    checkpoint, which the engine must read as it reads any."""
     _pin_tensorflow()
-    from chrombpnet import engines
-    engine = engines.get("tensorflow")
     fixture = np.load(os.path.join(workdir, "fixture.npz"))
-    args = _training_args("bias", 1, 1, 0.001, workdir, engine.default_architecture("bias"))
-    model, _ = engine.get_model(args, _parameters("bias", workdir))
+    args = _training_args("bias", 1, 1, 0.001, workdir, side.architecture("bias"))
+    model, _ = side.get_model(args, _parameters("bias", workdir))
     _set_bpnet_weights(model, _initial_weights(fixture, "tf_w_"), "bpnet_", "")
     model.save(os.path.join(workdir, "bias_init.h5"))
 
@@ -359,6 +412,10 @@ class Reference:
     def load_predictor(self, path):
         from chrombpnet.training import predict
         return predict.load_model_wrapper(types.SimpleNamespace(model_h5=path))
+
+    def load_compiled(self, path):
+        from chrombpnet.helpers.hyperparameters import param_utils
+        return param_utils.load_model_wrapper(path)
 
     def rescale(self, bias_path, out, seqs, cts):
         from chrombpnet.helpers.hyperparameters import find_chrombpnet_hyperparams as finder
@@ -418,6 +475,10 @@ class EngineSide:
 
     def load_predictor(self, path):
         return self.engine.load_predictor(path)
+
+    def load_compiled(self, path):
+        from chrombpnet.engines.tensorflow.predictor import load_model
+        return load_model(path, compile=True)
 
     def rescale(self, bias_path, out, seqs, cts):
         self.engine.rescale_bias_logcounts(bias_path, out, seqs, cts)
@@ -528,10 +589,13 @@ def task_interop(side, workdir, out, sides):
     fixture = np.load(os.path.join(workdir, "fixture.npz"))
     results = {}
     for name in sides:
-        path = os.path.join(workdir, name, "chrombpnet_A", "chrombpnet.h5")
-        model = side.load_predictor(path)
-        profile, counts = model.predict(fixture["predict_x"], batch_size=BATCH_SIZE)
-        results[name + "_profile"], results[name + "_counts"] = profile, counts
+        for key, case, filename, compiled in INTEROP_MODELS:
+            path = os.path.join(workdir, name, case, filename)
+            model = side.load_compiled(path) if compiled else side.load_predictor(path)
+            x = fixture["predict_x"] if key == "chrombpnet" else fixture["rescale_x"][:16]
+            profile, counts = model.predict(x, batch_size=BATCH_SIZE)
+            results["{}_{}_profile".format(name, key)] = profile
+            results["{}_{}_counts".format(name, key)] = counts
     np.savez(os.path.join(out, "interop.npz"), **results)
 
 
@@ -539,7 +603,9 @@ def worker(arguments):
     side = Reference(arguments.original_repo) if arguments.side == "reference" else EngineSide()
     workdir, out = arguments.workdir, arguments.out
     os.makedirs(out, exist_ok=True)
-    if arguments.task == "build":
+    if arguments.task == "bias_init":
+        task_bias_init(side, workdir)
+    elif arguments.task == "build":
         task_build(side, workdir, out)
     elif arguments.task == "train":
         task_train(side, workdir, os.path.join(out, arguments.case), arguments.case)
@@ -557,37 +623,36 @@ def worker(arguments):
 # Comparison
 # --------------------------------------------------------------------------
 
-def _normalize_code(code):
-    """A code object's behaviour, without where it was defined."""
-    consts = tuple(_normalize_code(c) if isinstance(c, types.CodeType) else repr(c)
-                   for c in code.co_consts)
-    return (code.co_code.hex(), consts, code.co_names, code.co_varnames,
-            code.co_argcount, code.co_freevars, code.co_cellvars)
+def _structure(model_json):
+    """[(class, name, input layers)] of every layer, nested models included:
+    what must match between two Keras releases, whose configs otherwise carry
+    their own fields. A Lambda is reduced to whether it is the logsumexp count
+    head, recognised without unmarshalling it -- its bytecode is the Python
+    that wrote it, which need not be the one running this."""
+    sys.path.insert(0, str(REPO_ROOT))
+    from chrombpnet.legacy_lambda import is_logsumexp_lambda
 
+    rows = []
 
-def _normalize_keras_json(text):
-    """Keras model JSON with each Lambda's bytecode reduced to its behaviour."""
-    def walk(node):
-        if isinstance(node, dict):
-            if node.get("class_name") == "Lambda":
-                config = dict(node["config"])
-                function = config.get("function")
-                if isinstance(function, list) and function and isinstance(function[0], str):
-                    code = marshal.loads(base64.decodebytes(function[0].encode("ascii")))
-                    config["function"] = [repr(_normalize_code(code))] + list(function[1:])
-                node = dict(node, config=config)
-            return {key: walk(value) for key, value in node.items()}
-        if isinstance(node, list):
-            return [walk(item) for item in node]
-        return node
-    return json.dumps(walk(json.loads(text)), sort_keys=True)
+    def walk(model):
+        for layer in model["config"]["layers"]:
+            inputs = sorted({inbound[0] for node in layer.get("inbound_nodes", [])
+                             for inbound in (node if isinstance(node, list) else [])
+                             if isinstance(inbound, list) and inbound})
+            kind = layer["class_name"]
+            if kind == "Lambda":
+                kind += ":logsumexp" if is_logsumexp_lambda(layer["config"]) else ":other"
+            rows.append((kind, layer["config"].get("name"), inputs))
+            if layer["class_name"] in ("Functional", "Model"):
+                walk(layer)
+
+    walk(json.loads(model_json))
+    return rows
 
 
 def _attr_value(key, value):
     if isinstance(value, bytes):
         value = value.decode("utf-8")
-    if key == "model_config" and isinstance(value, str):
-        return _normalize_keras_json(value)
     if isinstance(value, np.ndarray):
         return repr(value.tolist())
     return repr(value)
@@ -616,33 +681,74 @@ def h5_contents(path, root="/", key=None):
     return contents
 
 
-def _weights_by_layer(path, root="model_weights"):
-    """Weight arrays keyed by ``layer/variable``, whatever the nesting."""
-    return h5_contents(path, root, key=lambda name: "/".join(name.split("/")[-2:]))
+def _weight_arrays(path, root="model_weights", depth=2):
+    """Arrays under ``root`` keyed by the last ``depth`` parts of their path
+    (``layer/variable`` whatever the nesting), or the whole path if ``depth``
+    is None."""
+    import h5py
+
+    arrays = {}
+    with h5py.File(path, "r") as handle:
+        if root not in handle:
+            return arrays
+
+        def visit(name, node):
+            if isinstance(node, h5py.Dataset):
+                arrays["/".join(name.split("/")[-depth:]) if depth else name] = node[()]
+
+        handle[root].visititems(visit)
+    return arrays
+
+
+def _table(path, sep):
+    """(header, rows as floats) of a CSVLogger log or a LossHistory batch log."""
+    lines = Path(path).read_text().strip().splitlines()
+    header = lines[0].split(sep)
+    rows = [[float("nan") if value in ("None", "") else float(value)
+             for value in line.split(sep)] for line in lines[1:]]
+    return header, np.array(rows, dtype=np.float64)
 
 
 class Report:
     def __init__(self):
         self.rows = []
 
-    def check(self, label, equal, detail=""):
-        self.rows.append((label, bool(equal), detail))
-        print("{:<58} {}{}".format(label, "PASS" if equal else "FAIL",
-                                   "  " + detail if detail and not equal else ""))
+    def check(self, label, ok, detail="", always=False):
+        self.rows.append((label, bool(ok), detail))
+        print("{:<62} {}{}".format(label, "PASS" if ok else "FAIL",
+                                   "  " + detail if detail and (always or not ok) else ""))
         sys.stdout.flush()
 
-    def arrays(self, label, a, b):
+    def exact(self, label, a, b):
+        """Bitwise equal: for comparisons within one environment."""
         a, b = np.asarray(a), np.asarray(b)
-        same = a.dtype == b.dtype and a.shape == b.shape and a.tobytes() == b.tobytes()
-        detail = ""
-        if not same and a.shape == b.shape and a.dtype.kind == "f":
-            detail = "max |delta| = {:.3g}".format(float(np.max(np.abs(a - b))))
-        self.check(label, same, detail)
+        self.check(label, a.dtype == b.dtype and a.shape == b.shape and a.tobytes() == b.tobytes())
+
+    def close(self, label, a, b, tolerance):
+        """Within ``tolerance`` relative L2 of the original (``b``); the report
+        says whether the two came out bitwise equal, or how far apart."""
+        a, b = np.asarray(a), np.asarray(b)
+        if a.shape != b.shape:
+            return self.check(label, False, "shapes {} and {}".format(a.shape, b.shape))
+        if a.dtype == b.dtype and a.tobytes() == b.tobytes():
+            return self.check(label, True, "bitwise", always=True)
+        # NaN is a value neither side has (a None in a log): it must be
+        # missing from both at the same places, and the rest is compared.
+        a, b = np.asarray(a, np.float64), np.asarray(b, np.float64)
+        missing = np.isnan(b)
+        if not np.array_equal(np.isnan(a), missing):
+            return self.check(label, False, "missing values at different places")
+        a, b = a[~missing], b[~missing]
+        distance = relative_l2(a, b)
+        self.check(label, distance <= tolerance,
+                   "relative L2 {:.2g}, max |delta| {:.2g} (limit {:g})".format(
+                       distance, float(np.max(np.abs(a - b), initial=0.0)), tolerance), always=True)
 
     def files(self, label, a, b):
         self.check(label, Path(a).read_bytes() == Path(b).read_bytes())
 
     def h5(self, label, a, b, exclude=()):
+        """Every group, dataset and attribute equal: within one environment."""
         left, right = h5_contents(a), h5_contents(b)
         for prefix in exclude:
             left = {k: v for k, v in left.items() if not k.startswith(prefix)}
@@ -650,20 +756,42 @@ class Report:
         differing = sorted(k for k in set(left) | set(right) if left.get(k) != right.get(k))
         self.check(label, not differing, "differs at " + ", ".join(differing[:4]))
 
-    def weights(self, label, a, b):
-        left, right = _weights_by_layer(a), _weights_by_layer(b)
-        differing = sorted(k for k in set(left) | set(right) if left.get(k) != right.get(k))
-        self.check(label, bool(left) and not differing, "differs at " + ", ".join(differing[:4]))
+    def weights_close(self, label, engine, original, tolerance, root="model_weights", subset=False,
+                      depth=2):
+        """The same-named weights of two checkpoints, all together, within
+        ``tolerance``, but for UNIDENTIFIED_WEIGHTS; with ``subset`` only
+        those ``engine`` has."""
+        left, right = _weight_arrays(engine, root, depth), _weight_arrays(original, root, depth)
+        keys = sorted(left) if subset else sorted(set(left) | set(right))
+        keys = [k for k in keys if not any(part in k for part in UNIDENTIFIED_WEIGHTS)]
+        missing = [k for k in keys if k not in left or k not in right]
+        if not keys or missing:
+            return self.check(label, False, "missing " + ", ".join(missing[:4]) if missing else "no weights")
+        self.close(label + " ({} arrays)".format(len(keys)),
+                   np.concatenate([np.ravel(left[k]).astype(np.float64) for k in keys]),
+                   np.concatenate([np.ravel(right[k]).astype(np.float64) for k in keys]), tolerance)
 
-    def weights_within(self, label, part, whole):
-        """Every weight in ``part`` equals the same-named weight in ``whole``."""
-        small, big = _weights_by_layer(part), _weights_by_layer(whole)
-        bad = sorted(k for k in small if small[k] != big.get(k))
-        self.check(label, bool(small) and not bad, "differs at " + ", ".join(bad[:4]))
+    def table_close(self, label, engine, original, sep, tolerance):
+        """The losses two logs share, within ``tolerance``."""
+        (left_head, left), (right_head, right) = _table(engine, sep), _table(original, sep)
+        shared = [c for c in right_head if c in left_head]
+        extra = sorted(set(left_head) ^ set(right_head))
+        if left.shape[0] != right.shape[0] or not shared:
+            return self.check(label, False, "{} rows and {} rows".format(left.shape[0], right.shape[0]))
+        self.close(label + (" (not in both: {})".format(", ".join(extra)) if extra else ""),
+                   left[:, [left_head.index(c) for c in shared]],
+                   right[:, [right_head.index(c) for c in shared]], tolerance)
 
     @property
     def failed(self):
         return [label for label, ok, _ in self.rows if not ok]
+
+
+def _log_probabilities(logits):
+    """Profile logits as log-probabilities: what the multinomial loss sees."""
+    logits = np.asarray(logits, np.float64).reshape(len(logits), -1)
+    top = logits.max(axis=1, keepdims=True)
+    return logits - top - np.log(np.exp(logits - top).sum(axis=1, keepdims=True))
 
 
 def _epochs_run(log_path):
@@ -680,8 +808,9 @@ def _best_and_last_epoch(log_path):
 
 def compare(workdir, report):
     ref, ref2, eng = (os.path.join(workdir, n) for n in ("reference", "reference2", "engine"))
+    tol = TOLERANCE
 
-    # 0. The reference must reproduce itself.
+    # 0. The reference must reproduce itself, exactly (one environment).
     for case, kind, *_ in TRAINING_CASES:
         prefix = "chrombpnet" if kind == "chrombpnet" else "bias"
         report.h5("self: reference {} checkpoint".format(case),
@@ -694,76 +823,98 @@ def compare(workdir, report):
     configs_ref = json.loads(Path(ref, "configs.json").read_text())
     configs_eng = json.loads(Path(eng, "configs.json").read_text())
     for kind in ("bias", "chrombpnet"):
-        report.check("build: {} model configuration".format(kind),
-                     _normalize_keras_json(configs_ref[kind]) == _normalize_keras_json(configs_eng[kind]))
+        report.check("build: {} model structure".format(kind),
+                     _structure(configs_ref[kind]) == _structure(configs_eng[kind]))
     build_ref, build_eng = np.load(os.path.join(ref, "build.npz")), np.load(os.path.join(eng, "build.npz"))
     for key in sorted(build_ref.files):
-        report.arrays("build: " + key, build_ref[key], build_eng[key])
+        report.close("build: " + key, build_eng[key], build_ref[key], tol["build"])
 
-    # 2. Training. Where early stopping fires (case A) everything is
-    # identical. Where training runs out of epochs (case B) the engine
-    # restores the best validation epoch and the original saved the last one,
-    # so the engine's weights must equal the original's best-epoch checkpoint
-    # instead -- which the reference worker snapshots before overwriting it.
+    # 2. Training. Where early stopping fires (case A) the engine must match
+    # the original's checkpoint. Where training runs out of epochs (case B)
+    # the engine restores the best validation epoch and the original saved the
+    # last one, so the engine's weights must match the original's best-epoch
+    # checkpoint instead -- which the reference worker snapshots before
+    # overwriting it.
     for case, kind, epochs, early_stop, _ in TRAINING_CASES:
         prefix = "chrombpnet" if kind == "chrombpnet" else "bias"
         r, e = os.path.join(ref, case, prefix), os.path.join(eng, case, prefix)
-        ran = _epochs_run(r + ".log")
+        ran, ran_engine = _epochs_run(r + ".log"), _epochs_run(e + ".log")
         stopped_early = ran < epochs
         expect = case.endswith("_A")
-        report.check("train {}: early stopping {} (ran {} of {} epochs)".format(
-            case, "fired" if expect else "did not fire", ran, epochs), stopped_early == expect)
-        report.files("train {}: .log".format(case), r + ".log", e + ".log")
-        report.files("train {}: .log.batch".format(case), r + ".log.batch", e + ".log.batch")
+        report.check("train {}: early stopping {} (ran {} of {} epochs; engine {})".format(
+            case, "fired" if expect else "did not fire", ran, epochs, ran_engine),
+            stopped_early == expect and ran_engine == ran)
+        report.table_close("train {}: .log losses".format(case), e + ".log", r + ".log", ",", tol["train"])
+        report.table_close("train {}: .log.batch losses".format(case),
+                           e + ".log.batch", r + ".log.batch", "\t", tol["train"])
+        # Optimizer state is the last epoch's on both sides (restoring the
+        # best epoch restores only the weights); its variables are named
+        # alike only because the engine trains with the legacy Adam, as 1.x.
+        report.weights_close("train {}: optimizer state".format(case), e + ".h5", r + ".h5",
+                             tol["train"], root="optimizer_weights", depth=None)
         if expect:
-            report.h5("train {}: checkpoint".format(case), r + ".h5", e + ".h5")
+            report.weights_close("train {}: checkpoint weights".format(case), e + ".h5", r + ".h5", tol["train"])
             if kind == "chrombpnet":
-                report.h5("train {}: no-bias model".format(case), r + "_nobias.h5", e + "_nobias.h5")
+                report.weights_close("train {}: no-bias model".format(case),
+                                     e + "_nobias.h5", r + "_nobias.h5", tol["train"])
             continue
         best, last = _best_and_last_epoch(r + ".log")
         report.check("train {}: best epoch ({}) is not the last ({})".format(case, best, last),
                      best != last)
-        report.weights("train {}: weights = reference's best epoch".format(case),
-                       r + ".best.h5", e + ".h5")
-        report.h5("train {}: optimizer state and attributes".format(case),
-                  r + ".h5", e + ".h5", exclude=("model_weights",))
+        report.weights_close("train {}: weights = reference's best epoch".format(case),
+                             e + ".h5", r + ".best.h5", tol["train"])
         if kind == "chrombpnet":
-            report.weights_within("train {}: no-bias model = reference's best epoch".format(case),
-                                  e + "_nobias.h5", r + ".best.h5")
+            report.weights_close("train {}: no-bias model = reference's best epoch".format(case),
+                                 e + "_nobias.h5", r + ".best.h5", tol["train"], subset=True)
 
     # 3. Rescale, DeepSHAP, interop.
-    report.h5("rescale: bias_model_scaled.h5", os.path.join(ref, "bias_model_scaled.h5"),
-              os.path.join(eng, "bias_model_scaled.h5"))
+    report.weights_close("rescale: bias_model_scaled.h5", os.path.join(eng, "bias_model_scaled.h5"),
+                         os.path.join(ref, "bias_model_scaled.h5"), tol["rescale"])
     shap_ref, shap_eng = np.load(os.path.join(ref, "shap.npz")), np.load(os.path.join(eng, "shap.npz"))
     for prefix, mode in (("", ""), ("stopgrad_", " with --contribs-profile-stopgrad")):
         for head in HEADS:
-            report.arrays("shap: {} hypothetical scores{}".format(head, mode),
-                          shap_ref[prefix + head], shap_eng[prefix + head])
-            report.arrays("shap: {} scores{} via the CLI's subprocess path".format(head, mode),
-                          shap_eng[prefix + head], shap_eng["end_to_end_" + prefix + head])
-    report.arrays("shap: counts unchanged by the StopGradient handler",
-                  shap_ref["stopgrad_counts"], shap_ref["counts"])
+            report.close("shap: {} hypothetical scores{}".format(head, mode),
+                         shap_eng[prefix + head], shap_ref[prefix + head], tol["shap"])
+            report.exact("shap: {} scores{} via the CLI's subprocess path".format(head, mode),
+                         shap_eng[prefix + head], shap_eng["end_to_end_" + prefix + head])
+    report.exact("shap: counts unchanged by the StopGradient handler",
+                 shap_ref["stopgrad_counts"], shap_ref["counts"])
+    report.exact("shap: counts unchanged by the StopGradient handler (engine)",
+                 shap_eng["stopgrad_counts"], shap_eng["counts"])
     departure = relative_l2(shap_eng["stopgrad_profile"], shap_ref["profile"])
     report.check("shap: the StopGradient handler changes the profile head",
                  departure > MIN_PROFILE_DEPARTURE,
                  "relative L2 {:.3g} <= {:g}".format(departure, MIN_PROFILE_DEPARTURE))
     print("    (relative L2 between the two profile weightings: {:.3g})".format(departure))
     interop = [np.load(os.path.join(d, "interop.npz")) for d in (ref, eng)]
-    for model in ("reference", "engine"):
+    for kind, case, _, compiled in INTEROP_MODELS:
+        how = " (compiled)" if compiled else ""
+        for model in ("reference", "engine"):
+            for output in ("profile", "counts"):
+                key = "{}_{}_{}".format(model, kind, output)
+                report.close("interop: {} {} model {}, engine vs original loading it{}".format(
+                    model, kind, output, how), interop[1][key], interop[0][key], tol["interop"])
         for output in ("profile", "counts"):
-            key = "{}_{}".format(model, output)
-            report.arrays("interop: {} model {}, loaded by both".format(model, output),
-                          interop[0][key], interop[1][key])
-    report.arrays("interop: both models predict alike",
-                  interop[0]["reference_profile"], interop[0]["engine_profile"])
+            engine_out = interop[0]["engine_{}_{}".format(kind, output)]
+            reference_out = interop[0]["reference_{}_{}".format(kind, output)]
+            if output == "profile":
+                engine_out, reference_out = _log_probabilities(engine_out), _log_probabilities(reference_out)
+            report.close("interop: both sides' {} models predict alike ({}{})".format(
+                kind, output, " as log-probabilities" if output == "profile" else ""),
+                engine_out, reference_out, tol["train"])
 
 
 # --------------------------------------------------------------------------
 # Driver
 # --------------------------------------------------------------------------
 
+#: The reference side's interpreter; set by main from --reference-python.
+REFERENCE_PYTHON = [DEFAULT_REFERENCE_PYTHON]
+
+
 def _run(task, side, workdir, out, original_repo, case=None, sides=None):
-    command = [sys.executable, str(Path(__file__).resolve()), "--worker",
+    python = REFERENCE_PYTHON[0] if side == "reference" else sys.executable
+    command = [python, str(Path(__file__).resolve()), "--worker",
                "--side", side, "--task", task, "--workdir", workdir, "--out", out,
                "--original-repo", original_repo]
     if case:
@@ -795,12 +946,18 @@ def _check_original_repo(original_repo):
 
 def main(arguments):
     _check_original_repo(arguments.original_repo)
+    if not Path(arguments.reference_python).is_file():
+        raise SystemExit("The original's interpreter was not found: {} (--reference-python, "
+                         "or CHROMBPNET_ORIGINAL_PYTHON)".format(arguments.reference_python))
+    REFERENCE_PYTHON[0] = arguments.reference_python
     workdir = tempfile.mkdtemp(prefix="chrombpnet-tf-parity-")
     print("workdir:", workdir)
+    print("original:", arguments.reference_python, "| engine:", sys.executable)
     repo = arguments.original_repo
     try:
         print("preparing the fixture, batch stream and initial weights ...")
         _run("prepare", "engine", workdir, workdir, repo)
+        _run("bias_init", "reference", workdir, workdir, repo)
         for side, out in (("reference", "reference"), ("reference", "reference2"), ("engine", "engine")):
             outdir = os.path.join(workdir, out)
             print("running", out, "...")
@@ -819,9 +976,10 @@ def main(arguments):
         if report.failed:
             print("\n{} of {} checks failed.".format(len(report.failed), len(report.rows)))
             return 1
-        print("\nAll {} checks passed: the TensorFlow engine reproduces the original "
-              "implementation byte for byte, departing only where it fixes a "
-              "documented defect.".format(len(report.rows)))
+        bitwise = sum(1 for _, ok, detail in report.rows if ok and detail == "bitwise")
+        print("\nAll {} checks passed ({} of the engine-vs-original comparisons bitwise): the "
+              "TensorFlow engine reproduces the original implementation within TOLERANCE, "
+              "departing only where it fixes a documented defect.".format(len(report.rows), bitwise))
         return 0
     finally:
         if arguments.keep:
@@ -833,6 +991,8 @@ def main(arguments):
 def parser():
     result = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     result.add_argument("--original-repo", default=DEFAULT_ORIGINAL_REPO)
+    result.add_argument("--reference-python", default=DEFAULT_REFERENCE_PYTHON,
+                        help="the original's interpreter (default: the chrombpnet env beside this one)")
     result.add_argument("--keep", action="store_true", help="keep the work directory")
     result.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     result.add_argument("--side", help=argparse.SUPPRESS)

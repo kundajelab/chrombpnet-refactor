@@ -1,10 +1,13 @@
 # TensorFlow engine. Verbatim from kundajelab/chrombpnet@09938fd,
 # chrombpnet/training/models/bpnet_model.py,
-# except that multinomial_nll is imported from this engine.
+# except that multinomial_nll is imported from this engine, and Adam is
+# tf-keras's legacy Adam: the Adam of 1.x's TensorFlow 2.8, which tf-keras
+# 2.11+ replaced as tensorflow.keras.optimizers.Adam with one that rounds
+# differently (and saves its state under other names).
 import numpy as np ;
 from tensorflow.keras.backend import int_shape
 from tensorflow.keras.layers import Input, Cropping1D, add, Conv1D, GlobalAvgPool1D, Dense, Flatten
-from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.optimizers.legacy import Adam
 from tensorflow.keras.models import Model
 from chrombpnet.engines.tensorflow.losses import multinomial_nll
 import tensorflow as tf

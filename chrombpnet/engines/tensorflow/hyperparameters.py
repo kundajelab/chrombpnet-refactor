@@ -10,6 +10,7 @@ from __future__ import annotations
 import numpy as np
 import tensorflow.keras as keras
 
+from chrombpnet.engines.tensorflow.layers import make_original_readable
 from chrombpnet.engines.tensorflow.predictor import load_model
 
 
@@ -48,3 +49,4 @@ def rescale_bias_logcounts(bias_path, output_path, seqs, cts):
     bias_model.summary()
     bias_model_scaled = adjust_bias_model_logcounts(bias_model, seqs, cts)
     bias_model_scaled.save(output_path)
+    make_original_readable(output_path)  # loads in chrombpnet 1.x too (layers)

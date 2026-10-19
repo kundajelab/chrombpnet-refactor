@@ -2,10 +2,11 @@
 
 ``explain`` is adapted from kundajelab/chrombpnet@09938fd,
 chrombpnet/evaluation/interpret/interpret.py, ``interpret()``: the same two
-``shap.explainers.deep.TFDeepExplainer`` targets (summed log-counts; the
-softmax-weighted mean-normalized profile logits), the same reference
-generator and ``combine_mult_and_diffref`` (``shap_utils``, verbatim), and the
-same ``shap_values(..., progress_message=100)`` call. It returns the
+targets of the kundajelab shap fork's ``TFDeepExplainer`` (copied into
+``deep_tf``): summed log-counts and the softmax-weighted mean-normalized
+profile logits; the same reference generator and ``combine_mult_and_diffref``
+(``shap_utils``, verbatim), and the same ``shap_values(...,
+progress_message=100)`` call. It returns the
 hypothetical scores instead of writing them, because the output schema and
 writer are shared by every engine (``chrombpnet/evaluation/interpret``).
 
@@ -26,7 +27,8 @@ therefore reproducible run to run, and ``--seed`` means what it says.
 
 The profile target weights each mean-normalized logit by its softmax under
 ``tf.stop_gradient``, meaning the softmax to act as fixed weights. The shap
-fork has its ``StopGradient`` handler commented out (``deep_tf.py:595``), so
+fork has its ``StopGradient`` handler commented out (its ``deep_tf.py:595``,
+kept so in ``deep_tf``), so
 by default -- as in the original -- the weights count as a second varying
 input, and the fork's two-input rule weights the logits by the midpoint
 ``0.5 * (softmax(mn_x) + softmax(mn_r))``. With ``stop_gradient``
@@ -55,12 +57,12 @@ def honour_stop_gradient():
     """Have the shap fork stop attributions at ``tf.stop_gradient``.
 
     Registers ``break_dependence`` for ``StopGradient``, the line the fork
-    has commented out (``deep_tf.py:595``), and restores the previous entry
+    has commented out (its ``deep_tf.py:595``), and restores the previous entry
     on exit. It must cover both the explainer's construction, which reads
     the dependence breakers, and ``shap_values``, which builds the gradient
     graph from ``op_handlers`` on its first call.
     """
-    from shap.explainers.deep import deep_tf
+    from chrombpnet.engines.tensorflow import deep_tf
 
     missing = object()
     previous = deep_tf.op_handlers.get("StopGradient", missing)
@@ -89,10 +91,9 @@ def explain(model, seqs, profile_or_counts, num_shuffles, seed, stop_gradient=Fa
     ``stop_gradient`` honours the profile target's ``tf.stop_gradient``; by
     default the fork's midpoint weighting applies, as in the original.
     """
-    import shap
     import tensorflow as tf
 
-    from chrombpnet.engines.tensorflow import shap_utils
+    from chrombpnet.engines.tensorflow import deep_tf, shap_utils
 
     print("Seqs dimension : {}".format(seqs.shape))
 
@@ -103,7 +104,7 @@ def explain(model, seqs, profile_or_counts, num_shuffles, seed, stop_gradient=Fa
 
     scores = {}
     if "counts" in profile_or_counts:
-        profile_model_counts_explainer = shap.explainers.deep.TFDeepExplainer(
+        profile_model_counts_explainer = deep_tf.TFDeepExplainer(
             (counts_model_input, tf.reduce_sum(model.outputs[1], axis=-1)),
             _references(num_shuffles, seed),
             combine_mult_and_diffref=shap_utils.combine_mult_and_diffref)
@@ -116,7 +117,7 @@ def explain(model, seqs, profile_or_counts, num_shuffles, seed, stop_gradient=Fa
         weightedsum_meannormed_logits = shap_utils.get_weightedsum_meannormed_logits(model)
         handler = honour_stop_gradient() if stop_gradient else contextlib.nullcontext()
         with handler:
-            profile_model_profile_explainer = shap.explainers.deep.TFDeepExplainer(
+            profile_model_profile_explainer = deep_tf.TFDeepExplainer(
                 (profile_model_input, weightedsum_meannormed_logits),
                 _references(num_shuffles, seed),
                 combine_mult_and_diffref=shap_utils.combine_mult_and_diffref)

@@ -13,9 +13,18 @@ Whether that happened was previously an accident of collection order.
 loaded torch first and died during collection. Importing the package here
 makes the ordering explicit, since conftest is imported before any test
 module.
+
+For the same reason ``TF_USE_LEGACY_KERAS`` is set here: TensorFlow decides
+whether ``tf.keras`` is Keras 3 or tf-keras when it is first imported, and
+``tests/test_tensorflow.py`` imports it at collection, before anything has
+imported the TensorFlow engine, which sets it too.
 """
 
-import chrombpnet  # noqa: F401  (imported for its import-time side effect)
+import os
+
+os.environ.setdefault("TF_USE_LEGACY_KERAS", "1")
+
+import chrombpnet  # noqa: E402,F401  (imported for its import-time side effect)
 
 
 import pytest

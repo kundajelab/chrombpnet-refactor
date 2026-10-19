@@ -166,7 +166,7 @@ def test_tomtom_lite_is_passed_only_when_asked_and_there_are_patterns(monkeypatc
 
 
 def test_tomtom_lite_is_refused_without_ttl_support(monkeypatch, tmp_path):
-    """modisco-lite 2.3.2 (the TensorFlow environment) has no ttl."""
+    """Releases before 2.5, such as modisco-lite 2.3.2, have no ttl."""
     monkeypatch.setattr(api, "_modisco_modules", lambda: (object(), object(), object(), _ReportWithoutTtl))
     assert not api.supports_tomtom_lite()
     results = tmp_path / "results.h5"

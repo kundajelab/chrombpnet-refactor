@@ -139,8 +139,7 @@ def supports_tomtom_lite():
     """Whether the installed TF-MoDISco can match motifs with TOMTOM-lite.
 
     That is ``report_motifs(..., ttl=True)``, in tfmodisco-lite 2.5 and
-    later. modisco-lite 2.3.2, the newest release that runs on Python 3.8
-    (the TensorFlow engine's environment), does not have it.
+    later; older releases, such as modisco-lite 2.3.2, do not have it.
     """
     try:
         *_, report = _modisco_modules()

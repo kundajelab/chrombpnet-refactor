@@ -7,14 +7,12 @@ name = "chrombpnet-refactor"
 version = "1.0.1+torch"
 description = "ChromBPNet with a choice of deep-learning engine: PyTorch, TensorFlow or JAX"
 readme = "README.md"
-# 3.8 for the TensorFlow engine, which must run TF 2.8.0 to stay
-# byte-identical to the original Keras implementation; 3.11 for PyTorch;
-# 3.12 for JAX, whose current releases require it.
-requires-python = ">=3.8,<3.14"
+# Every engine's environment runs Python 3.12 (envs/); TensorFlow 2.21
+# supports 3.10 and newer, JAX 0.11 needs 3.12.
+requires-python = ">=3.10,<3.14"
 license = {file = "LICENSE"}
 authors = [{name = "Kundaje Lab"}]
-# The framework-neutral stack every engine shares. The lower bounds are the
-# newest releases that still support Python 3.8; each engine's environment
+# The framework-neutral stack every engine shares; each engine's environment
 # file (envs/chrombpnet-<engine>.yml) pins its own versions on top.
 dependencies = [
   "h5py>=3.10",
@@ -35,15 +33,12 @@ pytorch = [
   "tangermeme @ git+https://github.com/jmschrei/tangermeme.git",
   "torch>=2.14,<2.15",
 ]
-# Pinned exactly: the TensorFlow engine is byte-identical to the original
-# Keras implementation only on these releases.
+# TensorFlow 2.21 with the Keras 2 API (tf-keras); envs/ adds its CUDA wheels.
 tensorflow = [
   "deeplift==0.6.13.0",
-  "kundajelab-shap==1",
-  "protobuf==3.20.0",
-  "tensorflow==2.8.0",
-  "tensorflow-estimator==2.8.0",
-  "tensorflow-probability==0.15.0",
+  "tensorflow>=2.21,<2.22",
+  "tensorflow-probability>=0.25,<0.26",
+  "tf-keras>=2.21,<2.22",
 ]
 # Keras 3 on the JAX backend; needs Python >= 3.12 and NumPy >= 2.1.
 jax = ["jax>=0.11.2", "keras>=3.15.1,<4"]

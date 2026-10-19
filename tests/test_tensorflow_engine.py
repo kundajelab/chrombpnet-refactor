@@ -66,7 +66,7 @@ def test_seed_controls_the_bias_factorized_tower(engine, bias_path):
 
 
 def test_honour_stop_gradient_restores_the_shap_forks_handlers():
-    from shap.explainers.deep import deep_tf
+    from chrombpnet.engines.tensorflow import deep_tf
 
     from chrombpnet.engines.tensorflow.attribution import honour_stop_gradient
 
@@ -122,3 +122,63 @@ def test_profile_scores_follow_the_original_unless_stopgrad_is_asked_for(engine,
                                     num_shuffles=3, seed=11,
                                     profile_stop_gradient=stop_gradient))["profile"]
         np.testing.assert_allclose(cli, expected, rtol=1e-6, atol=1e-9)
+
+
+@pytest.mark.parametrize("first", ["import tensorflow, tensorflow.keras.callbacks",
+                                   # tf.keras.Model is then tf-keras's, but the engine's
+                                   # `from tensorflow.keras... import` lines would get Keras 3
+                                   "import tensorflow"])
+def test_require_refuses_keras3_as_tf_keras(first):
+    """TensorFlow imported before the engine, without TF_USE_LEGACY_KERAS,
+    gives Keras 3 where the engine needs tf-keras; the engine must say so
+    instead of failing somewhere inside Keras. With the variable, require
+    passes."""
+    import os
+    import subprocess
+    import sys
+
+    code = (first + "\n"
+            "import chrombpnet.engines.tensorflow as e\n"
+            "e.ENGINE.require()\n")
+    # KERAS_BACKEND too: the JAX engine sets it to jax, and Keras 3 would
+    # then fail on the missing jax before the engine is reached.
+    env = {k: v for k, v in os.environ.items() if k not in ("TF_USE_LEGACY_KERAS", "KERAS_BACKEND")}
+    env["TF_CPP_MIN_LOG_LEVEL"] = "3"
+    refused = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True)
+    assert refused.returncode != 0
+    assert "TF_USE_LEGACY_KERAS" in refused.stderr
+    passed = subprocess.run([sys.executable, "-c", code], env=dict(env, TF_USE_LEGACY_KERAS="1"),
+                            capture_output=True, text=True)
+    assert passed.returncode == 0, passed.stderr
+
+
+def test_saved_models_are_rewritten_for_the_original(tmp_path):
+    """make_original_readable: the count head becomes chrombpnet 1.x's bytecode
+    Lambda, and the fields Keras 2.8 refuses go, while tf-keras still loads the
+    file and predicts the same."""
+    import json
+
+    import h5py
+
+    from chrombpnet import legacy_lambda
+    from chrombpnet.engines.tensorflow import layers
+    from chrombpnet.engines.tensorflow.predictor import load_model
+
+    inputs = tf.keras.layers.Input(shape=(2,), name="counts")
+    model = tf.keras.Model(inputs, layers.count_head()(inputs))
+    path = str(tmp_path / "model.h5")
+    model.save(path)
+    assert layers.make_original_readable(path)
+    with h5py.File(path, "r") as handle:
+        raw = handle.attrs["model_config"]
+    config = json.loads(raw.decode("utf-8") if isinstance(raw, bytes) else raw)
+    assert "trainable" not in config["config"]
+    by_class = {layer["class_name"]: layer["config"] for layer in config["config"]["layers"]}
+    assert "optional" not in by_class["InputLayer"]
+    head = by_class["Lambda"]
+    assert head["function"][0] == legacy_lambda.LEGACY_LOGSUMEXP_BYTECODE
+    assert head["function_type"] == "lambda"
+    x = np.array([[0.5, -1.0], [3.0, 2.0]], dtype=np.float32)
+    np.testing.assert_array_equal(load_model(path, compile=False).predict(x, verbose=0),
+                                  model.predict(x, verbose=0))
+    assert not layers.make_original_readable(path)  # nothing left to rewrite

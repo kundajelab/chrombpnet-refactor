@@ -3,32 +3,31 @@
 # Conda runs the pip section from this file's directory, so the relative
 # paths below resolve against envs/.
 #
-# The interpreter, TensorFlow, Keras, TensorFlow Probability, protobuf and
-# NumPy are pinned to exactly what the original Keras ChromBPNet environment
-# runs (Python 3.8.20, TF 2.8.0, numpy 1.23.4). The engine's byte-identity
-# with that implementation holds only on these releases, and Python 3.8 is also
-# what lets existing original .h5 models load: their count head is a Keras
-# Lambda layer, serialized as Python-version-specific bytecode.
+# Python 3.12 and TensorFlow 2.21 (requirements-tensorflow.txt). The engine
+# matches the original Keras ChromBPNet (TF 2.8 on Python 3.8) within float
+# tolerance, not byte for byte; the original package's own environment runs
+# it exactly. Original .h5 models load here too: their count head, a Lambda
+# stored as Python 3.8 bytecode, is rebuilt without unmarshalling it.
 name: chrombpnet-tensorflow
 channels:
   - conda-forge
   - bioconda
   - defaults
 dependencies:
-  - python=3.8
+  - python=3.12
   - pip
-  - numpy=1.23.4
+  - numpy>=2.1
   - h5py>=3.10
-  - pandas=2.0.3
-  - scipy=1.10.1
-  - scikit-learn=1.3.2
-  - matplotlib>=3.7,<3.8
-  - pybigwig=0.3.22
+  - pandas>=2.1
+  - scipy>=1.11
+  - scikit-learn>=1.3
+  - matplotlib>=3.7
+  - pybigwig>=0.3.22
   - pyfaidx>=0.8
   - pillow
   # Native Pango/Cairo stack required by the pip-installed WeasyPrint package.
   - pango
-  - pytables>=3.8
+  - pytables>=3.10
   - tqdm>=4.66
   - termcolor>=2.4
   - bedtools
@@ -37,11 +36,6 @@ dependencies:
   # Provides the `tomtom` executable used by modiscolite report generation.
   # 5.5.9's tomtom binary requires at most GLIBC_2.14 (Sherlock supports 2.17).
   - meme=5.5.9
-  # GPU: TF 2.8 was built against CUDA 11.2 / cuDNN 8.1. Uncomment to run it
-  # on a GPU without a matching system CUDA. The byte-identity tests run on
-  # CPU and do not need these.
-  # - cudatoolkit=11.2
-  # - cudnn=8.1.0
   - pip:
       - -r requirements-tensorflow.txt
       - -e ..[tensorflow]

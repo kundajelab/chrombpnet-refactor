@@ -9,13 +9,15 @@ checks agreement to the tolerances the PR validated against the original
 (``tests/parity`` in the PR), on identical inputs: the recorded batch stream,
 initial weights and fixture of ``tests/parity/tf_engine.py``.
 
-Two interpreters, files in between, like ``tf_engine.py``:
+Three interpreters, files in between, like ``tf_engine.py``:
 
 ``prepare``  this package, in ``chrombpnet-tensorflow``: the fixture, batch
-             stream, initial weights and a 1.x bias model (``tf_engine.prepare``).
-``golden``   the **original** repository, in ``chrombpnet-tensorflow``: model
-             outputs, ``test_on_batch`` losses, a 20-step Adam trace, the bias
-             rescale and DeepSHAP; its models are saved as 1.x ``.h5`` files.
+             stream and initial weights (``tf_engine.prepare``).
+``golden``   the **original** repository, in its own environment
+             (``chrombpnet``, ``--reference-python``; TF 2.8 on Python 3.8):
+             a 1.x bias model (``tf_engine.task_bias_init``), model outputs,
+             ``test_on_batch`` losses, a 20-step Adam trace, the bias rescale
+             and DeepSHAP; its models are saved as 1.x ``.h5`` files.
 ``jax``      this package's JAX engine, in ``chrombpnet-jax``, CPU, full float32.
 
 Checks (tolerances as in the PR, CPU, full float32):
@@ -48,7 +50,8 @@ The golden worker is checked against itself first.
 
 Usage::
 
-    python tests/parity/jax_engine.py [--original-repo PATH] [--tf-python P] [--jax-python P] [--keep]
+    python tests/parity/jax_engine.py [--original-repo PATH] [--reference-python P]
+        [--tf-python P] [--jax-python P] [--keep]
     CHROMBPNET_JAX_ENGINE_PARITY=1 pytest tests/parity/test_jax_engine.py
 """
 
@@ -155,7 +158,7 @@ def _load_npz(path):
 
 
 # --------------------------------------------------------------------------
-# golden: the original implementation, in the TensorFlow environment
+# golden: the original implementation, in its own environment
 # --------------------------------------------------------------------------
 
 def golden(workdir, out, original_repo):
@@ -352,8 +355,8 @@ def tf_export(workdir, jax_dir):
     """This package's TensorFlow engine loads the exports."""
     _import_this_package()
     from chrombpnet import engines
+    engine = engines.get("tensorflow")  # before TensorFlow: it sets TF_USE_LEGACY_KERAS
     _tf_engine()._pin_tensorflow()
-    engine = engines.get("tensorflow")
     _predict_exports(lambda path: engine.load_predictor(path, announce=False, summary=False),
                      workdir, jax_dir, "tf_export")
 
@@ -516,17 +519,21 @@ def main(arguments):
         env = dict(os.environ, **tf_engine.PINNED_ENV)
         env.pop("PYTHONPATH", None)
         subprocess.run(command, env=env, check=True, stdout=subprocess.DEVNULL)
+        command = [arguments.reference_python, str(Path(tf_engine.__file__).resolve()), "--worker",
+                   "--side", "reference", "--task", "bias_init", "--workdir", workdir,
+                   "--out", workdir, "--original-repo", arguments.original_repo]
+        subprocess.run(command, env=env, check=True, stdout=subprocess.DEVNULL)
         for out in (golden_dir, golden_dir2):
             print("running the original implementation ({}) ...".format(os.path.basename(out)))
-            _run(arguments.tf_python, "golden", workdir, out, arguments, os.path.basename(out))
-        _run(arguments.tf_python, "golden_shap", workdir, golden_dir, arguments, "golden-shap")
+            _run(arguments.reference_python, "golden", workdir, out, arguments, os.path.basename(out))
+        _run(arguments.reference_python, "golden_shap", workdir, golden_dir, arguments, "golden-shap")
         print("running the JAX engine ...")
         golden_link = os.path.join(jax_dir, ".golden")
         os.makedirs(jax_dir)
         os.symlink(golden_dir, golden_link)
         _run(arguments.jax_python, "jax", workdir, jax_dir, arguments, "jax")
         _run(arguments.tf_python, "tf_export", workdir, jax_dir, arguments, "tf-export")
-        _run(arguments.tf_python, "golden_export", workdir, jax_dir, arguments, "golden-export")
+        _run(arguments.reference_python, "golden_export", workdir, jax_dir, arguments, "golden-export")
         report = Report()
         compare(golden_dir, golden_dir2, jax_dir, report)
         if report.failed:
@@ -546,7 +553,10 @@ def parser():
     tf_engine = _tf_engine()
     result = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     result.add_argument("--original-repo", default=tf_engine.DEFAULT_ORIGINAL_REPO)
-    result.add_argument("--tf-python", default=_sibling_python("chrombpnet-tensorflow"))
+    result.add_argument("--reference-python", default=tf_engine.DEFAULT_REFERENCE_PYTHON,
+                        help="the original's interpreter (its own environment, TF 2.8 on Python 3.8)")
+    result.add_argument("--tf-python", default=_sibling_python("chrombpnet-tensorflow"),
+                        help="this package's TensorFlow environment")
     result.add_argument("--jax-python", default=_sibling_python("chrombpnet-jax"))
     result.add_argument("--keep", action="store_true", help="keep the work directory")
     result.add_argument("--worker", help=argparse.SUPPRESS)

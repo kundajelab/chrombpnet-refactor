@@ -32,7 +32,7 @@ share one. Create the ones you need from the repository root:
 | Engine | Create the environment | Then | Python and framework |
 |---|---|---|---|
 | PyTorch (default) | `conda env create -f envs/chrombpnet-pytorch.yml` | `conda activate chrombpnet-pytorch` | Python 3.12, PyTorch 2.14 |
-| TensorFlow | `conda env create -f envs/chrombpnet-tensorflow.yml` | `conda activate chrombpnet-tensorflow` | Python 3.8, TensorFlow 2.8.0 |
+| TensorFlow | `conda env create -f envs/chrombpnet-tensorflow.yml` | `conda activate chrombpnet-tensorflow` | Python 3.12, TensorFlow 2.21 (tf-keras) |
 | JAX | `conda env create -f envs/chrombpnet-jax.yml` | `conda activate chrombpnet-jax` | Python 3.12, Keras 3.15, JAX 0.11.2 |
 
 - Each file installs this package in editable mode with its engine's extra,
@@ -45,8 +45,8 @@ share one. Create the ones you need from the repository root:
   libraries, and what differs between them.
 - The motif reports use TF-MoDISco and match motifs with MEME's `tomtom`;
   `--tomtom-lite` uses TOMTOM-lite (memelite) instead, with uncorrected
-  p-values. TOMTOM-lite needs TF-MoDISco 2.5 or later, which the TensorFlow
-  environment (TF-MoDISco 2.3.2) does not have.
+  p-values. TOMTOM-lite needs TF-MoDISco 2.5 or later, which every
+  environment here has.
 
 ## Quick Start
 
@@ -294,8 +294,8 @@ Four options control them, all off by default:
 ### Compared with original ChromBPNet ([kundajelab/chrombpnet](https://github.com/kundajelab/chrombpnet)):
 
 - **Three engines instead of one.** PyTorch (the default), TensorFlow (the
-  original Keras implementation, byte-identical to it given the same inputs)
-  and JAX (Keras 3 on JAX, from ChromBPNet 2.0), all behind one shared,
+  original Keras implementation on TensorFlow 2.21, matching it within float
+  tolerance given the same inputs) and JAX (Keras 3 on JAX, from ChromBPNet 2.0), all behind one shared,
   framework-neutral pipeline. Contribution scoring is batched over
   (sequence, reference) pairs in PyTorch, and computes both heads in one
   jitted pass in JAX, where the original explains one example at a time. See

@@ -39,9 +39,9 @@ def check_tomtom(args):
 		if not supports_tomtom_lite():
 			raise SystemExit(
 				"chrombpnet: error: --tomtom-lite needs TF-MoDISco 2.5 or later, "
-				"which this environment does not have (the TensorFlow engine's "
-				"modisco-lite 2.3.2 is the newest release for Python 3.8). Leave out "
-				"--tomtom-lite to match motifs with MEME's tomtom.")
+				"which this environment does not have (every envs/chrombpnet-*.yml "
+				"installs it). Leave out --tomtom-lite to match motifs with MEME's "
+				"tomtom.")
 		return
 	if shutil.which("tomtom") is None:
 		raise SystemExit(

@@ -41,11 +41,12 @@ jobs:
       # developer workflow rather than a pass/fail gate -- and its artifacts
       # depend on the installed PyTorch build. See tests/regression/README.md.
 
-  # The same suite in the TensorFlow engine's environment (Python 3.8,
-  # TF 2.8.0). PyTorch-only tests skip themselves there; the shared code and
-  # tests/test_tensorflow_engine.py run. The byte-identity harness against the
-  # original implementation (tests/parity) needs a checkout of that repository
-  # and is opt-in, so it is not run here.
+  # The same suite in the TensorFlow engine's environment (Python 3.12,
+  # TF 2.21 with tf-keras). PyTorch-only tests skip themselves there; the
+  # shared code and tests/test_tensorflow_engine.py run. The agreement harness
+  # against the original implementation (tests/parity) needs a checkout of
+  # that repository and its own environment, and is opt-in, so it is not run
+  # here.
   pytest-tensorflow:
     runs-on: ubuntu-latest
     defaults:
