@@ -1,5 +1,17 @@
 # Changelog
 
+## The environment's libstdc++ is preloaded only into a process without one
+
+- **Fix.** Importing `chrombpnet` loads the environment's `libstdc++` first,
+  so that compiled extensions built against it find a new enough C++
+  runtime. Imported after PyTorch 2.14, whose libraries resolve `libstdc++`
+  through the system paths and so had already loaded the system's, it put a
+  second C++ runtime into the process, and cuDNN crashed (a segmentation
+  fault) at the first GPU convolution. The preload now happens only when no
+  `libstdc++` is loaded yet.
+- **What moves:** nothing where `chrombpnet` is imported first, as the CLI
+  does; scripts that import `torch` first no longer crash on the GPU.
+
 ## Training negatives drawn with `--seed`
 
 - **Behaviour change, `pipeline` and `train`.** The ChromBPNet model trains on

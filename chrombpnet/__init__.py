@@ -20,8 +20,23 @@ _numba_cache = Path(tempfile.gettempdir()) / f"chrombpnet-numba-{os.getuid()}"
 _numba_cache.mkdir(parents=True, exist_ok=True)
 os.environ.setdefault("NUMBA_CACHE_DIR", str(_numba_cache))
 
+
+def _loaded_cxx_runtimes():
+    """The libstdc++ files already mapped into this process (Linux only)."""
+    try:
+        with open("/proc/self/maps") as maps:
+            return {line.split()[-1] for line in maps if "libstdc++.so" in line}
+    except OSError:
+        return set()
+
+
+# Only into a process that has no C++ runtime yet. Imported after PyTorch,
+# which can have taken the system's (torch 2.14's libraries resolve
+# libstdc++ through the system paths, not the environment's), loading the
+# environment's as well would put two C++ runtimes in one process, and cuDNN
+# then crashes at its first convolution.
 _cxx_runtime = Path(sys.prefix) / "lib" / "libstdc++.so.6"
-if _cxx_runtime.exists():
+if _cxx_runtime.exists() and not _loaded_cxx_runtimes():
     try:
         ctypes.CDLL(str(_cxx_runtime), mode=ctypes.RTLD_GLOBAL)
     except OSError:
