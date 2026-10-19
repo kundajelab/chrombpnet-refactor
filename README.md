@@ -328,10 +328,11 @@ Four options control them, all off by default:
 - **Fused Triton forward** (`--predict-fk`, optional; on `pred_bw`,
   `footprints`, `qc` and `bias qc`): fp32-exact kernels in place of the
   eager TF32 convolutions, so predictions move by about 1e-5 (closer to an
-  fp64 reference). Recommended on H100/H200 only: it refuses other GPUs by
-  name, and on an L40S it buys accuracy rather than speed. Not on
-  `contribs_bw`, whose DeepLIFT needs autograd and hooks a fused kernel
-  cannot provide.
+  fp64 reference). On any CUDA GPU: the kit's measured tile on H100/H200,
+  L40S and A100, one chosen from the GPU's shared memory elsewhere (checked
+  against the default forward first). It buys accuracy, not speed: on an
+  H200 and an L40S it was slower end to end. Not on `contribs_bw`, whose
+  DeepLIFT needs autograd and hooks a fused kernel cannot provide.
 
 The memory-mapped reads, the lookup-table one-hot, the vectorized metrics,
 the worker-process writer, the background imports, the fast exit and the

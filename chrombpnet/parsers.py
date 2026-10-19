@@ -243,7 +243,10 @@ def _add_predict_fk(optional):
              "fp32-exact where the default runs TF32 convolutions, so they "
              "are closer to an fp64 reference (1.0e-05 against 1.1e-03) but "
              "they do move the output -- the profile head shifts by ~1e-5. "
-             "Needs an H100 or H200; refuses by name on anything else.")
+             "Any CUDA GPU: the optimization kit's measured tile on H100/H200, "
+             "L40S and A100, a tile chosen from the GPU's shared memory "
+             "elsewhere (checked against the default forward first). It has "
+             "not been faster end to end on the GPUs measured.")
 
 
 def _add_jax_training_options(optional):

@@ -4,7 +4,7 @@ Every other optimization in this package is unconditional: they were measured
 phase by phase behind a ``--optimize`` switch, the measurement is recorded in
 the CHANGELOG, and they are byte-identical to the code they replaced. The
 Triton forward is the one that is not -- it is fp32-exact where the eager path
-runs TF32, so it moves the profile head by ~1e-5 and needs an H100-class GPU.
+runs TF32, so it moves the profile head by ~1e-5, and it needs a CUDA GPU.
 That makes it a user's choice rather than a default, and this module is the
 one bit of state that choice needs.
 

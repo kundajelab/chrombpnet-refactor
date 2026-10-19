@@ -1,5 +1,29 @@
 # Changelog
 
+## `--predict-fk` runs on any CUDA GPU
+
+- **Behaviour change, `--predict-fk` only.** The fused Triton forward refused
+  every GPU but H100/H200 (compute capability 9.0) and L40S (8.9). It read the
+  optimization kit's *route* table, which names the forward the kit uses by
+  default on each card -- chosen for bitwise equality with stock TensorFlow's
+  output -- rather than where the kernels run. The kit runs them on any GPU:
+  its `forward.select_tile` takes the table's tile where the table lists the
+  architecture and otherwise one sized to the device's shared memory.
+- **Now the same.** The A100 (8.0) uses the kit's measured fp32 tile. An
+  unlisted architecture gets `64x512x16x16x3` where its opt-in shared memory
+  per block is at least 133,120 bytes, else `64x256x16x8x3`; there each build
+  also runs two random sequences through the kernels and the eager
+  forward (TF32 off), and refuses if the kernels fail to compile or run, or
+  differ by more than 1e-3.
+- **Unchanged:** the refusals that guard against wrong results (filter widths
+  other than 128 and 512, Triton outside 3.x, the int32 index bound, the
+  geometry checks); every output without `--predict-fk`; and with it, every
+  output on H100/H200 and L40S.
+- The model is now checked before Triton and the device, so a model the
+  kernels cannot serve is refused for that reason on any host. The two
+  `tests/test_triton_route.py` tests that failed on hosts without CUDA pass.
+- Not yet run on an A100 or an unlisted GPU.
+
 ## TensorFlow engine on TensorFlow 2.21, tf-keras and Python 3.12
 
 - **Environment.** `envs/chrombpnet-tensorflow.yml` moves from Python 3.8,

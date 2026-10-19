@@ -87,22 +87,57 @@ def test_a_non_bpnet_is_refused():
         triton_forward.require(torch.nn.Linear(4, 4), "cuda")
 
 
-def test_an_unlisted_architecture_is_refused(monkeypatch):
-    if not torch.cuda.is_available():
-        pytest.skip("needs a CUDA device to reach the architecture check")
-    monkeypatch.setattr(torch.cuda, "get_device_capability", lambda *_: (7, 5))
-    with pytest.raises(triton_forward.TritonRouteRefused, match="no measured tile"):
-        triton_forward.require(_production(), "cuda")
+def _fake_cuda(monkeypatch, capability, shared=0):
+    """`describe` on any host: a compute capability and an opt-in shared
+    memory are all it reads from the device."""
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "get_device_capability", lambda *_: capability)
+    monkeypatch.setattr(triton_forward, "_shared_memory_optin", lambda index: shared)
 
 
-def test_the_a100_is_refused_by_name(monkeypatch):
-    """cuda-80 has no bitwise Triton route; the kit says so in its own table
-    and the refusal quotes that basis rather than inventing a reason."""
-    if not torch.cuda.is_available():
-        pytest.skip("needs a CUDA device to reach the architecture check")
-    monkeypatch.setattr(torch.cuda, "get_device_capability", lambda *_: (8, 0))
-    with pytest.raises(triton_forward.TritonRouteRefused, match="no bitwise"):
-        triton_forward.require(_production(), "cuda")
+@pytest.mark.parametrize("capability,tile", [
+    ((9, 0), "64x512x16x16x3"),     # H100/H200
+    ((8, 9), "64x256x16x8x3"),      # L40S
+    ((8, 0), "64x512x16x16x3"),     # A100
+])
+def test_a_listed_architecture_uses_the_kits_measured_tile(monkeypatch, capability, tile):
+    """The A100 too: the kit's route table defaults it to stock TensorFlow
+    only for bitwise equality with stock's output, which an opt-in flag over
+    the PyTorch forward does not need."""
+    _fake_cuda(monkeypatch, capability)
+    arch, entry = triton_forward.describe("cuda")
+    assert (entry["tile"], entry["measured"]) == (tile, True)
+
+
+@pytest.mark.parametrize("shared,tile", [
+    (232448, "64x512x16x16x3"),     # room for the large tile (e.g. Blackwell)
+    (101376, "64x256x16x8x3"),      # e.g. sm_86
+    (0, "64x256x16x8x3"),           # unreadable: the small tile, as the kit does
+])
+def test_an_unlisted_architecture_gets_the_kits_shared_memory_tile(monkeypatch, shared, tile):
+    """The kit's `forward.select_tile` for an architecture its table does
+    not list."""
+    _fake_cuda(monkeypatch, (12, 0), shared)
+    arch, entry = triton_forward.describe("cuda")
+    assert (arch, entry["tile"], entry["measured"]) == ("cuda-120", tile, False)
+
+
+def test_an_unlisted_architecture_is_checked_against_the_eager_forward():
+    model = _production(filters=128).eval()
+    triton_forward._check_against_eager(model, model, "cpu", "cuda-120", "t")
+
+    def wrong(x):
+        profile, counts = model(x)
+        return profile + 1, counts
+
+    with pytest.raises(triton_forward.TritonRouteRefused, match="disagree"):
+        triton_forward._check_against_eager(wrong, model, "cpu", "cuda-120", "t")
+
+    def broken(x):
+        raise RuntimeError("out of resource: shared memory")
+
+    with pytest.raises(triton_forward.TritonRouteRefused, match="do not run"):
+        triton_forward._check_against_eager(broken, model, "cpu", "cuda-120", "t")
 
 
 def test_an_out_of_window_triton_is_refused(monkeypatch):
