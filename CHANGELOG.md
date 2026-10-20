@@ -1,5 +1,37 @@
 # Changelog
 
+## TF-MoDISco no longer leaves PyTorch on every core; HDF5 outputs at gzip level 9
+
+- **Bug: TF-MoDISco left PyTorch on every core.** Its first numba
+  `parallel=True` call starts numba's OpenMP threading layer. That sets the
+  OpenMP thread count, in the libgomp already loaded (PyTorch's), to
+  `NUMBA_NUM_THREADS`, which defaults to every core and ignores
+  `OMP_NUM_THREADS`. `torch.get_num_threads()` *is* that setting.
+  - **What it did:** every later CPU op of the process was split over all
+    cores. On a busy host, each op then waits at OpenMP's end-of-region
+    barrier for its slowest thread. A small CPU training step measured
+    40 ms → 2.5 s on a 56-core host at load ~80.
+  - **When:** modisco-lite 2.5.2 makes the call when `modiscolite.util` is
+    imported, so `--tomtom-lite`'s up-front `supports_tomtom_lite()` check
+    alone did it, before training. 2.6.0 makes it during `TFMoDISco`.
+  - **Fix:** `run_arrays` (and so `run_motifs`), `supports_tomtom_lite` and
+    `generate_report` now put PyTorch's thread count back when they return.
+    Nothing changes where PyTorch is not loaded (`modisco_motifs`, the
+    TensorFlow and JAX engines). TF-MoDISco's own results are unchanged.
+- **Maximum compression.** The HDF5 files chrombpnet writes are now gzip
+  level 9 (was 4), with the byte-shuffle filter on numeric datasets. That
+  covers `*_predictions.h5`, `*_scores.h5`, `*_footprints.h5` and
+  TF-MoDISco's `*_modisco.h5`, which TF-MoDISco writes uncompressed and
+  `run_arrays` now rewrites. Values are identical and every HDF5 reader
+  (PyTables included) decompresses them transparently.
+  - **For the regression harness:** `hdf5_digest` hashes compression
+    settings, so these files' digests differ from a baseline captured
+    before this change. Their contents do not.
+- New `chrombpnet/compression.py` (`h5_filters`, `recompress_h5`), with
+  `tests/test_compression.py`. `tests/test_modisco_compat.py` checks that
+  the thread count is restored, both after the run and after the
+  import-time reset.
+
 ## `--predict-fk` is now `--predict-fused-kernel`
 
 - **Renamed** on `pred_bw`, `footprints`, `predict`, `qc` and `bias qc`.

@@ -83,6 +83,7 @@ def test_run_motifs_calls_current_python_api(monkeypatch, tmp_path):
         @staticmethod
         def save_hdf5(path, positive, negative, window):
             calls["save"] = (path, positive, negative, window)
+            _write_results(path)
 
     monkeypatch.setattr(api, "_modisco_modules", lambda: (object(), Tfmodisco, Io, object()))
     api.run_motifs(score_path, output_path, max_seqlets=123, window=8)
@@ -90,6 +91,70 @@ def test_run_motifs_calls_current_python_api(monkeypatch, tmp_path):
     assert calls["run"]["max_seqlets_per_metacluster"] == 123
     assert calls["run"]["n_leiden_runs"] == 2
     assert calls["save"] == (str(output_path), ["positive"], ["negative"], 8)
+    # TF-MoDISco's uncompressed results are rewritten at gzip level 9.
+    with h5py.File(output_path, "r") as handle:
+        dataset = handle["pos_patterns/pattern_0/contrib_scores"]
+        assert (dataset.compression, dataset.compression_opts) == ("gzip", 9)
+        assert handle.attrs["window_size"] == 8
+    assert len(list(api.iter_patterns(output_path))) == 1
+
+
+class _ThreadSettingModules:
+    """Fake TF-MoDISco modules that reset PyTorch's thread count, as numba's
+    OpenMP layer does at its first parallel call."""
+
+    def __init__(self, torch, threads):
+        self.torch, self.threads = torch, threads
+
+    def __call__(self):
+        self.torch.set_num_threads(self.threads)
+        torch = self.torch
+
+        class Tfmodisco:
+            @staticmethod
+            def TFMoDISco(**kwargs):
+                torch.set_num_threads(self.threads)
+                return [], []
+
+        class Io:
+            @staticmethod
+            def save_hdf5(path, positive, negative, window):
+                _write_results(path)
+
+        class Report:
+            @staticmethod
+            def report_motifs(modisco_h5py, output_dir, img_path_suffix, meme_motif_db,
+                              is_writing_tomtom_matrix, ttl=False):
+                torch.set_num_threads(self.threads)
+
+        return object(), Tfmodisco, Io, Report
+
+
+@pytest.fixture
+def torch_threads():
+    torch = pytest.importorskip("torch")
+    original = torch.get_num_threads()
+    torch.set_num_threads(2)
+    yield torch
+    torch.set_num_threads(original)
+
+
+def test_run_arrays_restores_torch_threads(monkeypatch, tmp_path, torch_threads):
+    monkeypatch.setattr(api, "_modisco_modules", _ThreadSettingModules(torch_threads, 1))
+    sequences = np.zeros((2, 8, 4), dtype=np.float32)
+    api.run_arrays(sequences, sequences, tmp_path / "results.h5")
+    assert torch_threads.get_num_threads() == 2
+
+
+def test_import_time_reset_is_undone_too(monkeypatch, tmp_path, torch_threads):
+    """modisco-lite 2.5.2 resets the count on import, so supports_tomtom_lite
+    and generate_report must restore it as well."""
+    monkeypatch.setattr(api, "_modisco_modules", _ThreadSettingModules(torch_threads, 1))
+    assert api.supports_tomtom_lite()
+    assert torch_threads.get_num_threads() == 2
+    _write_results(tmp_path / "results.h5")
+    api.generate_report(tmp_path / "results.h5", tmp_path / "report")
+    assert torch_threads.get_num_threads() == 2
 
 
 def test_installed_modisco_exposes_the_api_this_adapter_calls():

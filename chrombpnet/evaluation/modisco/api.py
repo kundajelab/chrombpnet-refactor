@@ -8,13 +8,17 @@ drifting apart again.
 
 from __future__ import annotations
 
+import functools
 import inspect
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
 import h5py
 import numpy as np
+
+from chrombpnet.compression import recompress_h5
 
 
 PATTERN_GROUPS = ("pos_patterns", "neg_patterns")
@@ -33,6 +37,36 @@ def _modisco_modules():
 
     return modiscolite, tfmodisco, io, report
 
+
+def _keeps_torch_threads(function):
+    """Restore PyTorch's thread count after ``function``.
+
+    TF-MoDISco's first numba ``parallel=True`` call starts numba's OpenMP
+    threading layer, which sets the OpenMP thread count to NUMBA_NUM_THREADS
+    -- by default every core, whatever OMP_NUM_THREADS says -- in the libgomp
+    already loaded into the process: PyTorch's. ``torch.get_num_threads()``
+    is that libgomp setting, so PyTorch then splits every CPU op over all
+    cores. On a host already busy with other work, each op waits at OpenMP's
+    end-of-region barrier for its slowest thread, and CPU-side torch work in
+    the same process slows by up to ~60x (measured on a 56-core host at load
+    ~80). modisco-lite 2.5.2 makes that numba call when ``modiscolite.util``
+    is imported (so ``supports_tomtom_lite`` alone triggers it); 2.6.0 during
+    ``TFMoDISco``. The count is read before anything from TF-MoDISco is
+    imported and put back afterwards. Without PyTorch in the process
+    (``modisco_motifs``, the TensorFlow and JAX engines) this does nothing.
+    """
+
+    @functools.wraps(function)
+    def wrapper(*args, **kwargs):
+        torch = sys.modules.get("torch")
+        threads = torch.get_num_threads() if torch is not None else None
+        try:
+            return function(*args, **kwargs)
+        finally:
+            if torch is not None:
+                torch.set_num_threads(threads)
+
+    return wrapper
 
 
 @dataclass(frozen=True)
@@ -98,6 +132,7 @@ def run_motifs(input_path, output_path, max_seqlets=50000, window=500, **kwargs)
     return run_arrays(sequences, attributions, output_path, max_seqlets, window, **kwargs)
 
 
+@_keeps_torch_threads
 def run_arrays(sequences, attributions, output_path, max_seqlets=50000, window=None, **kwargs):
     """Run TF-MoDISco on channel-last arrays and save current-format results."""
     sequences = np.asarray(sequences, dtype=np.float32)
@@ -132,9 +167,12 @@ def run_arrays(sequences, attributions, output_path, max_seqlets=50000, window=N
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     io.save_hdf5(str(output_path), pos_patterns, neg_patterns, int(window))
+    # TF-MoDISco writes its datasets uncompressed.
+    recompress_h5(output_path)
     return pos_patterns, neg_patterns
 
 
+@_keeps_torch_threads
 def supports_tomtom_lite():
     """Whether the installed TF-MoDISco can match motifs with TOMTOM-lite.
 
@@ -153,6 +191,7 @@ def _has_patterns(path):
         return any(group in handle and len(handle[group]) for group in PATTERN_GROUPS)
 
 
+@_keeps_torch_threads
 def generate_report(input_path, output_dir, motif_file=None, image_suffix="./",
                     tomtom_lite=False):
     """Generate the latest supported compact HTML report (``motifs.html``).
