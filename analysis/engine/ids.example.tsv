@@ -1,0 +1,3 @@
+ASSAY	ENCID	BAM_PATH	PEAKS_BED_PATH	FOLD_NUM	TENSORFLOW_DIR	DEEPLIFT_COUNTS_DIR	DEEPLIFT_PROFILE_DIR
+ATAC	ENCSR868FGK	<data>/ENCSR868FGK/alignments_merged.bam	<data>/ENCSR868FGK/peaks.bed.gz	0	<originals>/ATAC/ENCSR868FGK/fold_0/	<originals>/ATAC/ENCSR868FGK/fold_0/interpret/	<originals>/ATAC/ENCSR868FGK/fold_0/interpret/
+DNASE	ENCSR000EOT	<data>/ENCSR000EOT/alignments_merged.bam	<data>/ENCSR000EOT/peaks.bed.gz	0	<originals>/DNASE/ENCSR000EOT/fold_0/	<originals>/DNASE/ENCSR000EOT/fold_0/interpret/	<originals>/DNASE/ENCSR000EOT/fold_0/interpret/

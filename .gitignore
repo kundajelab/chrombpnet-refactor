@@ -27,3 +27,6 @@ old/
 *.pt
 *.bw
 *.h5
+
+# Claude Code worktrees: never commit them (4568ff4 recorded one as a gitlink).
+.claude/
