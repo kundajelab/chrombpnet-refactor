@@ -228,14 +228,22 @@ def train_bias_pipeline(options):
     subsample = stages.subsample_peaks_for_interpretation(
         layout, filtered_peaks, getattr(options, "interpret_subsample", None),
         seed=getattr(options, "seed", None))
-    stages.run_interpret(
-        options, layout, model_path=bias_model, regions=subsample,
-        output_prefix=layout.interpret_subsample("bias"),
-        profile_or_counts=["counts", "profile"])
-    stages.run_modisco(options, layout, "bias", "profile", "bias_profile.pdf")
-    stages.run_modisco(options, layout, "bias", "counts", "bias_counts.pdf")
+    _interpret_bias_model(options, layout, bias_model, subsample)
 
     stages.render_report(options, layout, make_html_bias, options.cmd_bias)
+
+
+def _interpret_bias_model(options, layout, bias_model, regions):
+    """Contribution scores and MoDISco for a bias model: both heads, or the
+    profile alone for a profile-only bias model."""
+    heads = stages.contribution_heads(bias_model)
+    stages.run_interpret(
+        options, layout, model_path=bias_model, regions=regions,
+        output_prefix=layout.interpret_subsample("bias"),
+        profile_or_counts=heads)
+    stages.run_modisco(options, layout, "bias", "profile", "bias_profile.pdf")
+    if "counts" in heads:
+        stages.run_modisco(options, layout, "bias", "counts", "bias_counts.pdf")
 
 
 def bias_model_qc(options):
@@ -253,12 +261,7 @@ def bias_model_qc(options):
     subsample = stages.subsample_peaks_for_interpretation(
         layout, options.peaks, getattr(options, "interpret_subsample", None),
         seed=getattr(options, "seed", None))
-    stages.run_interpret(
-        options, layout, model_path=options.bias_model, regions=subsample,
-        output_prefix=layout.interpret_subsample("bias"),
-        profile_or_counts=["counts", "profile"])
-    stages.run_modisco(options, layout, "bias", "profile", "bias_profile.pdf")
-    stages.run_modisco(options, layout, "bias", "counts", "bias_counts.pdf")
+    _interpret_bias_model(options, layout, options.bias_model, subsample)
 
     import chrombpnet.helpers.generate_reports.make_html_bias as make_html_bias
     stages.render_report(options, layout, make_html_bias, options.cmd_bias)

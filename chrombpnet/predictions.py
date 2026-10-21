@@ -70,4 +70,6 @@ def write_predictions_h5py(output_prefix, profile, logcts, coords,
             create_dataset(coord_group, "coords_peak", peaks, int)
 
         create_dataset(pred_group, "profs", profile, float)
-        create_dataset(pred_group, "logcounts", logcts, float)
+        if logcts is not None:
+            # None for a profile-only bias model, which predicts no counts.
+            create_dataset(pred_group, "logcounts", logcts, float)

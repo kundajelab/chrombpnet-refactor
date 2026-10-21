@@ -96,6 +96,10 @@ def get_footprint_for_motif(seqs, motif, model, inputlen, batch_size):
 
     # midpoint of motif is the midpoint of sequence
     pred_output=model.predict(w_mot_seqs, batch_size=batch_size, verbose=True)
+    if pred_output[1] is None:
+        raise ValueError(
+            "a profile-only bias model predicts no counts, so it has no "
+            "counts-scaled footprint; footprint the ChromBPNet models instead")
     footprint_for_motif_fwd = softmax(pred_output[0]) * np.expm1(pred_output[1])
 
     # reverse complement the sequence

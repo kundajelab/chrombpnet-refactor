@@ -1,5 +1,44 @@
 # Changelog
 
+## Profile-only bias models, epoch selection by Pearson r and JSD, and `distill` (PyTorch, opt-in)
+
+- **`--bias-profile-only`** on `bias pipeline` / `bias train`. The bias
+  model has no counts head (`ModelConfig.counts_head`, default true, so
+  older checkpoints load unchanged) and trains on the profile NLL alone.
+  `ChromBPNet` on such a bias adds the bias logits to the profile and takes
+  the accessibility model's log counts as its own, instead of the logsumexp
+  of both.
+  - **Skipped for it:** the bias log-count rescaling (`bias_model_scaled.pt`
+    is written unchanged), the peak-count correlation check, and the bias
+    reports' counts metrics, counts DeepSHAP and counts TF-MoDISco.
+  - **Refused for it, with a message:** `--predict-fused-kernel`, counts
+    contribution scores, and `pred_bw` and marginal footprints of the bias
+    model itself, which need its counts.
+- **`--model-selection pearsonr-jsd`** on `pipeline` / `train`. The epoch
+  kept, and what `--early-stop` waits on, is the highest validation-peak
+  counts Pearson r + (1 - median profile JSD). The validation generator then
+  returns coordinates, to find the peaks; the JSD is `metrics.region_jsd`,
+  which equals `profile_metrics`'s per-region JSD. The epoch log gains three
+  columns after the existing ones, and the checkpoint records
+  `model_selection`, `best_epoch` and `best_score`.
+- **`chrombpnet distill`**: a bias-free student from several bias-free
+  teachers (`engines/pytorch/distill.py`, architecture hook
+  `training/models/distill_student_model.py`). The targets come from the
+  teachers in eval mode on each training batch, after augmentation. The loss
+  is ChromBPNet's, with the counts weight defaulting to the teachers' median.
+  `--all-chromosomes` trains on every chromosome with no validation for a
+  fixed `--epochs`. `fit_and_evaluate` gained `target_fn` and
+  `provenance_extra`, and runs without a validation generator.
+- Both options are refused by the TensorFlow and JAX engines
+  (`engines.PYTORCH_ONLY_OPTIONS`), and dropped from `args.json` when not
+  given. `tests/test_expand.py` covers all three; `tests/cli_surface.json`
+  gains the two options and `distill`.
+- `analysis/engine/run_summarize.py` takes labelled `--runs` and
+  `--versus` pairs and writes `epochs.tsv`, `bias_response.tsv` and
+  `runs.tsv`; `plot_summarize.py` draws whichever runs those name.
+  `analysis/expand/` compares the three changes with the engines sweep's
+  PyTorch runs.
+
 ## `prep nonpeaks` reruns into an existing output prefix
 
 - **No output change.** `prep nonpeaks` refused to start when

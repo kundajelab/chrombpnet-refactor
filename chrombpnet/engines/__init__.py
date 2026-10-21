@@ -64,6 +64,10 @@ MODEL_PATH_ATTRIBUTES = (
 JAX_ONLY_OPTIONS = ("optimizer", "muon_lr", "ema", "ema_momentum",
                     "lr_schedule", "precision")
 
+#: Training options only the PyTorch engine has (``--bias-profile-only``,
+#: ``--model-selection``). Also default ``None`` and dropped when absent.
+PYTORCH_ONLY_OPTIONS = ("bias_profile_only", "model_selection")
+
 _INSTANCES = {}
 _CURRENT = DEFAULT_ENGINE
 
@@ -178,7 +182,7 @@ def configure_from_args(args, require=True):
     engine.prepare(args)
     if require:
         engine.require()
-    for attribute in ("engine",) + JAX_ONLY_OPTIONS:
+    for attribute in ("engine",) + JAX_ONLY_OPTIONS + PYTORCH_ONLY_OPTIONS:
         if hasattr(args, attribute) and getattr(args, attribute) is None:
             delattr(args, attribute)
     return engine
@@ -194,6 +198,11 @@ def _check_combinations(engine, args):
                 f"{flags} only apply to the JAX engine, not the {engine.name} engine")
     if engine.name == "pytorch":
         return
+    given = [a for a in PYTORCH_ONLY_OPTIONS if getattr(args, a, None) is not None]
+    if given:
+        flags = ", ".join("--" + a.replace("_", "-") for a in given)
+        raise ValueError(
+            f"{flags} only apply to the PyTorch engine, not the {engine.name} engine")
     if getattr(args, "predict_fused_kernel", False):
         raise ValueError(
             f"--predict-fused-kernel runs PyTorch's fused Triton forward and cannot be "

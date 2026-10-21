@@ -275,6 +275,7 @@ chrombpnet contribs_bw       contribution-score bigwigs
 chrombpnet modisco_motifs    motif discovery from contribution scores
 chrombpnet footprints        marginal footprints for given motifs
 chrombpnet export            a JAX-engine model in the original's .h5 layout
+chrombpnet distill           one bias-free model from several (PyTorch engine)
 ```
 
 Run `chrombpnet <command> --help` for the full argument list.
@@ -291,6 +292,33 @@ Four options control them, all off by default:
 | `--tomtom-lite` | match motifs with TOMTOM-lite instead of MEME's `tomtom` (also on `modisco_motifs`) |
 
 `modisco_motifs` takes its own `--max-seqlets` and `--window`.
+
+#### Experimental: PyTorch engine only
+
+Three opt-in changes, refused by the other engines. Without them nothing
+changes, `args.json` and checkpoints included.
+
+- `bias pipeline` / `bias train --bias-profile-only`: a bias model with a
+  profile head and no counts head, trained on the profile loss alone. A
+  ChromBPNet model trained on it adds the bias to the profile only and takes
+  its counts from the accessibility model alone, so `chrombpnet_nobias`'s
+  counts are no longer bias-corrected. `pipeline` and `train` read this off
+  the checkpoint; the bias rescaling and the peak-count check are skipped,
+  and the bias reports have profile metrics and motifs only.
+- `pipeline` / `train --model-selection pearsonr-jsd`: keep the epoch, and
+  stop early, on the validation peaks' counts Pearson r + (1 - median profile
+  JSD), computed as the test metrics are, instead of the validation loss.
+  The training loss is unchanged. `logs/chrombpnet.log` gains
+  `val_counts_pearsonr`, `val_profile_median_jsd` and `val_selection_score`.
+- `distill -t <chrombpnet_nobias.pt ...>`: train one bias-free student on
+  several models' averaged predictions -- the mean of their profile
+  probabilities times the mean of their predicted totals, and the mean of
+  their log counts -- with ChromBPNet's own loss, on the same jittered and
+  reverse-complemented batches the teachers see. It takes the training
+  commands' data arguments and writes a `chrombpnet_nobias` checkpoint,
+  `<prefix>.pt`, which `predict`, `contribs_bw` and `footprints` read as they
+  read a trained model's. `--all-chromosomes` trains on every chromosome of
+  the fold file for exactly `--epochs` epochs.
 
 ## Optimizations
 

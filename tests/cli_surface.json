@@ -52,6 +52,16 @@
     "required": false,
     "type": "int"
   },
+  "bias pipeline bias_profile_only": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--bias-profile-only"
+    ],
+    "required": false,
+    "type": "None"
+  },
   "bias pipeline bias_threshold_factor": {
     "choices": null,
     "default": "None",
@@ -911,6 +921,16 @@
     "required": false,
     "type": "int"
   },
+  "bias train bias_profile_only": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--bias-profile-only"
+    ],
+    "required": false,
+    "type": "None"
+  },
   "bias train bias_threshold_factor": {
     "choices": null,
     "default": "None",
@@ -1583,6 +1603,288 @@
     "required": false,
     "type": "int"
   },
+  "distill all_chromosomes": {
+    "choices": null,
+    "default": "False",
+    "nargs": "0",
+    "options": [
+      "--all-chromosomes"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "distill batch_size": {
+    "choices": null,
+    "default": "64",
+    "nargs": "None",
+    "options": [
+      "--batch-size",
+      "-bs"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "distill bigwig": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--bigwig",
+      "-bw"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "distill chr_fold_path": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--chr-fold-path",
+      "-fl"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "distill counts_loss_weight": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--counts-loss-weight",
+      "-w"
+    ],
+    "required": false,
+    "type": "float"
+  },
+  "distill data_aug": {
+    "choices": [
+      "augment",
+      "forward-only",
+      "revcomp-only"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--data-aug"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "distill data_type": {
+    "choices": [
+      "ATAC",
+      "DNASE"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--data-type",
+      "-d"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "distill device": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--device"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "distill dnase_convention": {
+    "choices": [
+      "both-full",
+      "both-half",
+      "left",
+      "right",
+      "right-deprecated"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--dnase-convention"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "distill early_stop": {
+    "choices": null,
+    "default": "5",
+    "nargs": "None",
+    "options": [
+      "--early-stop",
+      "-es"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "distill epochs": {
+    "choices": null,
+    "default": "50",
+    "nargs": "None",
+    "options": [
+      "--epochs",
+      "-e"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "distill filters": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--filters",
+      "-fil"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "distill genome": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--genome",
+      "-g"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "distill help": {
+    "choices": null,
+    "default": "'==SUPPRESS=='",
+    "nargs": "0",
+    "options": [
+      "--help",
+      "-h"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "distill learning_rate": {
+    "choices": null,
+    "default": "0.001",
+    "nargs": "None",
+    "options": [
+      "--learning-rate",
+      "-l"
+    ],
+    "required": false,
+    "type": "float"
+  },
+  "distill max_jitter": {
+    "choices": null,
+    "default": "500",
+    "nargs": "None",
+    "options": [
+      "--max-jitter",
+      "-j"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "distill n_dilation_layers": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--n-dilation-layers",
+      "-dil"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "distill negative_sampling_ratio": {
+    "choices": null,
+    "default": "0.1",
+    "nargs": "None",
+    "options": [
+      "--negative-sampling-ratio",
+      "-sr"
+    ],
+    "required": false,
+    "type": "float"
+  },
+  "distill nonpeaks": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--nonpeaks",
+      "-n"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "distill output_prefix": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--output-prefix",
+      "-op"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "distill peaks": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--peaks",
+      "-p"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "distill reproducibility": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--reproducibility"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "distill reproducibility_max": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--reproducibility-max"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "distill seed": {
+    "choices": null,
+    "default": "1234",
+    "nargs": "None",
+    "options": [
+      "--seed",
+      "-s"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "distill teachers": {
+    "choices": null,
+    "default": "None",
+    "nargs": "'+'",
+    "options": [
+      "--teachers",
+      "-t"
+    ],
+    "required": true,
+    "type": "str"
+  },
   "export count_head": {
     "choices": [
       "bytecode",
@@ -2250,6 +2552,19 @@
     ],
     "required": false,
     "type": "int"
+  },
+  "pipeline model_selection": {
+    "choices": [
+      "loss",
+      "pearsonr-jsd"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--model-selection"
+    ],
+    "required": false,
+    "type": "str"
   },
   "pipeline modisco_max_seqlets": {
     "choices": null,
@@ -3939,6 +4254,19 @@
     ],
     "required": false,
     "type": "int"
+  },
+  "train model_selection": {
+    "choices": [
+      "loss",
+      "pearsonr-jsd"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--model-selection"
+    ],
+    "required": false,
+    "type": "str"
   },
   "train muon_lr": {
     "choices": null,

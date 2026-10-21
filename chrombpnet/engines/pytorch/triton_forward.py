@@ -194,6 +194,10 @@ def _require_model(model):
             if conv.padding[0] != 0 or conv.stride[0] != 1 or conv.bias is None:
                 raise TritonRouteRefused(
                     "convolutions must be unpadded, unstrided and biased")
+        if submodel.count_dense is None:
+            raise TritonRouteRefused(
+                "a model without a counts head (a profile-only bias model) is "
+                "not supported by the fused kernels; leave out --predict-fused-kernel")
         if submodel.count_dense.bias is None:
             raise TritonRouteRefused("the counts head must be biased")
 

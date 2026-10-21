@@ -74,6 +74,10 @@ def attribute(model, seqs, profile_or_counts, *, device, batch_size,
     sequence = torch.as_tensor(seqs, dtype=torch.float32).permute(0, 2, 1)
     targets = []
     if "counts" in profile_or_counts:
+        if not getattr(model.config, "counts_head", True):
+            raise ValueError(
+                "a profile-only bias model has no counts head, so it has no "
+                "counts contribution scores; ask for profile only")
         targets.append(("counts", CountsWrapper(model)))
     if "profile" in profile_or_counts:
         targets.append(("profile", ProfileWrapper(model, profile_stop_gradient)))

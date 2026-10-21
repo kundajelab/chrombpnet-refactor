@@ -42,7 +42,11 @@ def train_report(fpx,prefix):
 	If the value is less than -0.5 the pipline will automatically throw an error.'
 	
 	data = json.load(open(os.path.join(prefix,"evaluation/bias_metrics.json")))
-	df = report_shell.metrics_table(data, 'counts_metrics', 'counts_metrics')
+	# A profile-only bias model has no counts head, so no counts metrics.
+	if data.get("counts_metrics"):
+		counts_table = report_shell.metrics_table(data, 'counts_metrics', 'counts_metrics').to_html(classes='mystyle')
+	else:
+		counts_table = "<p>Profile-only bias model: it has no counts head, so there are no counts metrics; the counts are the accessibility model's alone.</p>"
 
 	df1 = report_shell.metrics_table(data, 'profile_metrics', 'profile_metrics')
 
@@ -63,7 +67,7 @@ def train_report(fpx,prefix):
 				<img src={{bias_image}} style="max-width: 60%;">
 				<h3>{bias_model_perf_hed}</h3>
 				<p>{bias_model_perf_text}</p>
-				{df.to_html(classes='mystyle')}
+				{counts_table}
 				{df1.to_html(classes='mystyle')}
 			</body>
 			<body style="font-size:20px;">

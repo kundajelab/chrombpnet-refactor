@@ -47,10 +47,17 @@ def predict_on_batch_wrapper(model,test_generator):
 
         # get profile predictions
         true_counts_sum.extend(y[1][:,0])
-        counts_sum_predictions.extend(preds[1][:,0])
+        if preds[1] is None:
+            # A profile-only bias model predicts no counts.
+            counts_sum_predictions = None
+        else:
+            counts_sum_predictions.extend(preds[1][:,0])
         coordinates.extend(coords)
 
-    return np.array(true_counts), np.array(profile_probs_predictions), np.array(true_counts_sum), np.array(counts_sum_predictions), np.array(coordinates)
+    return (np.array(true_counts), np.array(profile_probs_predictions),
+            np.array(true_counts_sum),
+            None if counts_sum_predictions is None else np.array(counts_sum_predictions),
+            np.array(coordinates))
 
 
 def _record_subset_metrics(metrics_dictionary, name, suffix, label, mask,
@@ -63,15 +70,19 @@ def _record_subset_metrics(metrics_dictionary, name, suffix, label, mask,
     subset mask, the output-file suffix and the plot label. Each subset also
     writes its own JSD histogram, so the caller's order of subsets determines
     which PNGs appear -- it is preserved.
+
+    ``counts_sum_predictions`` is None for a profile-only bias model, which
+    then gets profile metrics only.
     """
-    spearman_cor, pearson_cor, mse = metrics.counts_metrics(
-        true_counts_sum[mask], counts_sum_predictions[mask],
-        output_prefix + suffix, label)
-    metrics_dictionary["counts_metrics"][name] = {
-        "spearmanr": spearman_cor,
-        "pearsonr": pearson_cor,
-        "mse": mse,
-    }
+    if counts_sum_predictions is not None:
+        spearman_cor, pearson_cor, mse = metrics.counts_metrics(
+            true_counts_sum[mask], counts_sum_predictions[mask],
+            output_prefix + suffix, label)
+        metrics_dictionary["counts_metrics"][name] = {
+            "spearmanr": spearman_cor,
+            "pearsonr": pearson_cor,
+            "mse": mse,
+        }
     metrics_dictionary["profile_metrics"][name] = {
         "median_jsd": np.nanmedian(jsd_pw[mask]),
         "median_norm_jsd": np.nanmedian(jsd_norm[mask]),

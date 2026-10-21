@@ -75,6 +75,14 @@ class PyTorchEngine(Engine):
     def rescale_bias_logcounts(self, bias_path, output_path, seqs, cts):
         from chrombpnet.engines.pytorch.model import load_model, save_model
         bias_model = load_model(bias_path, map_location="cpu")
+        if not bias_model.config.counts_head:
+            # A profile-only bias has no counts to rescale. It is still
+            # written out, so bias_model_scaled exists where the pipeline
+            # expects it.
+            print("Profile-only bias model: no counts head to rescale; "
+                  "saved unchanged as the scaled bias model")
+            save_model(bias_model, output_path, kind="bias")
+            return
         bias_model_scaled = adjust_bias_model_logcounts(bias_model, seqs, cts)
         save_model(bias_model_scaled, output_path, kind="bias")
 

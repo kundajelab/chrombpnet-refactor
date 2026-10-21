@@ -41,8 +41,14 @@ Five figures, each written as .png, .pdf and a .tsv table view:
           (or cosine similarity), one bar per engine
         runtime: hours, one bar per engine
 
-In summary_scores every panel other than the reference engine (--reference,
-default pytorch) carries "(+0.02)" after each mean: that engine minus the
+The runs drawn are run_summarize.py's (its runs.tsv: the engines, or its
+--runs labels), in that order, each in the next categorical colour; panels
+for the original and the retrained original come first, and pairs of runs
+from its --versus follow the runs vs the original in summary_agreement.
+--noun names them in the titles (default "engine").
+
+In summary_scores every panel other than the reference run (--reference,
+default the first run) carries "(+0.02)" after each mean: that engine minus the
 reference, averaged over the folds both have. Higher is better for both
 measures, so + means the engine scores higher. The engines share nonpeaks
 and preprocessing, so they are scored on the same regions (run_summarize.py
@@ -58,11 +64,13 @@ retrained original's bar is hollow (an ink outline), the new seed's a solid
 grey, and the seed-vs-seed line ink.
 
 Colours: the measures are the validated red/blue pair #e34948 / #2a78d6
-(OKLab Delta E 21.6 protan, 32.3 normal vision); the engines are the
-reference palette's first three categorical slots, blue / orange / aqua,
-which pass every check all-pairs (worst CVD Delta E 9.2, normal vision
-24.0). Aqua is below 3:1 against the surface, so the runtime legend names
-every engine and the table view exists. Identity is never colour alone.
+(OKLab Delta E 21.6 protan, 32.3 normal vision); the runs are the
+reference palette's categorical slots in order, blue / orange / aqua /
+yellow. The first three pass every check all-pairs (worst CVD Delta E 9.2,
+normal vision 24.0); with a fourth the bars stay side by side in that order,
+where every adjacent pair passes (worst CVD Delta E 9.1, normal vision
+22.9). Aqua and yellow are below 3:1 against the surface, so every legend
+names each run and the table view exists. Identity is never colour alone.
 """
 
 from __future__ import annotations
@@ -79,7 +87,9 @@ RED, BLUE = "#e34948", "#2a78d6"
 INK, INK_MUTED, GRID = "#1a1a19", "#5c5c58", "#dededa"
 SURFACE = "#fcfcfb"
 ENGINES = ("pytorch", "tensorflow", "jax")
-ENGINE_COLOURS = {"pytorch": "#2a78d6", "tensorflow": "#eb6834", "jax": "#1baf7a"}
+#: Categorical slots, in order (the reference palette's first four).
+SLOTS = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100")
+ENGINE_COLOURS = dict(zip(ENGINES, SLOTS))
 ORIGINAL = "original"
 RETRAINED = "original_retrained"   # run_original_retrain.py
 #: Panel names as drawn.
@@ -114,6 +124,24 @@ STEP_LABELS = {"bias_pipeline": "bias pipeline", "chrombpnet_pipeline": "chrombp
 # where its first listed ENCID does, so the biosample > ENCID nesting is
 # kept; unlisted ENCIDs go last, alphabetically.
 ENCID_ORDER = ["ENCSR000EOT", "ENCSR868FGK", "ENCSR163PKT", "ENCSR337UIU"]
+
+
+def read_runs(directory):
+    """The runs' labels in run_summarize.py's order (runs.tsv), or the
+    engines for a directory written before it existed."""
+    path = Path(directory) / "runs.tsv"
+    if not path.exists():
+        return ENGINES
+    return tuple(pd.read_csv(path, sep="\t").sort_values("order")["engine"].astype(str))
+
+
+def set_runs(labels):
+    """Make `labels` the runs every figure draws, each in its slot's colour."""
+    global ENGINES, ENGINE_COLOURS
+    if len(labels) > len(SLOTS):
+        sys.exit(f"{len(labels)} runs, but only {len(SLOTS)} validated colours: plot fewer at a time")
+    ENGINES = tuple(labels)
+    ENGINE_COLOURS = dict(zip(ENGINES, SLOTS))
 
 
 def _encid_rank(encid):
@@ -308,16 +336,17 @@ def plot_scores(plt, results, args):
     if not panels:
         print("skipped summary_scores: no own scores yet", file=sys.stderr)
         return
-    reference = cells.get(args.reference)
+    reference_run = args.reference or ENGINES[0]
+    reference = cells.get(reference_run)
     geometry = layout({k for p in panels for k in cells[p]})
     fig, axes = figure(plt, len(panels), len(geometry[1]))
     for index, (ax, panel) in enumerate(zip(axes, panels)):
         style_axes(ax, DISPLAY.get(panel, panel), geometry, (0, 1), np.arange(0, 1.01, 0.25),
                    index == len(panels) - 1)
         draw_measures(ax, cells[panel], geometry, SCORE_MEASURES,
-                      reference=reference if panel != args.reference else None)
+                      reference=reference if panel != reference_run else None)
     handles = [plt.Rectangle((0, 0), 1, 1, color=c) for _l, c, _s, _f in SCORE_MEASURES]
-    footnote = (f"(+0.02) after a mean = that panel minus {args.reference}, averaged over the folds both "
+    footnote = (f"(+0.02) after a mean = that panel minus {reference_run}, averaged over the folds both "
                 f"have; + means it scores higher; not shown when it rounds to 0.00.")
     if ORIGINAL in panels:
         footnote += (f"\n{ORIGINAL}: the old TensorFlow ChromBPNet from the atlas, scored by its own "
@@ -325,8 +354,8 @@ def plot_scores(plt, results, args):
     if RETRAINED in panels:
         footnote += (f"\n{RETRAINED_LABEL}: the original chrombpnet retrained on the engines' inputs "
                      f"(run_original_retrain.py), on the engines' test regions.")
-    finish(plt, fig, args.out + "summary_scores", "ChromBPNet test scores by engine",
-           f"each engine's model on its own test set  |  {args.subset} subset  |  higher is better for "
+    finish(plt, fig, args.out + "summary_scores", f"ChromBPNet test scores by {args.noun}",
+           f"each {args.noun}'s model on its own test set  |  {args.subset} subset  |  higher is better for "
            f"both measures  |  horizontal rule = mean over that dataset's folds",
            footnote, handles, [l for l, *_ in SCORE_MEASURES])
     rows = [(p, *k, label, round(v, 6)) for p in panels for k, got in sorted(cells[p].items())
@@ -342,6 +371,11 @@ def plot_agreement(plt, agreement, args):
         return
     cells = agreement_cells(agreement)
     panels = [f"{e} vs {ORIGINAL}" for e in ENGINES + (RETRAINED,) if f"{e} vs {ORIGINAL}" in cells]
+    # run_summarize.py --versus pairs, by the order of their runs.
+    rank = {e: i for i, e in enumerate(ENGINES)}
+    pairs = sorted((p for p in cells if p not in panels and not p.endswith(f" vs {ORIGINAL}")),
+                   key=lambda p: tuple(rank.get(e, len(rank)) for e in p.split(" vs ", 1)))
+    panels += pairs
     if not panels:
         print("skipped summary_agreement: no engine has predictions to compare yet", file=sys.stderr)
         return
@@ -353,7 +387,8 @@ def plot_agreement(plt, agreement, args):
         draw_measures(ax, cells[panel], geometry, AGREEMENT_MEASURES, decimals=3)
     handles = [plt.Rectangle((0, 0), 1, 1, color=c) for _l, c, _s, _f in AGREEMENT_MEASURES]
     finish(plt, fig, args.out + "summary_agreement",
-           f"Agreement of each engine's ChromBPNet model with the {ORIGINAL} TensorFlow model",
+           f"Agreement of each {args.noun}'s ChromBPNet model with the {ORIGINAL} TensorFlow model"
+           + (" and with one another" if pairs else ""),
            "the two models' predictions on the test regions both scored, compared with each other rather "
            "than with the data  |  1 = identical  |  horizontal rule = mean over that dataset's folds",
            "Counts: Pearson r between the two models' predicted log counts. Profile: median "
@@ -395,6 +430,8 @@ def plot_contributions(plt, contributions, args, metric):
         print(f"skipped {out}: no contribution comparisons yet", file=sys.stderr)
         return
     frame = contributions[np.isfinite(contributions[column].astype(float))]
+    # Runs against another run (run_summarize.py --versus) are not bars here.
+    frame = frame[~(frame["engine"].isin(ENGINES) & (frame["reference"].astype(str) != ORIGINAL))]
     # The original's seeded runs: "itself" pairs two seeds, "stored" pairs a
     # seed with the stored scores. One value per fold: pairs, seeds averaged.
     seeded = frame[frame["engine"].astype(str).str.startswith("original:")]
@@ -420,7 +457,8 @@ def plot_contributions(plt, contributions, args, metric):
     new_seed_cells = seed_cells[seed_cells["line"] == "stored"]
     bars = (([RETRAINED] if len(retrained_cells) else []) + ([NEW_SEED] if len(new_seed_cells) else [])
             + list(ENGINES))
-    step, width = {3: (0.28, 0.26), 4: (0.22, 0.20), 5: (0.18, 0.16)}[len(bars)]
+    step = {1: 0.5, 2: 0.36, 3: 0.28, 4: 0.22, 5: 0.18}.get(len(bars), 0.9 / len(bars))
+    width = step - 0.02
     offsets = {bar: (i - (len(bars) - 1) / 2) * step for i, bar in enumerate(bars)}
     for index, (ax, (head, kind)) in enumerate(zip(axes, panels)):
         style_axes(ax, f"{head}\n{kind}", geometry, (low, 1),
@@ -468,7 +506,7 @@ def plot_contributions(plt, contributions, args, metric):
         if tags:
             profile_source = f"  |  profile scores: {', '.join(tags)}"
     finish(plt, fig, out,
-           f"DeepSHAP contribution scores: each engine vs the {ORIGINAL} TensorFlow model",
+           f"DeepSHAP contribution scores: each {args.noun} vs the {ORIGINAL} TensorFlow model",
            f"30K peak subsample, regions matched to the {ORIGINAL}'s genome-wide scores  |  bar = median "
            f"over regions of the per-region {metric_label}  |  legend: mean over datasets and folds"
            f"{profile_source}",
@@ -495,22 +533,25 @@ def plot_runtime(plt, timings, args):
         print("skipped summary_runtime: no timings yet", file=sys.stderr)
         return
     timings = timings.assign(hours=timings["seconds"] / 3600.0, gpu=timings["gpu"].fillna("?").map(short_gpu))
-    steps = [s for s in STEP_LABELS if s in set(timings["step"])]
+    found = list(dict.fromkeys(timings["step"]))
+    steps = [s for s in STEP_LABELS if s in found] + [s for s in found if s not in STEP_LABELS]
     keys = {(r.biosample, r.encid, r.assay, int(r.fold)) for r in timings.itertuples()}
     geometry = layout(keys)
     positions = geometry[0]
     fig, axes = figure(plt, len(steps), len(geometry[1]))
     several_gpus = timings["gpu"].nunique() > 1
-    offsets = dict(zip(ENGINES, (-0.28, 0.0, 0.28)))
+    step_x = {1: 0.0, 2: 0.36, 3: 0.28}.get(len(ENGINES), 0.84 / len(ENGINES))
+    offsets = {e: (i - (len(ENGINES) - 1) / 2) * step_x for i, e in enumerate(ENGINES)}
     for index, (ax, step) in enumerate(zip(axes, steps)):
         frame = timings[timings["step"] == step]
         top = max(1.0, float(frame["hours"].max()) * (1.35 if several_gpus else 1.1))
-        style_axes(ax, STEP_LABELS[step] + "\nhours", geometry, (0, top),
+        style_axes(ax, STEP_LABELS.get(step, step.replace("_", " ")) + "\nhours", geometry, (0, top),
                    None, index == len(steps) - 1)
         for engine in ENGINES:
             sub = frame[frame["engine"] == engine]
             xs = [positions[(r.biosample, r.encid, int(r.fold))] + offsets[engine] for r in sub.itertuples()]
-            ax.bar(xs, sub["hours"], width=0.26, color=ENGINE_COLOURS[engine], linewidth=0, zorder=3)
+            ax.bar(xs, sub["hours"], width=max(step_x - 0.02, 0.2), color=ENGINE_COLOURS[engine],
+                   linewidth=0, zorder=3)
             if several_gpus:
                 for x, r in zip(xs, sub.itertuples()):
                     ax.text(x, r.hours + top * 0.015, r.gpu, rotation=90, fontsize=5, color=INK_MUTED,
@@ -522,7 +563,7 @@ def plot_runtime(plt, timings, args):
     subtitle = ("wall time of each step  |  " +
                 ("GPU written above each bar: runtimes compare only on the same GPU type"
                  if several_gpus else f"all runs on {gpus[0]}"))
-    finish(plt, fig, args.out + "summary_runtime", "Runtime by engine", subtitle, None,
+    finish(plt, fig, args.out + "summary_runtime", f"Runtime by {args.noun}", subtitle, None,
            handles, names)
     write_table(args.out + "summary_runtime.tsv",
                 timings[["engine", "biosample", "encid", "assay", "fold", "step", "hours", "gpu"]]
@@ -536,8 +577,11 @@ def main(argv=None):
                     help="run_summarize.py output directories (its --out-dir), each plotted in place")
     ap.add_argument("--out", default=None, help="output prefix (default: <--dir>/; only with one --dir)")
     ap.add_argument("--subset", default="peaks")
-    ap.add_argument("--reference", default="pytorch", choices=ENGINES + (ORIGINAL, RETRAINED),
-                    help="the panel every other score panel is compared against")
+    ap.add_argument("--reference", default=None,
+                    help="the run every other score panel is compared against (default: the first run; "
+                         f"or {ORIGINAL} / {RETRAINED})")
+    ap.add_argument("--noun", default="engine",
+                    help='what the titles call a run (default "engine")')
     ap.add_argument("--no-original", dest="with_original", action="store_false",
                     help="leave the old TensorFlow ChromBPNet out of summary_scores")
     args = ap.parse_args(argv)
@@ -559,6 +603,8 @@ def main(argv=None):
 
 def plot_directory(plt, directory, args):
     """Every figure of one run_summarize.py output directory."""
+    set_runs(read_runs(directory))
+
     def read(name, required=True):
         path = directory / name
         if not path.exists():

@@ -133,6 +133,11 @@ def main():
 		                       outputlen=int(model.output_shape[0][1]),
 		                       model_h5=args.model))
 
+	elif args.cmd == "distill":
+
+		from chrombpnet.engines.pytorch import distill
+		distill.main(args)
+
 	elif args.cmd == "export":
 
 		from chrombpnet.engines.jax.export_legacy_h5 import export_legacy_h5

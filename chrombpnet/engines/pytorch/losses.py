@@ -30,6 +30,10 @@ def chrombpnet_loss(
     counts_loss_weight: float,
 ) -> Tuple[Tensor, Tensor, Tensor]:
     profile_loss = multinomial_nll(true_profile_counts, profile_logits)
+    if logcount_predictions is None:
+        # A profile-only bias model: the profile NLL is the whole loss, and
+        # the counts term is reported as zero.
+        return profile_loss, profile_loss, torch.zeros_like(profile_loss)
     counts_loss = F.mse_loss(logcount_predictions, true_logcounts.float())
     total = profile_loss + float(counts_loss_weight) * counts_loss
     return total, profile_loss, counts_loss

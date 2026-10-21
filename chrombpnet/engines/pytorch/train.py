@@ -63,6 +63,32 @@ def _tensor_batch(batch, device):
     return sequence_tensor, profile, logcounts
 
 
+def _peak_rows(batch):
+    """Which rows of a coordinate-carrying batch are peaks (column 4 of the
+    generator's coordinates is the peak flag, as in the test set)."""
+    coords = np.asarray(batch[2])
+    return coords[:, 3].astype(str) == "1"
+
+
+def _collect_selection_rows(collect, batch, profile, logcounts,
+                            profile_prediction, count_prediction):
+    """Append one batch's validation peaks to ``collect``: observed and
+    predicted log counts, and each region's profile JSD, the two terms of
+    ``--model-selection pearsonr-jsd``."""
+    from chrombpnet.training import metrics
+
+    peaks = _peak_rows(batch)
+    if not peaks.any():
+        return
+    probabilities = torch.softmax(profile_prediction.float(), dim=-1)
+    collect.append((
+        logcounts[:, 0].detach().cpu().numpy()[peaks],
+        count_prediction[:, 0].detach().float().cpu().numpy()[peaks],
+        metrics.region_jsd(profile.detach().cpu().numpy()[peaks],
+                           probabilities.detach().cpu().numpy()[peaks]),
+    ))
+
+
 def _run_epoch(
     model,
     generator,
@@ -71,7 +97,18 @@ def _run_epoch(
     optimizer=None,
     sample_weighted=False,
     batch_order=None,
+    collect=None,
+    target_fn=None,
 ):
+    """One pass over ``generator``; returns the mean (total, profile, counts)
+    losses and the per-batch rows.
+
+    ``collect``, a list, receives each batch's validation-peak rows for
+    ``--model-selection pearsonr-jsd`` (the generator must return
+    coordinates). ``target_fn(sequence)``, when given, supplies the profile
+    and log-count targets in place of the observed ones: distillation's
+    teacher targets, computed on the same augmented batch.
+    """
     training = optimizer is not None
     model.train(training)
     totals = np.zeros(3, dtype=np.float64)
@@ -81,10 +118,16 @@ def _run_epoch(
     context = torch.enable_grad() if training else torch.no_grad()
     with context:
         for batch_index in order:
-            sequence, profile, logcounts = _tensor_batch(generator[batch_index], device)
+            batch = generator[batch_index]
+            sequence, profile, logcounts = _tensor_batch(batch, device)
             if training:
                 optimizer.zero_grad(set_to_none=True)
             profile_prediction, count_prediction = model(sequence)
+            if collect is not None:
+                _collect_selection_rows(collect, batch, profile, logcounts,
+                                        profile_prediction, count_prediction)
+            if target_fn is not None:
+                profile, logcounts = target_fn(sequence)
             total, profile_loss, count_loss = chrombpnet_loss(
                 profile_prediction,
                 count_prediction,
@@ -118,7 +161,17 @@ def _build_optimizer(model, args):
     return torch.optim.Adam(parameters, **options)
 
 
-def fit_and_evaluate(model, train_gen, valid_gen, args, architecture_module, parameters):
+def fit_and_evaluate(model, train_gen, valid_gen, args, architecture_module, parameters,
+                     target_fn=None, provenance_extra=None):
+    """Train, keep the selected epoch's weights, and write the logs.
+
+    ``target_fn`` replaces the observed targets with ``target_fn(sequence)``
+    in training and validation (``chrombpnet distill``'s teacher targets).
+    With no ``valid_gen`` every one of ``--epochs`` epochs runs and the last
+    weights are kept: distillation's all-chromosome student, which has no
+    chromosomes left to validate on. ``provenance_extra`` is recorded in the
+    checkpoint alongside the seed and epoch.
+    """
     device = resolve_device(getattr(args, "device", None))
     model.to(device)
     benchmark = benchmark_level(args)
@@ -131,8 +184,17 @@ def fit_and_evaluate(model, train_gen, valid_gen, args, architecture_module, par
     batch_log_path = epoch_log_path + ".batch"
     Path(checkpoint_path).parent.mkdir(parents=True, exist_ok=True)
 
+    # --model-selection: the epoch kept, and what early stopping waits on.
+    # 'loss' (the default) is the lowest validation loss; 'pearsonr-jsd' the
+    # highest validation-peak counts r + (1 - median JSD).
+    selection = getattr(args, "model_selection", None) or "loss"
+    by_score = selection == "pearsonr-jsd"
+    if by_score and valid_gen is None:
+        raise ValueError("--model-selection pearsonr-jsd needs a validation split")
     best_loss = float("inf")
+    best_score = float("-inf")
     best_state = None
+    best_epoch = None
     epochs_without_improvement = 0
     epoch_rows = []
     batch_rows_all = []
@@ -145,24 +207,54 @@ def fit_and_evaluate(model, train_gen, valid_gen, args, architecture_module, par
         train_values, train_batches = _run_epoch(
             model, train_gen, device, counts_weight, optimizer=optimizer,
             sample_weighted=sample_weighted, batch_order=batch_order,
+            target_fn=target_fn,
         )
-        valid_values, _ = _run_epoch(
-            model, valid_gen, device, counts_weight, sample_weighted=sample_weighted
-        )
-        epoch_rows.append((epoch, *train_values.tolist(), *valid_values.tolist()))
-        batch_rows_all.extend((epoch, *row) for row in train_batches)
-
-        validation_loss = valid_values[0]
-        if validation_loss < best_loss:
-            best_loss = validation_loss
+        batch_rows_all.extend((epoch, *batch_row) for batch_row in train_batches)
+        if valid_gen is None:
+            # Nothing to validate on: keep training, keep the latest weights.
+            epoch_rows.append((epoch, *train_values.tolist(), *[float("nan")] * 3))
             best_state = copy.deepcopy(model.state_dict())
+            train_gen.on_epoch_end()
+            continue
+        collected = [] if by_score else None
+        valid_values, _ = _run_epoch(
+            model, valid_gen, device, counts_weight, sample_weighted=sample_weighted,
+            collect=collected, target_fn=target_fn,
+        )
+        row = (epoch, *train_values.tolist(), *valid_values.tolist())
+
+        if by_score:
+            from chrombpnet.training.metrics import selection_score
+            if not collected:
+                raise ValueError(
+                    "--model-selection pearsonr-jsd needs validation peaks, "
+                    "and the validation chromosomes have none")
+            r, median_jsd, score = selection_score(
+                np.concatenate([c[0] for c in collected]),
+                np.concatenate([c[1] for c in collected]),
+                np.concatenate([c[2] for c in collected]))
+            row = row + (r, median_jsd, score)
+            # NaN (an undefined r) never counts as an improvement.
+            improved = bool(np.isfinite(score) and score > best_score)
+            if improved:
+                best_score = score
+        else:
+            validation_loss = valid_values[0]
+            improved = validation_loss < best_loss
+            if improved:
+                best_loss = validation_loss
+        epoch_rows.append(row)
+
+        if improved:
+            best_state = copy.deepcopy(model.state_dict())
+            best_epoch = epoch
             epochs_without_improvement = 0
-            save_model(
-                model,
-                checkpoint_path,
-                provenance={"seed": args.seed, "best_epoch": epoch,
-                            "benchmark": benchmark},
-            )
+            provenance = {"seed": args.seed, "best_epoch": epoch,
+                          "benchmark": benchmark}
+            if by_score:
+                provenance.update(model_selection=selection, best_score=best_score)
+            provenance.update(provenance_extra or {})
+            save_model(model, checkpoint_path, provenance=provenance)
         else:
             epochs_without_improvement += 1
         train_gen.on_epoch_end()
@@ -171,27 +263,34 @@ def fit_and_evaluate(model, train_gen, valid_gen, args, architecture_module, par
 
     if best_state is not None:
         model.load_state_dict(best_state)
-    save_model(
-        model,
-        checkpoint_path,
-        provenance={"seed": args.seed, "epochs_completed": len(epoch_rows),
-                    "benchmark": benchmark},
-    )
+    final_provenance = {"seed": args.seed, "epochs_completed": len(epoch_rows),
+                        "benchmark": benchmark}
+    if by_score or provenance_extra or valid_gen is None:
+        # Only the new modes record more, so default checkpoints are unchanged.
+        final_provenance["best_epoch"] = (len(epoch_rows) - 1 if valid_gen is None
+                                          else best_epoch)
+        if by_score:
+            final_provenance.update(model_selection=selection, best_score=best_score)
+        final_provenance.update(provenance_extra or {})
+    save_model(model, checkpoint_path, provenance=final_provenance)
     architecture_module.save_model_without_bias(model, args.output_prefix)
 
     with open(epoch_log_path, "w", newline="") as handle:
         writer = csv.writer(handle)
-        writer.writerow(
-            [
-                "epoch",
-                "loss",
-                "logits_profile_predictions_loss",
-                "logcount_predictions_loss",
-                "val_loss",
-                "val_logits_profile_predictions_loss",
-                "val_logcount_predictions_loss",
-            ]
-        )
+        header = [
+            "epoch",
+            "loss",
+            "logits_profile_predictions_loss",
+            "logcount_predictions_loss",
+            "val_loss",
+            "val_logits_profile_predictions_loss",
+            "val_logcount_predictions_loss",
+        ]
+        if by_score:
+            # The selection terms, after the columns the report reads.
+            header += ["val_counts_pearsonr", "val_profile_median_jsd",
+                       "val_selection_score"]
+        writer.writerow(header)
         writer.writerows(epoch_rows)
     with open(batch_log_path, "w", newline="") as handle:
         writer = csv.writer(handle, delimiter="\t")

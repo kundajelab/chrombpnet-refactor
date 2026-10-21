@@ -26,8 +26,13 @@ TF 2.8; the current environments (`envs/`) are newer.
 | `run_contribution.py` | rescore a finished run's 30K subsample with DeepSHAP, e.g. the profile head with the original's weighting |
 | `run_deepshap_seeds.py` | the original's own DeepSHAP on an original model, once per seed (original package env) |
 | `run_original_retrain.py` | one step of the original package (bias train, train, predict), from its checkout (original package env) |
-| `run_summarize.py` | collate the run tree into `results.tsv`, `agreement.tsv`, `contributions.tsv`, `inputs.tsv`, `timings.tsv` |
+| `run_summarize.py` | collate the run tree into `results.tsv`, `agreement.tsv`, `contributions.tsv`, `inputs.tsv`, `timings.tsv`, `epochs.tsv`, `bias_response.tsv`, `runs.tsv` |
 | `plot_summarize.py` | draw `summary_scores`, `summary_agreement`, `summary_contributions_{pearson,cosine}`, `summary_runtime` (.png, .pdf, .tsv) |
+
+Both default to the engines (`<root>/pytorch`, `tensorflow`, `jax`).
+`run_summarize.py --runs LABEL=DIR ...` collates any labelled set of run
+trees instead, and `--versus LABEL=REFERENCE` also compares two of them
+directly; `plot_summarize.py` then draws those runs (`../expand/`).
 
 Each takes `--help`; their docstrings describe the outputs in detail.
 

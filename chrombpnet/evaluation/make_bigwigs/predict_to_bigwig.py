@@ -196,6 +196,10 @@ def _write_model_bigwig(args, model_path, name, shared, finish):
 
     pred_logits, pred_logcts = model.predict(
         [seqs], batch_size=args.batch_size, verbose=True)
+    if pred_logcts is None:
+        raise ValueError(
+            f"{model_path} is a profile-only bias model: it predicts no counts, "
+            f"so there is no counts-scaled prediction bigwig to write")
     # Reshape with an explicit batch dimension; an unrestricted squeeze
     # collapses a single region's (1, outputlen) profile to one dimension
     # (defect 3 in chrombpnet_bugs.md).

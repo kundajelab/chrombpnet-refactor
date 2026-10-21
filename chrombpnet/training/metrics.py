@@ -176,6 +176,45 @@ def profile_metrics(true_counts, pred_probs, pseudocount=0.001, seed=DEFAULT_SEE
     empty = np.array([])
     return empty, empty, jsd_pw, jsd_norm, jsd_rnd, jsd_rnd_norm, empty, empty
 
+def region_jsd(true_counts, pred_probs):
+    """Per-region Jensen-Shannon distance between the observed profile and the
+    predicted probabilities.
+
+    Exactly ``profile_metrics``'s ``jsd_pw`` (a test pins it), without the
+    shuffled-label and normalized companions it also draws: the training
+    loop's ``--model-selection pearsonr-jsd`` needs only this, every epoch.
+    NaN where either profile is empty.
+    """
+    true_counts = np.asarray(true_counts)
+    observed_prob, observed_ok = _normalize_rows(true_counts)
+    predicted_prob, predicted_ok = _normalize_rows(pred_probs)
+    valid = observed_ok & predicted_ok
+    out = np.full(true_counts.shape[0], np.nan)
+    if valid.any():
+        out[valid] = jensenshannon(observed_prob[valid], predicted_prob[valid],
+                                   axis=1, base=JSD_BASE)
+    return out
+
+
+def selection_score(true_logcounts, pred_logcounts, jsd):
+    """``(counts Pearson r, median JSD, r + 1 - median JSD)`` over a set of
+    regions, as ``--model-selection pearsonr-jsd`` ranks epochs: both terms
+    are higher-is-better on a 0-1 scale. The score is NaN when either term is
+    undefined (fewer than two regions, constant counts, no valid profile)."""
+    from scipy.stats import pearsonr
+
+    true_logcounts = np.asarray(true_logcounts, dtype=np.float64).ravel()
+    pred_logcounts = np.asarray(pred_logcounts, dtype=np.float64).ravel()
+    jsd = np.asarray(jsd, dtype=np.float64)
+    if (true_logcounts.size < 2 or np.ptp(true_logcounts) == 0
+            or np.ptp(pred_logcounts) == 0):
+        r = np.nan
+    else:
+        r = float(pearsonr(true_logcounts, pred_logcounts)[0])
+    median_jsd = float(np.nanmedian(jsd)) if np.isfinite(jsd).any() else np.nan
+    return r, median_jsd, r + 1.0 - median_jsd
+
+
 def plot_histogram(region_jsd, shuffled_labels_jsd, output_prefix, title):
 
     #generate histogram distributions 

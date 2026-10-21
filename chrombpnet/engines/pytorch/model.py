@@ -21,6 +21,13 @@ SOURCE_COMMIT = "09938fdb4397ec0006510e5251e48920a505d4de"
 CHECKPOINT_VERSION = 1
 
 
+def _as_bool(value: Any) -> bool:
+    """A config flag that may arrive as a bool or as parameter-table text."""
+    if isinstance(value, str):
+        return value.strip().lower() not in ("false", "0", "no", "")
+    return bool(value)
+
+
 @dataclass(frozen=True)
 class ModelConfig:
     input_length: int = 2114
@@ -28,6 +35,11 @@ class ModelConfig:
     filters: int = 512
     n_dilation_layers: int = 8
     counts_loss_weight: float = 1.0
+    #: False for a profile-only bias model (``bias pipeline
+    #: --bias-profile-only``): no counts head, and a ChromBPNet built on it
+    #: takes its counts from the accessibility model alone. Checkpoints
+    #: written before the field existed have one, hence the default.
+    counts_head: bool = True
 
     @classmethod
     def from_mapping(cls, values: Mapping[str, Any]) -> "ModelConfig":
@@ -39,6 +51,7 @@ class ModelConfig:
                 values.get("n_dilation_layers", values.get("n_dil_layers", 8))
             ),
             counts_loss_weight=float(values.get("counts_loss_weight", 1.0)),
+            counts_head=_as_bool(values.get("counts_head", True)),
         )
 
     def validate(self) -> None:
@@ -87,7 +100,7 @@ class BPNet(nn.Module):
             nn.ReLU() for _ in range(self.config.n_dilation_layers)
         )
         self.profile_conv = nn.Conv1d(channels, 1, kernel_size=75, padding=0)
-        self.count_dense = nn.Linear(channels, 1)
+        self.count_dense = nn.Linear(channels, 1) if self.config.counts_head else None
 
         with torch.no_grad():
             probe = torch.zeros(1, 4, self.config.input_length)
@@ -106,8 +119,11 @@ class BPNet(nn.Module):
         return (None, 4, self.config.input_length)
 
     @property
-    def output_shape(self) -> Tuple[Tuple[None, int], Tuple[None, int]]:
-        return ((None, self.config.output_length), (None, 1))
+    def output_shape(self) -> Tuple[Tuple[None, int], Optional[Tuple[None, int]]]:
+        """The profile and counts output shapes; counts is None without a
+        counts head."""
+        counts = (None, 1) if self.config.counts_head else None
+        return ((None, self.config.output_length), counts)
 
     def _features(self, sequence: Tensor) -> Tensor:
         x = self.first_activation(self.first_conv(sequence))
@@ -116,7 +132,9 @@ class BPNet(nn.Module):
             x = convolved + _center_crop(x, convolved.shape[-1])
         return x
 
-    def forward(self, sequence: Tensor) -> Tuple[Tensor, Tensor]:
+    def forward(self, sequence: Tensor) -> Tuple[Tensor, Optional[Tensor]]:
+        """``(profile logits, logcounts)``; logcounts is None without a counts
+        head."""
         if sequence.ndim != 3 or sequence.shape[1] != 4:
             raise ValueError("sequence must have shape (batch, 4, length)")
         if sequence.shape[-1] != self.config.input_length:
@@ -125,6 +143,8 @@ class BPNet(nn.Module):
             )
         x = self._features(sequence.float())
         profile = _center_crop(self.profile_conv(x), self.config.output_length)[:, 0, :]
+        if self.count_dense is None:
+            return profile, None
         logcounts = self.count_dense(x.mean(dim=-1))
         return profile, logcounts
 
@@ -151,8 +171,9 @@ def assign_keras_layout_weights(model: BPNet, values: Mapping[str, np.ndarray]) 
             torch.from_numpy(values["profile_kernel"]).permute(2, 1, 0)
         )
         model.profile_conv.bias.copy_(torch.from_numpy(values["profile_bias"]))
-        model.count_dense.weight.copy_(torch.from_numpy(values["count_kernel"]).T)
-        model.count_dense.bias.copy_(torch.from_numpy(values["count_bias"]))
+        if model.count_dense is not None:
+            model.count_dense.weight.copy_(torch.from_numpy(values["count_kernel"]).T)
+            model.count_dense.bias.copy_(torch.from_numpy(values["count_bias"]))
 
 
 def initialize_keras_compatible(model: BPNet, seed: int) -> None:
@@ -248,6 +269,10 @@ class ChromBPNet(nn.Module):
             bias_profile, bias_logcounts = self.bias_model(sequence)
         tf_profile, tf_logcounts = self.tf_model(sequence)
         profile = tf_profile + bias_profile
+        if bias_logcounts is None:
+            # A profile-only bias joins the profile head alone; the counts
+            # are the accessibility model's.
+            return profile, tf_logcounts
         logcounts = torch.logsumexp(
             torch.cat((tf_logcounts, bias_logcounts), dim=-1), dim=-1, keepdim=True
         )
@@ -340,7 +365,10 @@ class PredictionAdapter:
         self.device = torch.device(device)
         config = model.config
         self.input_shape = (None, config.input_length, 4)
-        self.output_shape = [(None, config.output_length), (None, 1)]
+        # No counts output for a profile-only bias model; predict() then
+        # returns None for the logcounts.
+        self.output_shape = [(None, config.output_length),
+                             (None, 1) if config.counts_head else None]
         # --predict-fused-kernel. Built after .to(device): the kernels snapshot and
         # transpose the weights at construction, so the module has to be on
         # its final device first. Refusals propagate -- the route is opt-in
@@ -401,10 +429,12 @@ class PredictionAdapter:
                 profile, counts = self._forward(torch.from_numpy(chunk).to(self.device))
                 if profiles is None:
                     profiles = np.empty((total,) + tuple(profile.shape[1:]), dtype=np.float32)
-                    logcounts = np.empty((total,) + tuple(counts.shape[1:]), dtype=np.float32)
+                    if counts is not None:
+                        logcounts = np.empty((total,) + tuple(counts.shape[1:]), dtype=np.float32)
                 stop = start + profile.shape[0]
                 profiles[start:stop] = profile.cpu().numpy()
-                logcounts[start:stop] = counts.cpu().numpy()
+                if counts is not None:
+                    logcounts[start:stop] = counts.cpu().numpy()
         return profiles, logcounts
 
     def _predict_legacy(self, values, batch_size):
@@ -429,8 +459,10 @@ class PredictionAdapter:
                 profile, counts = self._forward(
                     array[start:start + int(batch_size)].to(self.device))
                 profiles.append(profile.cpu())
-                logcounts.append(counts.cpu())
-        return torch.cat(profiles).numpy(), torch.cat(logcounts).numpy()
+                if counts is not None:
+                    logcounts.append(counts.cpu())
+        return (torch.cat(profiles).numpy(),
+                torch.cat(logcounts).numpy() if logcounts else None)
 
     def predict_on_batch(self, values: Union[np.ndarray, Tensor, list]):
         size = len(values[0] if isinstance(values, list) else values)

@@ -202,6 +202,37 @@ def _add_ignore_bias_flag(optional):
              "correction in the resulting model is not trustworthy.")
 
 
+def _add_bias_profile_only(optional):
+    """``--bias-profile-only`` on ``bias pipeline`` / ``bias train``.
+
+    ``pipeline`` and ``train`` need no flag: they read off the bias
+    checkpoint whether it has a counts head.
+    """
+    optional.add_argument(
+        "--bias-profile-only", action="store_true", default=None,
+        help="PyTorch engine only. Train a bias model with a profile head and "
+             "no counts head, on the profile loss alone. A ChromBPNet model "
+             "trained on it adds the bias to the profile prediction only: its "
+             "counts are the accessibility model's alone, so "
+             "chrombpnet_nobias's counts are not bias-corrected. The bias "
+             "rescaling step and the peak count correlation check do not "
+             "apply, and the bias reports carry profile metrics and motifs only")
+
+
+def _add_model_selection(optional):
+    """``--model-selection`` on ``pipeline`` / ``train``. Bias models keep
+    loss-based selection: a profile-only one has no counts to correlate."""
+    optional.add_argument(
+        "--model-selection", type=str, default=None,
+        choices=["loss", "pearsonr-jsd"],
+        help="PyTorch engine only. Which epoch's weights are kept, and what "
+             "early stopping (--early-stop) waits on: 'loss' (default), the "
+             "lowest validation loss; 'pearsonr-jsd', the highest validation "
+             "counts Pearson r + (1 - median profile JSD), both over the "
+             "validation peaks and computed as the test metrics are. The "
+             "training loss is the same either way")
+
+
 def _add_device(optional):
     """``--device``, and ``--engine`` with it: every command that places a
     model on a device is a command that needs an engine, and no other is."""
@@ -357,6 +388,7 @@ def _add_chrombpnet_training_arguments(parser, reports=False):
     _add_training_options(optional)
     add_reproducibility_arguments(optional)
     _add_ignore_bias_flag(optional)
+    _add_model_selection(optional)
     required.add_argument("-b", "--bias-model-path", type=str, required=True, help="Path for a pretrained bias model checkpoint (.pt PyTorch, .h5 TensorFlow)")
     optional.add_argument("-sr", "--negative-sampling-ratio", type=float, default=0.1, help="Ratio of negatives to positive samples per epoch")
     _add_architecture_options(optional, filters=512, dilations=8, jitter=500)
@@ -378,6 +410,7 @@ def _add_bias_training_arguments(parser, reports=False):
     _add_training_options(optional)
     add_reproducibility_arguments(optional)
     required.add_argument("-b", "--bias-threshold-factor", type=float, required=True, help="A threshold is applied on maximum count of non-peak region for training bias model, which is set as this threshold x min(count over peak regions). Recommended start value 0.5 for ATAC and 0.8 for DNase.")
+    _add_bias_profile_only(optional)
     _add_architecture_options(optional, filters=128, dilations=4, jitter=0)
     _add_batch_sizes(optional)
     _add_jax_training_options(optional)
@@ -416,6 +449,7 @@ def build_parser():
     footprints_parser = subparsers.add_parser("footprints", help="Get marginal footprinting for given model and given motifs")
     predict_parser = subparsers.add_parser("predict", help="Score one model on a fold's test split and write metrics")
     export_parser = subparsers.add_parser("export", help="Export a JAX-engine model for TF-Keras 2.x readers (the TensorFlow engine, chrombpnet 1.x, variant-scorer, bpnet-lite)")
+    distill_parser = subparsers.add_parser("distill", help="Distill several bias-free models (e.g. one per fold) into one bias-free student (PyTorch engine)")
 
     # Generate non-peak regions from peak-regions
     required_nonpeaks_parser, optional_nonpeaks_parser = _required_optional(nonpeaks_parser)
@@ -460,6 +494,7 @@ def build_parser():
 
     _add_predict_arguments(predict_parser)
     _add_export_arguments(export_parser)
+    _add_distill_arguments(distill_parser)
 
     # Make prediction bigwigs
     required_preds, optional_preds = _required_optional(preds_parser)
@@ -560,6 +595,40 @@ def _add_export_arguments(parser):
                     "the TensorFlow engine, variant-scorer) loads without custom objects. 'named': for TF-Keras on Python >= 3.11, "
                     "which cannot unmarshal that bytecode; the Lambda names its function, so load_model needs "
                     "custom_objects={'chrombpnet_logsumexp': ...}. Bias and no-bias models have no Lambda")
+
+
+def _add_distill_arguments(parser):
+    """``distill``: a bias-free student trained on its teachers' averaged
+    predictions (:mod:`chrombpnet.engines.pytorch.distill`). PyTorch only, so
+    it takes ``--device`` but no ``--engine``.
+
+    The observed bigwig is still read: the generators load labels with the
+    sequences, and the regions are filtered the same way. The labels
+    themselves are replaced by the teachers' targets.
+    """
+    required, optional = _required_optional(parser)
+    required.add_argument("-t", "--teachers", nargs="+", type=str, required=True, help="The teachers: chrombpnet_nobias.pt checkpoints (or chrombpnet.pt, whose bias-free submodel is used), all with the same input and output lengths")
+    required.add_argument('-g', '--genome', required=True, type=str, help="reference genome fasta file")
+    required.add_argument("-bw", "--bigwig", type=str, required=True, help="Observed bigwig. The generators read it with the sequences; the student is trained on the teachers' predictions, not on it")
+    required.add_argument("-p", "--peaks", type=str, required=True, help="10 column bed file of peaks (e.g. a run's auxiliary/filtered.peaks.bed)")
+    required.add_argument("-n", "--nonpeaks", type=str, required=True, help="10 column bed file of non-peak regions (e.g. a run's auxiliary/filtered.nonpeaks.bed)")
+    required.add_argument("-fl", "--chr-fold-path", type=str, required=True, help="Fold information - dictionary with test,valid and train keys and values with corresponding chromosomes")
+    required.add_argument("-op", "--output-prefix", type=str, required=True, help="Output prefix: <prefix>.pt (a chrombpnet_nobias checkpoint), <prefix>.log, <prefix>.log.batch and <prefix>.args.json")
+    required.add_argument('-d', '--data-type', required=True, type=str, choices=['ATAC', 'DNASE'], help="assay type")
+    optional.add_argument("--all-chromosomes", action="store_true", help="Train on every chromosome of the fold file (train, valid and test) with no validation: exactly --epochs epochs run and the last weights are kept. The fold file is written to <prefix>.folds.json")
+    optional.add_argument("-w", "--counts-loss-weight", type=float, default=None, help="Weight of the log-count MSE (default: the median of the teachers' counts_loss_weight)")
+    optional.add_argument("-s", "--seed", type=int, default=DEFAULT_SEED, help="seed for the student's initial weights, batch order, jitter, reverse complements and each epoch's negatives")
+    optional.add_argument("-e", "--epochs", type=int, default=50, help="Maximum epochs to train (exactly this many with --all-chromosomes)")
+    optional.add_argument("-es", "--early-stop", type=int, default=5, help="Early stop limit on the validation distillation loss")
+    optional.add_argument("-l", "--learning-rate", type=float, default=0.001, help="Learning rate for model training")
+    optional.add_argument("-bs", "--batch-size", type=int, default=64, help="batch size to use for model training")
+    optional.add_argument("-sr", "--negative-sampling-ratio", type=float, default=0.1, help="Ratio of negatives to positive samples per epoch")
+    optional.add_argument("-j", "--max-jitter", type=int, default=500, help="Maximum jitter applied on either side of region")
+    optional.add_argument("-fil", "--filters", type=int, default=None, help="Student filters (default: the teachers')")
+    optional.add_argument("-dil", "--n-dilation-layers", type=int, default=None, help="Student dilation layers (default: the teachers')")
+    add_reproducibility_arguments(optional)
+    _add_data_aug(optional)
+    optional.add_argument('--device', default=None, help="Device to run the model on: cpu, cuda or cuda:N (default: a GPU when available)")
 
 
 def _add_predict_arguments(parser):

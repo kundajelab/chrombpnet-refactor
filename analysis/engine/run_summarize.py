@@ -2,14 +2,24 @@
 """Collate the engines sweep: scores, agreement with the original, inputs, runtimes.
 
     python run_summarize.py --root <run tree> --ids <ids.tsv> --out-dir <dir> \
-        [--biosamples biosamples.tsv] [--profile-stopgrad off|on] [--workers 4]
+        [--biosamples biosamples.tsv] [--profile-stopgrad off|on] [--workers 4] \
+        [--runs LABEL=DIR ...] [--versus LABEL=REFERENCE ...]
 
 --root is the run tree the steps in README.md write (one directory per
 engine, plus original/ and original_retrained/); --ids is the dataset x fold
 table (README.md, "Inputs"). In any environment with this package's
 dependencies: numpy, scipy, h5py.
 
-Five tables are written to --out-dir:
+The runs collated are <root>/<engine> for pytorch, tensorflow and jax, or
+with --runs any labelled set of trees, each laid out as an engine's
+(<DIR>/<ASSAY>/<ENCID>/fold_N/{bias_model,model}/); the tables then name the
+runs by label where they would name the engine, and the first label is the
+headline's reference. --versus LABEL=REFERENCE also compares run LABEL with
+run REFERENCE, dataset and fold for dataset and fold: their test predictions
+(agreement.tsv) and their subsample DeepSHAP scores (contributions.tsv), with
+REFERENCE in the reference column.
+
+Eight tables are written to --out-dir:
 
 results.tsv
     Test-set metrics, one row per (source, engine, dataset, fold, metric):
@@ -100,6 +110,24 @@ inputs.tsv
 timings.tsv
     Wall time of each step (timings.tsv in each finished run) with the GPU it
     ran on (provenance.txt). Runtimes compare only on the same GPU type.
+
+epochs.tsv
+    For each run's ChromBPNet and bias model, from its epoch log
+    (model/logs/chrombpnet.log, or a distilled student's
+    model/models/chrombpnet_nobias.log; bias_model/logs/<ENCID>_bias.log):
+    the epochs trained and the epoch whose weights were kept, 0-based --
+    the first with the lowest val_loss, or the highest val_selection_score
+    for a log that has one (--model-selection pearsonr-jsd), or the last
+    when nothing was validated (distill --all-chromosomes).
+
+bias_response.tsv
+    The bias-free model's marginal-footprint response to the assay's bias
+    motifs (model/evaluation/chrombpnet_nobias_max_bias_response.txt):
+    the pipeline's corrected/uncorrected call (every motif under 0.003),
+    the mean and the largest response, and each motif's.
+
+runs.tsv
+    The runs' labels and trees, in order (plot_summarize.py reads it).
 
 The headline, printed to stderr, gives each engine's mean over folds of the
 test scores, each engine minus pytorch and minus the original (paired on
@@ -272,6 +300,68 @@ def seeds_job(job, cache_dir):
     except (OSError, ValueError):
         pass
     rows, notes = compare_seeds(job)
+    os.makedirs(cache_dir, exist_ok=True)
+    with open(cache + ".partial", "w") as fh:
+        json.dump({"key": key, "rows": rows, "notes": notes}, fh)
+    os.replace(cache + ".partial", cache)
+    return rows, notes, False
+
+
+def compare_versus(job):
+    """One dataset and fold: for each --versus pair, run LABEL's subsample
+    scores against run REFERENCE's, regions matched by chromosome and summit
+    and kept only if both sequences are identical. Returns rows (label,
+    reference, head, kind, n_label, n_matched, n_seq_mismatch, r_median,
+    r_mean, cos_median, cos_mean) and notes."""
+    import numpy as np
+    rows, notes = [], []
+    for label, reference in job["versus"]:
+        a, b = job["runs"][label], job["runs"][reference]
+        if not all(os.path.isfile(os.path.join(r, "COMPLETED")) for r in (a, b)):
+            continue
+        regions_a, regions_b = (os.path.join(r, f"{SCORES_PREFIX}.interpreted_regions.bed") for r in (a, b))
+        if not (os.path.isfile(regions_a) and os.path.isfile(regions_b)):
+            notes.append(f"{job['encid']} fold {job['fold']}: {label} or {reference} has no scored regions")
+            continue
+        keys = region_keys(regions_a)
+        for head in HEADS:
+            scores_a, scores_b = (os.path.join(r, scores_rel(head, job.get("profile_tag"))) for r in (a, b))
+            if not (os.path.isfile(scores_a) and os.path.isfile(scores_b)):
+                notes.append(f"{job['encid']} fold {job['fold']}: no {head} scores to compare for "
+                             f"{label} vs {reference}")
+                continue
+            metrics, n_compared, n_mismatch = pair_metrics(load_rows(scores_a, regions_a, keys),
+                                                           load_rows(scores_b, regions_b, keys))
+            for kind in KINDS:
+                r_list, cos_list = metrics[kind]
+                r = np.concatenate(r_list) if r_list else np.full(1, np.nan)
+                cos = np.concatenate(cos_list) if cos_list else np.full(1, np.nan)
+                rows.append((label, reference, head, kind, len(keys), n_compared, n_mismatch,
+                             float(np.nanmedian(r)), float(np.nanmean(r)),
+                             float(np.nanmedian(cos)), float(np.nanmean(cos))))
+    return rows, notes
+
+
+def versus_job(job, cache_dir):
+    """compare_versus, cached on the sizes and times of the files it reads."""
+    inputs = []
+    for label, reference in job["versus"]:
+        for run in (job["runs"][label], job["runs"][reference]):
+            for rel in [scores_rel(h, job.get("profile_tag")) for h in HEADS] + ["COMPLETED"]:
+                p = os.path.join(run, rel)
+                if os.path.isfile(p):
+                    inputs.append(p)
+    key = {"version": 1, "pairs": [list(p) for p in job["versus"]], "inputs": signature(inputs)}
+    tag = f".{job['profile_tag']}" if job.get("profile_tag") else ""
+    cache = os.path.join(cache_dir, f"{job['assay']}_{job['encid']}_fold{job['fold']}{tag}.versus.json")
+    try:
+        with open(cache) as fh:
+            cached = json.load(fh)
+        if cached.get("key") == key:
+            return [tuple(r) for r in cached["rows"]], cached["notes"], True
+    except (OSError, ValueError):
+        pass
+    rows, notes = compare_versus(job)
     os.makedirs(cache_dir, exist_ok=True)
     with open(cache + ".partial", "w") as fh:
         json.dump({"key": key, "rows": rows, "notes": notes}, fh)
@@ -605,6 +695,84 @@ def read_timings(run_dir):
     return gpu, steps
 
 
+#: Each model's epoch log, relative to a run: the pipeline's, then that of
+#: a distilled student (chrombpnet distill -op model/models/chrombpnet_nobias).
+EPOCH_LOGS = {"chrombpnet": ("model/logs/chrombpnet.log", "model/models/chrombpnet_nobias.log"),
+              "bias": ("bias_model/logs/{encid}_bias.log",)}
+
+
+def read_epochs(path):
+    """(epochs trained, epoch kept, how it was chosen) from an epoch log, or
+    None. The epoch kept is the one the training loop keeps: the first with
+    the lowest val_loss, or the first with the highest val_selection_score
+    (--model-selection pearsonr-jsd), or the last when no epoch has a
+    validation loss (distill --all-chromosomes)."""
+    import csv
+    import math
+    try:
+        with open(path) as fh:
+            rows = list(csv.DictReader(fh))
+    except OSError:
+        return None
+    if not rows:
+        return None
+
+    def number(row, key):
+        try:
+            return float(row[key])
+        except (KeyError, TypeError, ValueError):
+            return float("nan")
+
+    if "val_selection_score" in rows[0]:
+        finite = [(s, i) for i, s in enumerate(number(r, "val_selection_score") for r in rows)
+                  if math.isfinite(s)]
+        best = max(finite, key=lambda t: (t[0], -t[1]))[1] if finite else ""
+        return len(rows), best, "pearsonr-jsd"
+    finite = [(v, i) for i, v in enumerate(number(r, "val_loss") for r in rows) if math.isfinite(v)]
+    if finite:
+        return len(rows), min(finite)[1], "loss"
+    return len(rows), len(rows) - 1, "last"
+
+
+def read_bias_response(path):
+    """(call, mean, largest, per-motif values) from marginal_footprinting's
+    <prefix>_max_bias_response.txt ("corrected_0.001_0.002/0.001/..."), or None."""
+    try:
+        with open(path) as fh:
+            call, mean, values = fh.read().strip().split("_", 2)
+        values = [float(v) for v in values.split("/") if v]
+        return call, float(mean), max(values), values
+    except (OSError, ValueError):
+        return None
+
+
+def parse_runs(items, root):
+    """label -> run tree: --runs LABEL=DIR ..., or <root>/<engine> per engine."""
+    if not items:
+        return {engine: os.path.join(root, engine) for engine in ENGINES}
+    runs = {}
+    for item in items:
+        label, sep, path = item.partition("=")
+        if not (sep and label and path):
+            sys.exit(f"--runs takes LABEL=DIR, got {item!r}")
+        if label in (ORIGINAL, RETRAINED) or ":" in label:
+            sys.exit(f"--runs label {label!r} is reserved")
+        runs[label] = path
+    return runs
+
+
+def parse_versus(items, labels):
+    """[(label, reference)] from --versus LABEL=REFERENCE ..., both --runs labels."""
+    pairs = []
+    for item in items or ():
+        label, sep, reference = item.partition("=")
+        if not sep or label not in labels or reference not in labels or label == reference:
+            sys.exit(f"--versus takes LABEL=REFERENCE, two different --runs labels "
+                     f"({', '.join(labels)}); got {item!r}")
+        pairs.append((label, reference))
+    return pairs
+
+
 def write_tsv(path, header, rows):
     with open(path, "w") as fh:
         fh.write("\t".join(header) + "\n")
@@ -654,6 +822,13 @@ def main(argv=None):
                          "(default: <root>/original_retrained)")
     ap.add_argument("--workers", type=int, default=4,
                     help="datasets and folds compared at once (default 4; each holds ~3 GB)")
+    ap.add_argument("--runs", nargs="+", default=None, metavar="LABEL=DIR",
+                    help="the runs to collate, by label, each a tree of <ASSAY>/<ENCID>/fold_N "
+                         "(default: <root>/<engine> for pytorch, tensorflow and jax). The first label "
+                         "is the headline's reference")
+    ap.add_argument("--versus", nargs="+", default=[], metavar="LABEL=REFERENCE",
+                    help="also compare run LABEL's test predictions and subsample DeepSHAP scores with "
+                         "run REFERENCE's (two --runs labels), dataset and fold for dataset and fold")
     args = ap.parse_args(argv)
     # Which scores files the profile head is read from (the cache files are
     # named by it), and the label the rows carry.
@@ -666,16 +841,31 @@ def main(argv=None):
     cache_dir = args.cache_dir or os.path.join(args.out_dir, ".contributions_cache")
     biosamples = load_biosamples(args.biosamples) if args.biosamples else {}
     rows = ids_rows(args.ids)
+    trees = parse_runs(args.runs, root)
+    labels = tuple(trees)
+    versus = parse_versus(args.versus, labels)
 
     results, timings, agree, inputs, contribs, jobs = [], [], [], [], [], []
+    epochs, responses = [], []
     for assay, encid, fold, tf_dir, deeplift_dirs in rows:
         biosample = biosamples.get(encid, encid)
-        runs = {e: os.path.join(root, e, assay, encid, f"fold_{fold}") for e in ENGINES}
+        runs = {e: os.path.join(tree, assay, encid, f"fold_{fold}") for e, tree in trees.items()}
         for engine, run in runs.items():
             results += metric_rows(os.path.join(run, "model/evaluation/chrombpnet_metrics.json"),
                                    "own", engine, assay, biosample, encid, fold)
             results += metric_rows(os.path.join(run, f"bias_model/evaluation/{encid}_bias_metrics.json"),
                                    "bias", engine, assay, biosample, encid, fold)
+            for model, candidates in EPOCH_LOGS.items():
+                found = next((read_epochs(p) for p in (os.path.join(run, c.format(encid=encid))
+                                                       for c in candidates) if os.path.isfile(p)), None)
+                if found:
+                    epochs.append((engine, assay, biosample, encid, fold, model) + found)
+            response = read_bias_response(os.path.join(
+                run, "model/evaluation/chrombpnet_nobias_max_bias_response.txt"))
+            if response:
+                call, mean_response, largest, values = response
+                responses.append((engine, assay, biosample, encid, fold, call, f"{mean_response:.4f}",
+                                  f"{largest:.4f}", "/".join(f"{v:g}" for v in values)))
             # Finished runs only: a failed or running one has a partial
             # timings.tsv, whose total would pass for a fast run.
             if os.path.isfile(os.path.join(run, "COMPLETED")):
@@ -723,7 +913,23 @@ def main(argv=None):
                         agree.append((engine, ORIGINAL, assay, biosample, encid, fold, n_e, n_o,
                                       n_matched, offset, f"{r:.6f}", f"{jsd:.6f}"))
                 del original
+            # --versus: one run against another, both finished.
+            for label, reference in versus:
+                paths = [os.path.join(runs[e], "model/evaluation/chrombpnet_predictions.h5")
+                         for e in (label, reference)]
+                if not all(os.path.isfile(os.path.join(runs[e], "COMPLETED")) for e in (label, reference)) \
+                        or not all(os.path.isfile(p) for p in paths):
+                    continue
+                mine, theirs = read_predictions(paths[0]), read_predictions(paths[1])
+                if mine is not None and theirs is not None:
+                    n_e, n_o, n_matched, offset, r, jsd = agreement(mine, theirs)
+                    agree.append((label, reference, assay, biosample, encid, fold, n_e, n_o,
+                                  n_matched, offset, f"{r:.6f}", f"{jsd:.6f}"))
+                del mine, theirs
 
+        if not args.no_contributions and versus:
+            jobs.append({"assay": assay, "biosample": biosample, "encid": encid, "fold": fold,
+                         "runs": runs, "versus": versus, "profile_tag": args.profile_tag})
         if not args.no_contributions:
             if any(d and os.path.isdir(d) for d in deeplift_dirs.values()):
                 jobs.append({"assay": assay, "biosample": biosample, "encid": encid, "fold": fold,
@@ -743,7 +949,8 @@ def main(argv=None):
         print(f"# contributions: {len(jobs)} datasets x folds, {args.workers} at a time "
               f"(cache: {cache_dir})", file=sys.stderr)
         with concurrent.futures.ProcessPoolExecutor(max_workers=max(1, args.workers)) as pool:
-            futures = {pool.submit(seeds_job if job.get("seeds") else contributions_job, job, cache_dir): job
+            futures = {pool.submit(seeds_job if job.get("seeds") else
+                                   versus_job if job.get("versus") else contributions_job, job, cache_dir): job
                        for job in jobs}
             for future in concurrent.futures.as_completed(futures):
                 job = futures[future]
@@ -755,9 +962,17 @@ def main(argv=None):
                     continue
                 for note in notes:
                     print(f"#   {note}", file=sys.stderr)
-                print(f"#   {job['encid']} fold {job['fold']}: {len(found)} "
-                      f"{'seeded-original ' if job.get('seeds') else ''}comparisons"
+                kind_of = "seeded-original " if job.get("seeds") else "run-vs-run " if job.get("versus") else ""
+                print(f"#   {job['encid']} fold {job['fold']}: {len(found)} {kind_of}comparisons"
                       f"{' (cached)' if cached else ''}", file=sys.stderr)
+                if job.get("versus"):
+                    for r in found:
+                        engine, reference, head, kind = r[:4]
+                        source = profile_label if head == "profile" else "pipeline"
+                        contribs.append((engine, reference, job["assay"], job["biosample"],
+                                         job["encid"], job["fold"], head, kind)
+                                        + tuple(fmt(x) for x in r[4:]) + (source,))
+                    continue
                 if job.get("seeds"):
                     for r in found:
                         engine, reference, head, kind = r[:4]
@@ -793,12 +1008,20 @@ def main(argv=None):
               ("assay", "biosample", "encid", "fold", "file", "engines", "identical", "sha256"), inputs)
     write_tsv(os.path.join(args.out_dir, "timings.tsv"),
               ("engine", "assay", "biosample", "encid", "fold", "step", "seconds", "gpu"), timings)
+    write_tsv(os.path.join(args.out_dir, "epochs.tsv"),
+              ("engine", "assay", "biosample", "encid", "fold", "model", "epochs", "best_epoch",
+               "selection"), sorted(epochs))
+    write_tsv(os.path.join(args.out_dir, "bias_response.tsv"),
+              ("engine", "assay", "biosample", "encid", "fold", "call", "mean", "max", "values"),
+              sorted(responses))
+    write_tsv(os.path.join(args.out_dir, "runs.tsv"), ("order", "engine", "tree"),
+              [(i, label, tree) for i, (label, tree) in enumerate(trees.items())])
 
-    headline(results, agree, contribs, inputs, timings)
+    headline(results, agree, contribs, inputs, timings, labels, versus)
     return 0
 
 
-def headline(results, agree, contribs, inputs, timings):
+def headline(results, agree, contribs, inputs, timings, labels=ENGINES, versus=()):
     err = sys.stderr
     own = {}
     for source, engine, assay, biosample, encid, fold, group, subset, key, value in results:
@@ -810,7 +1033,7 @@ def headline(results, agree, contribs, inputs, timings):
     agg = collections.defaultdict(list)
     for (engine, assay, biosample, encid, fold, key), value in own.items():
         agg[(engine, assay, biosample, key)].append(value)
-    order = {e: i for i, e in enumerate((ORIGINAL, RETRAINED) + ENGINES)}
+    order = {e: i for i, e in enumerate((ORIGINAL, RETRAINED) + tuple(labels))}
     for engine, assay, biosample in sorted({k[:3] for k in agg}, key=lambda k: (k[2], k[1], order.get(k[0], 9))):
         r = agg.get((engine, assay, biosample, "pearsonr"), [])
         j = agg.get((engine, assay, biosample, "median_jsd"), [])
@@ -818,7 +1041,7 @@ def headline(results, agree, contribs, inputs, timings):
               f"{mean(r) if r else float('nan'):>9.4f} {mean(j) if j else float('nan'):>9.4f}  {len(r)}",
               file=err)
 
-    for reference in ("pytorch", ORIGINAL):
+    for reference in (labels[0], ORIGINAL):
         delta = collections.defaultdict(list)
         for (engine, assay, biosample, encid, fold, key), value in own.items():
             ref = own.get((reference, assay, biosample, encid, fold, key))
@@ -836,11 +1059,12 @@ def headline(results, agree, contribs, inputs, timings):
     print(f"\n# agreement of each engine's test predictions with the {ORIGINAL} model's "
           f"(mean over datasets and folds)", file=err)
     by_engine = collections.defaultdict(list)
-    for engine, _ref, assay, biosample, encid, fold, n_e, n_o, n_matched, _offset, r, jsd in agree:
-        by_engine[engine].append((float(r), float(jsd), int(n_matched), int(n_e), int(n_o)))
+    for engine, ref, assay, biosample, encid, fold, n_e, n_o, n_matched, _offset, r, jsd in agree:
+        name = engine if ref == ORIGINAL else f"{engine} vs {ref}"
+        by_engine[name].append((float(r), float(jsd), int(n_matched), int(n_e), int(n_o)))
     if not by_engine:
         print("#   (no engine has predictions to compare yet)", file=err)
-    for engine in ENGINES + (RETRAINED,):
+    for engine in tuple(labels) + (RETRAINED,) + tuple(f"{a} vs {b}" for a, b in versus):
         vals = by_engine.get(engine)
         if vals:
             print(f"#   {engine:<18} counts r {mean([v[0] for v in vals]):.4f}   "
@@ -854,10 +1078,10 @@ def headline(results, agree, contribs, inputs, timings):
         print(f"#   {'engine':<31} {'head':<8} {'kind':<13} {'pearson r':>9} {'cosine':>9}  n", file=err)
         agg = collections.defaultdict(list)
         for row in contribs:
-            engine, _ref, assay, biosample, encid, fold, head, kind = row[:8]
+            engine, ref, assay, biosample, encid, fold, head, kind = row[:8]
             r_med, cos_med = float(row[11]), float(row[13])
-            agg[(engine, head, kind)].append((r_med, cos_med))
-        for engine in ENGINES:
+            agg[(engine if ref == ORIGINAL else f"{engine} vs {ref}", head, kind)].append((r_med, cos_med))
+        for engine in tuple(labels) + tuple(f"{a} vs {b}" for a, b in versus):
             for head in HEADS:
                 for kind in KINDS:
                     vals = agg.get((engine, head, kind))
@@ -900,7 +1124,7 @@ def headline(results, agree, contribs, inputs, timings):
     for engine, assay, biosample, encid, fold, step, seconds, gpu in timings:
         totals[(engine, encid, fold)] += seconds / 3600
         gpus[engine].add(gpu or "?")
-    for engine in ENGINES:
+    for engine in labels:
         hours = sorted(v for (e, _, _), v in totals.items() if e == engine)
         if hours:
             print(f"#   {engine:<11} {hours[len(hours) // 2]:6.1f} h  (n={len(hours)}; "

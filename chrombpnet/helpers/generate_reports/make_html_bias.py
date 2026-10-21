@@ -65,7 +65,13 @@ def qc_report(fpx,prefix):
 	
 
 	data = json.load(open(os.path.join(prefix,"evaluation/{}bias_metrics.json".format(fpx))))
-	df = report_shell.metrics_table(data, 'counts_metrics', 'counts_metrics')
+	# A profile-only bias model (--bias-profile-only) has no counts head:
+	# no counts metrics, and no counts contribution scores or motifs.
+	profile_only = not data.get("counts_metrics")
+	if profile_only:
+		counts_table = "<p>Profile-only bias model: it has no counts head, so there are no counts metrics.</p>"
+	else:
+		counts_table = report_shell.metrics_table(data, 'counts_metrics', 'counts_metrics').to_html()
 
 	df1 = report_shell.metrics_table(data, 'profile_metrics', 'profile_metrics')
 
@@ -115,21 +121,26 @@ def qc_report(fpx,prefix):
 	inserted - for examples look at <a href=\"https://github.com/kundajelab/chrombpnet/wiki/FAQ\">FAQ</a> )"
 
 	table_profile = open(os.path.join(prefix,"evaluation/modisco_profile/motifs.html")).read().replace("./","./modisco_profile/").replace("width=\"240\"","width=\"240\", class=\"cover\"").replace(">pos_patterns.pattern",">pos_").replace(">neg_patterns.pattern",">neg_").replace("modisco_cwm_fwd","cwm_fwd").replace("modisco_cwm_rev","cwm_rev").replace("num_seqlets","NumSeqs").replace("dataframe","new")
-	table_counts = open(os.path.join(prefix,"evaluation/modisco_counts/motifs.html")).read().replace("./","./modisco_counts/").replace("width=\"240\"","width=\"240\", class=\"cover\"").replace(">pos_patterns.pattern",">pos_").replace(">neg_patterns.pattern",">neg_").replace("modisco_cwm_fwd","cwm_fwd").replace("modisco_cwm_rev","cwm_rev").replace("num_seqlets","NumSeqs").replace("dataframe","new")
 
 	# q-values with MEME's tomtom, p-values with --tomtom-lite; the q-value
 	# wording is unchanged.
 	stat_profile = modisco_table.match_stat(table_profile)
-	stat_counts = modisco_table.match_stat(table_counts)
 	tf_text_profile = tf_text_profile.replace(
 		"qvals (qval0,qval1,qval2)", modisco_table.stat_description(stat_profile)).replace(
 		"The qvals should", "The {} should".format(modisco_table.stat_name(stat_profile)))
-	tf_text_counts = tf_text_counts.replace(
-		"The qvals should", "The {} should".format(modisco_table.stat_name(stat_counts)))
 
 	# Whole rows, however many columns they have; </tbody> is kept.
 	table_profile = modisco_table.drop_negative_patterns(table_profile)
-	table_counts = modisco_table.drop_negative_patterns(table_counts)
+
+	if profile_only:
+		tf_text_counts = "Profile-only bias model: it has no counts head, so there are no counts contribution scores or motifs."
+		table_counts = ""
+	else:
+		table_counts = open(os.path.join(prefix,"evaluation/modisco_counts/motifs.html")).read().replace("./","./modisco_counts/").replace("width=\"240\"","width=\"240\", class=\"cover\"").replace(">pos_patterns.pattern",">pos_").replace(">neg_patterns.pattern",">neg_").replace("modisco_cwm_fwd","cwm_fwd").replace("modisco_cwm_rev","cwm_rev").replace("num_seqlets","NumSeqs").replace("dataframe","new")
+		stat_counts = modisco_table.match_stat(table_counts)
+		tf_text_counts = tf_text_counts.replace(
+			"The qvals should", "The {} should".format(modisco_table.stat_name(stat_counts)))
+		table_counts = modisco_table.drop_negative_patterns(table_counts)
 
 	# 2. Combine them together using a long f-string
 
@@ -139,7 +150,7 @@ def qc_report(fpx,prefix):
 				<p>{bias_model_perf_text}</p>
 			</body>
 				<body>
-					{df.to_html()}
+					{counts_table}
 				</body>
 				</body>
 					{df1.to_html()}

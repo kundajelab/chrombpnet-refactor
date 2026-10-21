@@ -17,6 +17,7 @@ another step set.
 from __future__ import annotations
 
 import json
+import os
 import warnings
 
 import numpy as np
@@ -128,6 +129,12 @@ def check_bias_model_quality(layout, ignore=False):
     """
     metrics_path = layout.unprefixed("evaluation", "bias_metrics.json")
     bias_metrics = json.load(open(metrics_path))
+    if "peaks" not in bias_metrics.get("counts_metrics", {}):
+        # A profile-only bias model predicts no counts, so there is no peak
+        # count correlation to check; it never enters the counts head.
+        print("Profile-only bias model: no counts head, so the peak count "
+              "correlation check does not apply")
+        return
     pearsonr = bias_metrics["counts_metrics"]["peaks"]["pearsonr"]
     print("Bias model pearsonr performance in peaks is: {}".format(
         str(np.round(pearsonr, 2))))
@@ -146,6 +153,27 @@ def check_bias_model_quality(layout, ignore=False):
           "!! scores as descriptive, not comparable with runs that passed.\n"
           f"{banner}\n", flush=True)
     warnings.warn(message, RuntimeWarning, stacklevel=2)
+
+
+def has_counts_head(model_path):
+    """False for a profile-only bias checkpoint (``bias pipeline
+    --bias-profile-only``, PyTorch only); every other model predicts counts."""
+    from chrombpnet import engines
+
+    # Only a PyTorch checkpoint can say it has none. A path that is not one
+    # yet keeps the two-head default; the stage that loads it reports it.
+    if engines.infer_from_path(model_path) != "pytorch" or not os.path.isfile(model_path):
+        return True
+    from chrombpnet.engines.pytorch.model import ModelConfig, _load_payload
+
+    payload = _load_payload(model_path, "cpu")
+    return ModelConfig.from_mapping(payload["config"]).counts_head
+
+
+def contribution_heads(model_path):
+    """The heads whose contribution scores a model has: both, or just the
+    profile for a profile-only bias model."""
+    return ["counts", "profile"] if has_counts_head(model_path) else ["profile"]
 
 
 def run_predictions(options, layout, output_prefix, model_path, peaks, nonpeaks):
