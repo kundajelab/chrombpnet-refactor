@@ -24,6 +24,16 @@ and marginal footprints on the same nonpeaks.
   three engines -- the same pipeline, three frameworks -- the mean counts r
   spans 0.7649-0.7666 and the mean 1 - JSD 0.5368-0.5371. A difference
   smaller than that is not evidence either way.
+- **One input differs: `new`'s ChromBPNet training negatives.** The old runs'
+  code (352b1d7) drew them from the outlier-filtered nonpeaks with a fixed
+  `random_state=1`; since 24dee61 the draw takes `--seed` (1234), so `new`
+  draws another subset of the same pool (`inputs.tsv` flags
+  `filtered.nonpeaks.bed` for every row; in the smoke test 94,333 of
+  152,052 lines are shared, the test-chromosome negatives among them).
+  Everything else old and new draw uses 1234 in both, and their bigwigs,
+  filtered peaks and bias-model regions are identical. `--seed 1` would
+  match the negatives but move every other draw, so the runs keep 1234.
+  The engines' spread above was measured on identical negatives.
 - **Bias-free counts.** With a profile-only bias the accessibility model's
   counts head explains all the counts, including what the bias model's used
   to. So `new`'s `chrombpnet_nobias` counts are not bias-corrected;
@@ -44,7 +54,8 @@ On Sherlock, with the wrappers in
 `PYTHONPATH` to this checkout and run in the Ubuntu container):
 
 ```bash
-./submit_all.sh sherlock --container   # new (20), student-lofo (20), student-final (4, after lofo)
+./submit_all.sh sherlock --container   # new (20), student-lofo (20), student-final (4, after lofo),
+                                       # student-final scored per fold (20, after final)
 sbatch run_summarize.sh                # after all of them finish
 ```
 

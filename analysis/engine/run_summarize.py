@@ -1021,7 +1021,7 @@ def main(argv=None):
     return 0
 
 
-def headline(results, agree, contribs, inputs, timings, labels=ENGINES, versus=()):
+def headline(results, agree, contribs, inputs, timings, run_labels=ENGINES, versus=()):
     err = sys.stderr
     own = {}
     for source, engine, assay, biosample, encid, fold, group, subset, key, value in results:
@@ -1033,7 +1033,7 @@ def headline(results, agree, contribs, inputs, timings, labels=ENGINES, versus=(
     agg = collections.defaultdict(list)
     for (engine, assay, biosample, encid, fold, key), value in own.items():
         agg[(engine, assay, biosample, key)].append(value)
-    order = {e: i for i, e in enumerate((ORIGINAL, RETRAINED) + tuple(labels))}
+    order = {e: i for i, e in enumerate((ORIGINAL, RETRAINED) + tuple(run_labels))}
     for engine, assay, biosample in sorted({k[:3] for k in agg}, key=lambda k: (k[2], k[1], order.get(k[0], 9))):
         r = agg.get((engine, assay, biosample, "pearsonr"), [])
         j = agg.get((engine, assay, biosample, "median_jsd"), [])
@@ -1041,7 +1041,7 @@ def headline(results, agree, contribs, inputs, timings, labels=ENGINES, versus=(
               f"{mean(r) if r else float('nan'):>9.4f} {mean(j) if j else float('nan'):>9.4f}  {len(r)}",
               file=err)
 
-    for reference in (labels[0], ORIGINAL):
+    for reference in (run_labels[0], ORIGINAL):
         delta = collections.defaultdict(list)
         for (engine, assay, biosample, encid, fold, key), value in own.items():
             ref = own.get((reference, assay, biosample, encid, fold, key))
@@ -1064,7 +1064,7 @@ def headline(results, agree, contribs, inputs, timings, labels=ENGINES, versus=(
         by_engine[name].append((float(r), float(jsd), int(n_matched), int(n_e), int(n_o)))
     if not by_engine:
         print("#   (no engine has predictions to compare yet)", file=err)
-    for engine in tuple(labels) + (RETRAINED,) + tuple(f"{a} vs {b}" for a, b in versus):
+    for engine in tuple(run_labels) + (RETRAINED,) + tuple(f"{a} vs {b}" for a, b in versus):
         vals = by_engine.get(engine)
         if vals:
             print(f"#   {engine:<18} counts r {mean([v[0] for v in vals]):.4f}   "
@@ -1081,7 +1081,7 @@ def headline(results, agree, contribs, inputs, timings, labels=ENGINES, versus=(
             engine, ref, assay, biosample, encid, fold, head, kind = row[:8]
             r_med, cos_med = float(row[11]), float(row[13])
             agg[(engine if ref == ORIGINAL else f"{engine} vs {ref}", head, kind)].append((r_med, cos_med))
-        for engine in tuple(labels) + tuple(f"{a} vs {b}" for a, b in versus):
+        for engine in tuple(run_labels) + tuple(f"{a} vs {b}" for a, b in versus):
             for head in HEADS:
                 for kind in KINDS:
                     vals = agg.get((engine, head, kind))
@@ -1124,7 +1124,7 @@ def headline(results, agree, contribs, inputs, timings, labels=ENGINES, versus=(
     for engine, assay, biosample, encid, fold, step, seconds, gpu in timings:
         totals[(engine, encid, fold)] += seconds / 3600
         gpus[engine].add(gpu or "?")
-    for engine in labels:
+    for engine in run_labels:
         hours = sorted(v for (e, _, _), v in totals.items() if e == engine)
         if hours:
             print(f"#   {engine:<11} {hours[len(hours) // 2]:6.1f} h  (n={len(hours)}; "
