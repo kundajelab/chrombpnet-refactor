@@ -22,8 +22,17 @@ and marginal footprints on the same nonpeaks.
 - **Noise.** `old` and `new` also differ in PyTorch (2.5.1 then, 2.14 now),
   GPU types and the machines' load. For scale: across the engines sweep's
   three engines -- the same pipeline, three frameworks -- the mean counts r
-  spans 0.7649-0.7666 and the mean 1 - JSD 0.5368-0.5371. A difference
-  smaller than that is not evidence either way.
+  spans 0.7649-0.7666 and the mean 1 - JSD 0.4436-0.4440 in base 2
+  (0.5368-0.5371 as that sweep reported it, in base e). A difference smaller
+  than that is not evidence either way.
+- **JSD units.** The old runs' metrics (written at 352b1d7), the original's
+  and the retrained original's report median JSD in base e; the current code
+  reports base 2 (eff8b48). Base-2 JSD = base-e JSD / sqrt(ln 2), medians
+  included, so `run_summarize.py --jsd-base-e old original
+  original_retrained` puts every run on base 2. Without it, 1 - JSD looks
+  ~0.09 worse for `new` and the students than for `old`. The two originals'
+  DNase JSD stays off even then: they predict chrombpnet 1.x's 0/+1 cut
+  convention, every other run `both-half`, a smoother target.
 - **One input differs: `new`'s ChromBPNet training negatives.** The old runs'
   code (352b1d7) drew them from the outlier-filtered nonpeaks with a fixed
   `random_state=1`; since 24dee61 the draw takes `--seed` (1234), so `new`
@@ -95,7 +104,8 @@ python ../engine/run_summarize.py --root <engines root> --ids <ids.tsv> \
     --biosamples ../engine/biosamples.tsv --out-dir <out> --profile-stopgrad off \
     --runs old=<engines root>/pytorch new=<root>/new \
            student-lofo=<root>/distill/lofo student-final=<root>/distill/final \
-    --versus student-lofo=old student-final=old
+    --versus student-lofo=old student-final=old \
+    --jsd-base-e old original original_retrained
 python ../engine/plot_summarize.py --dir <out> --reference old --noun model
 python plot_expand.py --dir <out>
 ```

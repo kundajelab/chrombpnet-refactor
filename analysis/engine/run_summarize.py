@@ -22,7 +22,13 @@ REFERENCE in the reference column.
 Eight tables are written to --out-dir:
 
 results.tsv
-    Test-set metrics, one row per (source, engine, dataset, fold, metric):
+    Test-set metrics, one row per (source, engine, dataset, fold, metric),
+    as the metrics JSONs give them, except that --jsd-base-e LABEL ... puts
+    those runs' median_jsd from base e (chrombpnet 1.x, and this package
+    before eff8b48) into base 2, the current runs' unit (x 1/sqrt(ln 2),
+    exact for medians too). Mixing the two without it understates the
+    current runs' 1 - JSD by ~0.09. median_norm_jsd does not depend on the
+    base, and agreement.tsv computes its own JSDs, on one scale. Sources:
       own       <engine>/<ASSAY>/<ENCID>/fold_N/model/evaluation/
                 chrombpnet_metrics.json -- the engine's ChromBPNet model on
                 its own test set. Engine `original` is the old TensorFlow
@@ -141,6 +147,7 @@ import concurrent.futures
 import gzip
 import hashlib
 import json
+import math
 import os
 import sys
 
@@ -406,7 +413,16 @@ def ids_rows(path):
     return rows
 
 
-def metric_rows(path, source, engine, assay, biosample, encid, fold):
+#: base-e Jensen-Shannon distance -> base 2: jensenshannon(p, q, base) is
+#: sqrt(JS divergence / ln base), so the two differ by a constant factor, and
+#: so do their medians.
+BASE_E_TO_2 = 1 / math.sqrt(math.log(2))
+
+
+def metric_rows(path, source, engine, assay, biosample, encid, fold, jsd_base_e=False):
+    """One row per number in a metrics JSON. With ``jsd_base_e`` the file's
+    median_jsd is in base e (chrombpnet 1.x, and this package before eff8b48)
+    and is written in base 2, as current runs report it."""
     try:
         with open(path) as fh:
             m = json.load(fh)
@@ -417,6 +433,8 @@ def metric_rows(path, source, engine, assay, biosample, encid, fold):
         for subset, vals in (m.get(group) or {}).items():
             for key, value in (vals or {}).items():
                 if isinstance(value, (int, float)):
+                    if jsd_base_e and key == "median_jsd":
+                        value = value * BASE_E_TO_2
                     out.append((source, engine, assay, biosample, encid, fold,
                                 group.split("_")[0], subset, key, f"{value:.6f}"))
     return out
@@ -826,6 +844,11 @@ def main(argv=None):
                     help="the runs to collate, by label, each a tree of <ASSAY>/<ENCID>/fold_N "
                          "(default: <root>/<engine> for pytorch, tensorflow and jax). The first label "
                          "is the headline's reference")
+    ap.add_argument("--jsd-base-e", nargs="+", default=[], metavar="LABEL",
+                    help="runs whose metrics JSONs report median_jsd in base e (chrombpnet 1.x -- "
+                         f"{ORIGINAL}, {RETRAINED} -- and this package before eff8b48, e.g. the engines "
+                         "sweep): their median_jsd is written in base 2, as current runs report it, "
+                         "so all runs share one scale. Default: none, every file as written")
     ap.add_argument("--versus", nargs="+", default=[], metavar="LABEL=REFERENCE",
                     help="also compare run LABEL's test predictions and subsample DeepSHAP scores with "
                          "run REFERENCE's (two --runs labels), dataset and fold for dataset and fold")
@@ -844,6 +867,11 @@ def main(argv=None):
     trees = parse_runs(args.runs, root)
     labels = tuple(trees)
     versus = parse_versus(args.versus, labels)
+    base_e = set(args.jsd_base_e)
+    unknown = base_e - set(labels) - {ORIGINAL, RETRAINED}
+    if unknown:
+        sys.exit(f"--jsd-base-e names no run: {', '.join(sorted(unknown))} "
+                 f"(runs: {', '.join(labels + (ORIGINAL, RETRAINED))})")
 
     results, timings, agree, inputs, contribs, jobs = [], [], [], [], [], []
     epochs, responses = [], []
@@ -852,9 +880,11 @@ def main(argv=None):
         runs = {e: os.path.join(tree, assay, encid, f"fold_{fold}") for e, tree in trees.items()}
         for engine, run in runs.items():
             results += metric_rows(os.path.join(run, "model/evaluation/chrombpnet_metrics.json"),
-                                   "own", engine, assay, biosample, encid, fold)
+                                   "own", engine, assay, biosample, encid, fold,
+                                   jsd_base_e=engine in base_e)
             results += metric_rows(os.path.join(run, f"bias_model/evaluation/{encid}_bias_metrics.json"),
-                                   "bias", engine, assay, biosample, encid, fold)
+                                   "bias", engine, assay, biosample, encid, fold,
+                                   jsd_base_e=engine in base_e)
             for model, candidates in EPOCH_LOGS.items():
                 found = next((read_epochs(p) for p in (os.path.join(run, c.format(encid=encid))
                                                        for c in candidates) if os.path.isfile(p)), None)
@@ -874,14 +904,16 @@ def main(argv=None):
                             for step, seconds in steps]
         retrained = os.path.join(retrained_root, assay, encid, f"fold_{fold}")
         results += metric_rows(os.path.join(retrained, "model/evaluation/chrombpnet_metrics.json"),
-                               "own", RETRAINED, assay, biosample, encid, fold)
+                               "own", RETRAINED, assay, biosample, encid, fold,
+                               jsd_base_e=RETRAINED in base_e)
         if tf_dir:
             path = first_file(tf_dir, TF_METRICS)
             if path is None:
                 print(f"# {ORIGINAL}: no chrombpnet_metrics.json for {assay} {encid} fold {fold} "
                       f"under {tf_dir}", file=sys.stderr)
             else:
-                results += metric_rows(path, "own", ORIGINAL, assay, biosample, encid, fold)
+                results += metric_rows(path, "own", ORIGINAL, assay, biosample, encid, fold,
+                                       jsd_base_e=ORIGINAL in base_e)
 
         files = ["model/auxiliary/filtered.peaks.bed", "model/auxiliary/filtered.nonpeaks.bed"]
         if args.check_bigwigs:
