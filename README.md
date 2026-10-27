@@ -322,6 +322,9 @@ Four options control them, all off by default:
   numpy arrays.
 - **BigWigs are written as fixed-step sections**: the same values, faster to
   write and smaller, so their bytes differ from the original's.
+- **HDF5 outputs** are gzip level 9 behind the byte-shuffle filter (about
+  1.2x smaller than the original's level 4), with large datasets' chunks
+  compressed on a thread pool.
 - **Start-up and shutdown**: heavy imports are started in the background, and
   the CLI exits without interpreter teardown once every output is verified
   and synced to disk.
@@ -335,8 +338,8 @@ Four options control them, all off by default:
   DeepLIFT needs autograd and hooks a fused kernel cannot provide.
 
 The memory-mapped reads, the lookup-table one-hot, the vectorized metrics,
-the worker-process writer, the background imports, the fast exit and the
-Triton forward are adapted from the
+the worker-process writer, the background imports, the fast exit, the
+threaded HDF5 compression and the Triton forward are adapted from the
 [ChromBPNet optimization kit](https://github.com/anthropics/uplifting-biomolecular-modeling/tree/main/chrombpnet)
 (Apache-2.0); the rest were written here. The CHANGELOG records each one.
 

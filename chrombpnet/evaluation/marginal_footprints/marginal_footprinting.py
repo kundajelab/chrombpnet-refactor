@@ -11,7 +11,7 @@ import json
 from chrombpnet.training.utils.data_utils import get_seq as get_seq
 import chrombpnet.training.utils.one_hot as one_hot
 from chrombpnet.engines import load_model_wrapper
-from chrombpnet.compression import h5_filters
+from chrombpnet.compression import create_dataset
 from chrombpnet.predictions import softmax
 from chrombpnet.regions import NARROWPEAK_SCHEMA
 
@@ -41,7 +41,7 @@ def save_footprints_h5(path, footprints_at_motifs):
 
 			for name, values in (("i0", footprint), ("i1", counts)):
 				values = np.asarray(values)
-				dataset = group.create_dataset(name, data=values, **h5_filters(values))
+				dataset = create_dataset(group, name, values)
 				dataset.attrs["CLASS"] = np.bytes_("ARRAY")
 				dataset.attrs["FLAVOR"] = np.bytes_("numpy")
 				dataset.attrs["TITLE"] = h5py.Empty("S1")

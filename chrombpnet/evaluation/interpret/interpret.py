@@ -18,7 +18,7 @@ import pandas as pd
 import pyfaidx
 
 from chrombpnet import engines
-from chrombpnet.compression import h5_filters
+from chrombpnet.compression import create_dataset
 from chrombpnet.evaluation.interpret import input_utils
 
 
@@ -109,7 +109,7 @@ def _save_scores(path, values):
         for group_name, datasets in values.items():
             group = handle.create_group(group_name)
             for name, data in datasets.items():
-                group.create_dataset(name, data=data, **h5_filters(data))
+                create_dataset(group, name, data)
 
 
 def interpret(

@@ -1,5 +1,32 @@
 # Changelog
 
+## HDF5 outputs compressed on threads
+
+- **Same files, written faster.** Since faee27f every HDF5 output is gzip
+  level 9 behind the byte-shuffle filter, and HDF5 ran that filter pipeline
+  on one thread: one 20,000-region `*_predictions.h5` took 33.4 s to write,
+  and `pred_bw`, which writes one per model, became 46 s slower on an L40S
+  (77 s -> 123 s) and 43 s on an H200 (66 s -> 109 s).
+  `compression.create_dataset` now filters the chunks of each numeric
+  dataset of at least 8 MiB on a thread pool (at most 8 threads, and never
+  more than the CPUs the process may run on; zlib releases the GIL) and
+  writes them with `write_direct_chunk`: 4.7 s for that file (7.1x), at the
+  same 75.9 MB.
+- **What a reader sees is unchanged:** h5py's own chunk shape, fill value
+  and filters (shuffle, gzip 9), and the same values. Every chunk holds the
+  bytes HDF5's own pipeline would compress (`tests/test_compression.py`
+  checks each one after decompression, edge chunks included). Only where the
+  chunks sit in the file can differ, which the regression harness's HDF5
+  digest does not cover: it hashes content, chunking and compression.
+- Used for `*_predictions.h5`, `*_scores.h5`, `*_footprints.h5` and the
+  rewrite of TF-MoDISco's results. Strings, scalars and small datasets keep
+  h5py's own path.
+- Adapted from the optimization kit's `h5_writer`, which deflates the
+  `profs` chunks of stock's file on a thread pool at stock's gzip level 4
+  without shuffle (and emulates HDF5's chunk-cache order to keep the file
+  byte-identical). Here the filters are this package's, every large numeric
+  dataset goes through it, and the chunks are written in index order.
+
 ## TF-MoDISco no longer leaves PyTorch on every core; HDF5 outputs at gzip level 9
 
 - **Bug: TF-MoDISco left PyTorch on every core.** Its first numba

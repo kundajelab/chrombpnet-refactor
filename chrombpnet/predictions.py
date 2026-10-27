@@ -12,7 +12,7 @@ from __future__ import annotations
 import h5py
 import numpy as np
 
-from chrombpnet.compression import h5_filters
+from chrombpnet.compression import create_dataset
 
 
 def softmax(x, temp=1):
@@ -63,17 +63,11 @@ def write_predictions_h5py(output_prefix, profile, logcts, coords,
 
         variable_length_string = h5py.special_dtype(vlen=str)
         chrom_array = np.array(chroms, dtype=variable_length_string)
-        coord_group.create_dataset(
-            "coords_chrom", data=chrom_array, dtype=variable_length_string,
-            **h5_filters(chrom_array))
-        coord_group.create_dataset(
-            "coords_center", data=centers, dtype=int, **h5_filters(centers, int))
+        create_dataset(coord_group, "coords_chrom", chrom_array, variable_length_string)
+        create_dataset(coord_group, "coords_center", centers, int)
         if include_peak_flag:
             peaks = [int(coords[i][3]) for i in range(num_examples)]
-            coord_group.create_dataset(
-                "coords_peak", data=peaks, dtype=int, **h5_filters(peaks, int))
+            create_dataset(coord_group, "coords_peak", peaks, int)
 
-        pred_group.create_dataset(
-            "profs", data=profile, dtype=float, **h5_filters(profile, float))
-        pred_group.create_dataset(
-            "logcounts", data=logcts, dtype=float, **h5_filters(logcts, float))
+        create_dataset(pred_group, "profs", profile, float)
+        create_dataset(pred_group, "logcounts", logcts, float)
