@@ -21,12 +21,15 @@ five-fold mean's hypothetical scores (shap/seq), read by (chromosome,
 summit); without the mean columns, the mean of the five per-fold files.
 Compared against it:
 
+  original (1 fold)   the original fold-k model's stored scores, against the
+                      five-fold mean -- of which it is a fifth, so this
+                      flatters it -- and against the mean of the other four
   student-final       the dataset's final student (trained on every chromosome)
   student-lofo        LOFO student k
-  old, new            fold k's PyTorch models
-  original (1 fold)   the original fold-k model's stored scores, against the
-                      mean of the other four folds: it is a fifth of the
-                      five-fold mean, which would flatter it
+  chrombpnet-refactor (default), chrombpnet-refactor (updated)
+                      fold k's PyTorch models: the engines sweep's default
+                      runs (the students' teachers), and the profile-only
+                      bias + pearsonr-jsd selection runs
   original (1 fold, new seed)
                       the same model rescored by run_deepshap_seeds.py with
                       seed 1, against the other four: other shuffled
@@ -68,6 +71,8 @@ HEADS = ("counts", "profile")
 KINDS = ("hypothetical", "projected")
 SUBSAMPLE = "model/auxiliary/interpret_subsample/chrombpnet_nobias"
 ONE_FOLD = "original (1 fold)"
+DEFAULT = "chrombpnet-refactor (default)"
+UPDATED = "chrombpnet-refactor (updated)"
 NEW_SEED = "original (1 fold, new seed)"
 REFERENCE = "original (5-fold mean)"
 REFERENCE_LOO = "original (other 4 folds' mean)"
@@ -83,8 +88,8 @@ def run_scores(run, head):
 
 def models(engines_root, root, assay, encid, fold):
     return {
-        "old": f"{engines_root}/pytorch/{assay}/{encid}/fold_{fold}",
-        "new": f"{root}/new/{assay}/{encid}/fold_{fold}",
+        DEFAULT: f"{engines_root}/pytorch/{assay}/{encid}/fold_{fold}",
+        UPDATED: f"{root}/new/{assay}/{encid}/fold_{fold}",
         "student-lofo": f"{root}/distill/lofo/{assay}/{encid}/fold_{fold}",
         "student-final": f"{root}/distill/final/{assay}/{encid}/fold_{fold}",
     }
@@ -159,7 +164,7 @@ def dataset_job(job):
     folds = job["folds"]                       # fold -> {head: original scores dir}
     mean_dirs = job.get("mean_dirs") or {}     # head -> stored five-fold mean dir
     notes, rows = [], []
-    regions = {k: rs.region_keys(run_scores(models(job["engines_root"], job["root"], assay, encid, k)["old"],
+    regions = {k: rs.region_keys(run_scores(models(job["engines_root"], job["root"], assay, encid, k)[DEFAULT],
                                             "counts")[1])[:job.get("max_regions")] for k in folds}
     union = sorted(set().union(*map(set, regions.values())))
     upos = {key: i for i, key in enumerate(union)}
@@ -203,6 +208,11 @@ def dataset_job(job):
                                                 raw_u[at][keep_loo])
                 for kind, values in summarize(metrics).items():
                     rows.append((k, head, kind, ONE_FOLD, REFERENCE_LOO, int(keep_loo.sum()), n_cmp, n_mis) + values)
+                # The same fold against the five-fold mean it is part of.
+                both = keep_loo & keep_ref
+                metrics, n_cmp, n_mis = compare(own_hyp[both], raw_u[at][both], reference[both], raw_ref[both])
+                for kind, values in summarize(metrics).items():
+                    rows.append((k, head, kind, ONE_FOLD, REFERENCE, int(both.sum()), n_cmp, n_mis) + values)
                 if stored is not None:
                     # The stored mean against the folds' own mean: ~1 if they agree.
                     both = keep_ref & complete[at]
@@ -249,15 +259,22 @@ def plot(out_dir, table, metric):
 
     column, metric_label = ps.CONTRIBUTION_METRICS[metric]
     frame = pd.DataFrame(table)
-    runs = ["old", "new", "student-lofo", "student-final"]
-    bars = [ONE_FOLD, NEW_SEED] + runs
-    styles = {ONE_FOLD: ps.RETRAINED_BAR, NEW_SEED: ps.NEW_SEED_BAR}
-    styles.update({run: dict(color=colour, linewidth=0) for run, colour in zip(runs, ps.SLOTS)})
-    frame = frame[frame["model"].isin(bars)]
+    runs = [DEFAULT, UPDATED, "student-lofo", "student-final"]
+    # A bar is a (model, reference) pair: one original fold appears twice.
+    bars = [(ONE_FOLD, REFERENCE), (ONE_FOLD, REFERENCE_LOO), (NEW_SEED, REFERENCE_LOO)] + \
+        [(run, REFERENCE) for run in runs]
+    names = {(ONE_FOLD, REFERENCE): f"{ONE_FOLD} vs 5-fold mean",
+             (ONE_FOLD, REFERENCE_LOO): f"{ONE_FOLD} vs other 4",
+             (NEW_SEED, REFERENCE_LOO): f"{NEW_SEED} vs other 4"}
+    styles = {(ONE_FOLD, REFERENCE): dict(facecolor=ps.SURFACE, edgecolor=ps.INK, linewidth=0.8, hatch="////"),
+              (ONE_FOLD, REFERENCE_LOO): ps.RETRAINED_BAR, (NEW_SEED, REFERENCE_LOO): ps.NEW_SEED_BAR}
+    styles.update({(run, REFERENCE): dict(color=colour, linewidth=0) for run, colour in zip(runs, ps.SLOTS)})
+    frame = frame.assign(bar=list(zip(frame["model"], frame["reference"])))
+    frame = frame[frame["bar"].isin(bars)]
     keys = {(r.biosample, r.encid, r.assay, int(r.fold)) for r in frame.itertuples()}
     geometry = ps.layout(keys)
     positions = geometry[0]
-    step = 0.15
+    step = 0.13
     offsets = {bar: (i - (len(bars) - 1) / 2) * step for i, bar in enumerate(bars)}
     low = min(0.0, float(frame[column].min()) - 0.05)
     fig, axes = ps.figure(plt, len(ps.CONTRIBUTION_PANELS), len(geometry[1]))
@@ -266,12 +283,12 @@ def plot(out_dir, table, metric):
                       np.arange(0, 1.01, 0.25) if low == 0 else None, index == len(axes) - 1)
         sub = frame[(frame["head"] == head) & (frame["kind"] == kind)]
         for bar in bars:
-            rows = sub[sub["model"] == bar]
+            rows = sub[sub["bar"] == bar]
             xs = [positions[(r.biosample, r.encid, int(r.fold))] + offsets[bar] for r in rows.itertuples()]
             ax.bar(xs, rows[column].astype(float), width=step - 0.02, zorder=3, **styles[bar])
-    means = frame.groupby("model")[column].mean()
+    means = frame.groupby("bar")[column].mean()
     handles = [plt.Rectangle((0, 0), 1, 1, **styles[b]) for b in bars if b in means]
-    names = [f"{b} (mean {means[b]:.3f})" for b in bars if b in means]
+    names = [f"{names.get(b, b[0])} (mean {means[b]:.3f})" for b in bars if b in means]
     out = os.path.join(out_dir, f"summary_contributions_original_mean_{metric}")
     ps.finish(plt, fig, out,
               "DeepSHAP contribution scores: each model vs the original's five-fold mean",
@@ -280,9 +297,10 @@ def plot(out_dir, table, metric):
               f"legend: mean over datasets and folds",
               "hypothetical: the 4 x 2114 hypothetical scores, flattened. projected: the 2114 per-base scores of "
               "the observed base. Each over the whole input window.\n"
-              f"hollow bar: {ONE_FOLD}, the original's fold-k model's stored scores vs the mean of the other four "
-              "folds (the five-fold mean includes it). grey bar: the same model rescored with another seed, vs the "
-              "other four:\nother shuffled references than the stored scores, as every coloured bar's. "
+              f"hatched bar: {ONE_FOLD}, the original's fold-k model's stored scores vs the five-fold mean, which "
+              "includes it. hollow bar: the same vs the mean of the other four folds. grey bar: the same model "
+              "rescored with another seed,\nvs the other four: other shuffled references than the stored scores, as "
+              "every coloured bar's. "
               "student-final trained on every chromosome; four of student-lofo's five teachers trained on fold k's "
               "test chromosomes.",
               handles, names)
@@ -356,7 +374,10 @@ def main(argv=None):
     os.makedirs(args.out_dir, exist_ok=True)
     columns = ["assay", "biosample", "encid", "fold", "head", "kind", "model", "reference", "n_regions",
                "n_compared", "n_seq_mismatch", "pearsonr_median", "pearsonr_mean", "cosine_median", "cosine_mean"]
-    table.sort(key=lambda r: (r["encid"], r["fold"], r["head"], r["kind"], r["model"]))
+    order = {m: i for i, m in enumerate([ONE_FOLD, NEW_SEED, FROM_FOLDS, DEFAULT, UPDATED,
+                                         "student-lofo", "student-final"])}
+    table.sort(key=lambda r: (r["encid"], r["fold"], r["head"], r["kind"], order.get(r["model"], 99),
+                              r["reference"] != REFERENCE))
     rs.write_tsv(os.path.join(args.out_dir, "original_mean.tsv"), columns,
                  [[rs.fmt(r[c]) for c in columns] for r in table])
     for metric in ("pearson", "cosine"):

@@ -96,6 +96,12 @@ RETRAINED = "original_retrained"   # run_original_retrain.py
 DISPLAY = {RETRAINED: "original\n(newly trained)",
            f"{RETRAINED} vs {ORIGINAL}": f"original (newly trained)\nvs {ORIGINAL}"}
 RETRAINED_LABEL = "original (newly trained)"
+
+
+def display(name):
+    """A panel's name as drawn: DISPLAY's, else a run name with a
+    parenthesized part, e.g. "chrombpnet-refactor (default)", on two lines."""
+    return DISPLAY.get(name) or name.replace(" (", "\n(", 1)
 RETRAINED_BAR = dict(facecolor=SURFACE, edgecolor=INK, linewidth=0.8)
 #: run_deepshap_seeds.py's runs on the model whose scores are stored, against them.
 NEW_SEED = "new_seed"
@@ -298,16 +304,25 @@ def finish(plt, fig, out, title, subtitle, footnote, handles, names):
 
     fig.suptitle(title, fontsize=11, color=INK, x=0.012, ha="left", va="top", y=up(0.10))
     fig.text(0.012, up(0.36), subtitle, fontsize=8, color=INK_MUTED, ha="left", va="top")
-    fig.legend(handles, names, loc="upper left", bbox_to_anchor=(0.012, up(0.52)), frameon=False,
-               fontsize=8, ncol=len(names), labelcolor=INK, handlelength=1.1, handleheight=1.1,
-               columnspacing=1.4)
+    def legend(columns):
+        return fig.legend(handles, names, loc="upper left", bbox_to_anchor=(0.012, up(0.52)), frameon=False,
+                          fontsize=8, ncol=max(columns, 1), labelcolor=INK, handlelength=1.1,
+                          handleheight=1.1, columnspacing=1.4)
+
+    # One row, unless it is wider than the figure: then two, and the panels
+    # start lower by a row.
+    drawn, rows = legend(len(names)), 1
+    if names and drawn.get_window_extent(fig.canvas.get_renderer()).width > 0.97 * fig.bbox.width:
+        drawn.remove()
+        drawn, rows = legend(-(-len(names) // 2)), 2
+    top = up(0.85 + 0.2 * (rows - 1))
     if footnote:
         fig.text(0.012, 0.08 / height, footnote, fontsize=7.5, color=INK_MUTED, ha="left", va="bottom")
     # Below the last axis: fold ticks and the two grouping rows (~0.9 in),
     # then the footnote when there is one, 0.16 in a line.
     bottom = (1.05 + (0.16 * (footnote.count("\n") + 1) if footnote else 0.0)) / height
-    fig.tight_layout(rect=(0.0, bottom, 1.0, up(0.85)))
-    fig.subplots_adjust(bottom=bottom, top=up(0.85))
+    fig.tight_layout(rect=(0.0, bottom, 1.0, top))
+    fig.subplots_adjust(bottom=bottom, top=top)
     for suffix in (".png", ".pdf"):
         fig.savefig(out + suffix, dpi=200, facecolor=SURFACE)
     plt.close(fig)
@@ -341,7 +356,7 @@ def plot_scores(plt, results, args):
     geometry = layout({k for p in panels for k in cells[p]})
     fig, axes = figure(plt, len(panels), len(geometry[1]))
     for index, (ax, panel) in enumerate(zip(axes, panels)):
-        style_axes(ax, DISPLAY.get(panel, panel), geometry, (0, 1), np.arange(0, 1.01, 0.25),
+        style_axes(ax, display(panel), geometry, (0, 1), np.arange(0, 1.01, 0.25),
                    index == len(panels) - 1)
         draw_measures(ax, cells[panel], geometry, SCORE_MEASURES,
                       reference=reference if panel != reference_run else None)
@@ -382,7 +397,7 @@ def plot_agreement(plt, agreement, args):
     geometry = layout({k for p in panels for k in cells[p]})
     fig, axes = figure(plt, len(panels), len(geometry[1]))
     for index, (ax, panel) in enumerate(zip(axes, panels)):
-        style_axes(ax, DISPLAY.get(panel, panel), geometry, (0, 1), np.arange(0, 1.01, 0.25),
+        style_axes(ax, display(panel), geometry, (0, 1), np.arange(0, 1.01, 0.25),
                    index == len(panels) - 1)
         draw_measures(ax, cells[panel], geometry, AGREEMENT_MEASURES, decimals=3)
     handles = [plt.Rectangle((0, 0), 1, 1, color=c) for _l, c, _s, _f in AGREEMENT_MEASURES]

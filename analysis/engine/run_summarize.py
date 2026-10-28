@@ -358,7 +358,8 @@ def versus_job(job, cache_dir):
                 p = os.path.join(run, rel)
                 if os.path.isfile(p):
                     inputs.append(p)
-    key = {"version": 1, "pairs": [list(p) for p in job["versus"]], "inputs": signature(inputs)}
+    key = {"version": 2, "pairs": [[a, job["runs"][a], b, job["runs"][b]] for a, b in job["versus"]],
+           "inputs": signature(inputs)}
     tag = f".{job['profile_tag']}" if job.get("profile_tag") else ""
     cache = os.path.join(cache_dir, f"{job['assay']}_{job['encid']}_fold{job['fold']}{tag}.versus.json")
     try:
@@ -671,7 +672,9 @@ def contributions_job(job, cache_dir):
             p = os.path.join(job["runs"][engine], rel)
             if os.path.isfile(p):
                 inputs.append(p)
-    key = {"version": 2, "inputs": signature(inputs)}
+    # The rows name each run by its label, so the labels are part of the key:
+    # renamed runs are compared again rather than served under the old names.
+    key = {"version": 3, "runs": sorted(job["runs"].items()), "inputs": signature(inputs)}
     tag = f".{job['profile_tag']}" if job.get("profile_tag") else ""
     cache = os.path.join(cache_dir, f"{job['assay']}_{job['encid']}_fold{job['fold']}{tag}.json")
     try:
