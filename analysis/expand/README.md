@@ -121,3 +121,18 @@ its teacher), `summary_contributions_{pearson,cosine}` and `summary_runtime`.
 | `expand_bias` | the bias model's profile 1 - JSD on nonpeaks and peaks; its counts r where it has a counts head |
 | `expand_bias_response` | the bias-free model's largest marginal-footprint response to the bias motifs |
 | `expand_contributions_versus_{pearson,cosine}` | each student's DeepSHAP against its teacher's, on the same regions and references |
+
+`compare_original_mean.py` (CPU, ~80 GB read per dataset) adds
+`original_mean.tsv` and `summary_contributions_original_mean_{pearson,cosine}`:
+each model's DeepSHAP on fold k's 30K peaks against the mean of the
+original's five fold models' stored genome-wide scores there -- the
+original's ensemble attribution. Its baselines are one original fold model
+against the other four folds' mean, as stored and rescored with another
+seed. Old and new have no five-fold mean of their own: their folds' 30K
+subsamples share almost no peaks (89 and 12 across all five folds, in two
+datasets).
+
+```bash
+python compare_original_mean.py --ids <ids.tsv> --engines-root <engines root> --root <root> \
+    --out-dir <out> --biosamples ../engine/biosamples.tsv
+```
