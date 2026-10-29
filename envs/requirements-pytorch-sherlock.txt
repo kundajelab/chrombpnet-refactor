@@ -1,0 +1,29 @@
+# chrombpnet-pytorch-sherlock.yml's pip section: requirements-pytorch.txt's
+# stack at releases with glibc 2.17 builds.
+#
+# PyTorch 2.5.1 is the last release whose wheels run on glibc 2.17 (2.6 and
+# newer need 2.28). Its CUDA 11.8 build has kernels for compute capability
+# 3.7-9.0 (Kepler to Hopper) and runs on any driver >= 520.
+--extra-index-url https://download.pytorch.org/whl/cu118
+torch==2.5.1+cu118
+
+# PyPI has igraph 1.0.0 and leidenalg 0.11.0 (modisco pins it) for glibc 2.28
+# only: build-glibc217-wheels.sh builds them (igraph without GraphML file
+# support, which needs libxml2), and PIP_FIND_LINKS points pip at its output.
+# On a glibc 2.17 host pip can take only those; on a newer one it prefers
+# PyPI's, so reinstall them from the wheel directory with --no-index.
+igraph==1.0.0
+leidenalg==0.11.0
+# 0.68's wheels need glibc 2.28.
+numba==0.67.0
+# modisco's. PyPI's wheel works, but its optional HTJ2K filter needs glibc
+# 2.27 and warns on import; a source build (in the same wheel directory on
+# Sherlock) has none, and pip takes it only with --no-index.
+hdf5plugin==7.1.0
+
+# The commits chrombpnet-pytorch has.
+tangermeme @ git+https://github.com/jmschrei/tangermeme.git@f1464b40d62ad2b845ce67727335251489421ff1
+modisco @ git+https://github.com/kundajelab/tfmodisco.git@28154f18ec422c0738d3e45316c8a2fc76e6c88f
+memelite==0.5.0
+pytest>=8
+pytest-cov>=5

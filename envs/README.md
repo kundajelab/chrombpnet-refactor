@@ -55,7 +55,9 @@ Notes on GPUs:
   namesakes there.
 - **glibc**: the PyTorch 2.14 wheels need glibc 2.28 or newer, TensorFlow
   2.21's and jaxlib 0.11's 2.27. On an older system (CentOS 7 has 2.17) run
-  the environments in a container with a newer base, such as Ubuntu 22.04.
+  the environments in a container with a newer base, such as Ubuntu 22.04,
+  or, for PyTorch, create `chrombpnet-pytorch-sherlock.yml`: PyTorch 2.5.1,
+  the last release built for glibc 2.17, on Python 3.11 and NumPy 1.26.
 - Every command accepts `--device cpu`, `--device cuda`, or a specific
   device such as `--device cuda:1`.
 

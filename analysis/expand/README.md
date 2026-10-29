@@ -60,7 +60,8 @@ and marginal footprints on the same nonpeaks.
 
 On Sherlock, with the wrappers in
 `sherlock/runs/chromatlas/chrombpnet-refactor/expand/` (they set
-`PYTHONPATH` to this checkout and run in the Ubuntu container):
+`PYTHONPATH` to this checkout; these runs were in the Ubuntu container, with
+`chrombpnet-pytorch`):
 
 ```bash
 ./submit_all.sh sherlock --container   # updated (20), student-lofo (20), student-final (4, after lofo),
@@ -153,4 +154,6 @@ set (`default` or `updated`):
 | table | `fold_mean_table.py` | the Markdown table of the comparison |
 
 The Sherlock driver is `submit_shared.sh` in the wrappers' directory; results
-go to `<root>/analysis/fold-mean-<teacher set>/`.
+go to `<root>/analysis/fold-mean-<teacher set>/`. It runs natively, in
+`chrombpnet-pytorch-sherlock` (`envs/chrombpnet-pytorch-sherlock.yml`), so
+every model of a dataset is scored under the same PyTorch, 2.5.1.
