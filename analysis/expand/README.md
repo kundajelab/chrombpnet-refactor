@@ -136,3 +136,21 @@ datasets).
 python compare_original_mean.py --ids <ids.tsv> --engines-root <engines root> --root <root> \
     --out-dir <out> --biosamples ../engine/biosamples.tsv
 ```
+
+## Ensemble vs distillation, on shared peaks
+
+`compare_original_mean.py` measures the students against the *original's*
+ensemble. Against their own teachers' ensemble, every model must be scored on
+the same peaks, which the fold runs' 30K subsamples are not. So, per teacher
+set (`default` or `updated`):
+
+| step | script | does |
+|---|---|---|
+| students | `run_distill.sh lofo`, `final` with `TEACHER_SET`, `SCORE=0` | LOFO and final students of that set's five fold models, trained only |
+| shared peaks | `score_shared_regions.py regions` | 10,000 peaks drawn (seed 1234) from those in all five folds' `filtered.peaks.bed` |
+| scores | `score_shared_regions.py score` | for the 5 fold models, 5 LOFO students and the final student: DeepSHAP (both heads, same references for all) and bias-free predictions on those peaks |
+| comparison | `compare_fold_means.py` | each against the fold models' mean: fold model k vs the 5-fold mean (which includes it) and vs the other four's; the students vs the 5-fold mean; contributions as above, predictions as log-count Pearson r / MSE and median profile JSD against the mean log counts / probabilities |
+| table | `fold_mean_table.py` | the Markdown table of the comparison |
+
+The Sherlock driver is `submit_shared.sh` in the wrappers' directory; results
+go to `<root>/analysis/fold-mean-<teacher set>/`.
