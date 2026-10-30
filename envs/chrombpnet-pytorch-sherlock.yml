@@ -24,14 +24,14 @@ dependencies:
   - scikit-learn=1.9.0
   - pybigwig=0.3.22
   - pyfaidx=0.9.0.4
-  - pillow
+  - pillow=12.3.0
   # Native Pango/Cairo stack required by the pip-installed WeasyPrint package.
-  - pango
+  - pango=1.56.4
   - pytables=3.11.1
   - tqdm=4.70.0
   - termcolor=3.3.0
   - bedtools=2.31.1
-  - samtools=1.23
+  - samtools=1.24
   - ucsc-bedgraphtobigwig=482
   # Provides the `tomtom` executable used by modiscolite report generation.
   - meme=5.5.9

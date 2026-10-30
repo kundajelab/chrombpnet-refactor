@@ -1,5 +1,25 @@
 # Changelog
 
+## PyTorch environment for glibc 2.17 hosts (Sherlock)
+
+- **No code change.** `envs/chrombpnet-pytorch-sherlock.yml` (with
+  `envs/requirements-pytorch-sherlock.txt`) installs the PyTorch engine where
+  the default file cannot: PyTorch 2.14's wheels need glibc 2.28, and
+  Sherlock's nodes run 2.17. It pins the environment the Sherlock runs use:
+  Python 3.11, PyTorch 2.5.1 (CUDA 11.8 build), NumPy 1.26, the same
+  command-line tools. The test suite passes in it (414 passed, 11 skipped:
+  TensorFlow, parity and GPU tests).
+- PyPI has igraph 1.0.0 and leidenalg 0.11.0 (TF-MoDISco pins the latter)
+  for glibc 2.27 and newer only, and conda-forge's builds need a newer
+  libxml2 than MEME 5.5.9's `tomtom`. `envs/build-glibc217-wheels.sh` builds
+  glibc 2.17 wheels of both in the manylinux2014 image, and `PIP_FIND_LINKS`
+  points pip at them.
+- Its pip requirements use `--prefer-binary`: where a dependency's newest
+  release has wheels only for a newer glibc, pip takes the newest release
+  with a wheel for the machine instead of compiling one. From
+  kundajelab/chrombpnet-refactor#1 (vhecht).
+- The default environment files are unchanged.
+
 ## Profile-only bias models, epoch selection by Pearson r and JSD, and `distill` (PyTorch, opt-in)
 
 - **`--bias-profile-only`** on `bias pipeline` / `bias train`. The bias
