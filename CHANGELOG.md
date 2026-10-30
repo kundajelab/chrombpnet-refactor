@@ -1,5 +1,14 @@
 # Changelog
 
+## `prep nonpeaks` reruns into an existing output prefix
+
+- **No output change.** `prep nonpeaks` refused to start when
+  `<prefix>_auxiliary/` already existed (as chrombpnet 1.x did), so a rerun
+  needed the directory deleted first. It now rewrites the files in it: a
+  rerun into the same prefix gives the same negatives and auxiliary files as
+  a fresh run.
+- From kundajelab/chrombpnet-refactor#1 (vhecht).
+
 ## `prep nonpeaks`: negatives per peak set per fold
 
 - **No output change at the defaults.** `-npr` is replaced by

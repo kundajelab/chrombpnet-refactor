@@ -190,7 +190,8 @@ def main():
 			if args.inputlen % 2:
 				raise ValueError("input length must be a multiple of 2")
 	
-			os.makedirs(args.output_prefix+"_auxiliary/", exist_ok=False)
+			# A rerun into the same prefix rewrites every file in it.
+			os.makedirs(args.output_prefix+"_auxiliary/", exist_ok=True)
 	
 			from chrombpnet.helpers.make_gc_matched_negatives.get_genomewide_gc_buckets.get_genomewide_gc_bins import get_genomewide_gc
 			get_genomewide_gc(args.genome,args.output_prefix+"_auxiliary/genomewide_gc.bed",args.inputlen, args.stride)
