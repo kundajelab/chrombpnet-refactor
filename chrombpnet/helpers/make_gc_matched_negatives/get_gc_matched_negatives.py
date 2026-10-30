@@ -28,7 +28,10 @@ def parse_args():
     parser.add_argument("-f", "--foreground-gc-bed", required=True)
     parser.add_argument("-o", "--output-prefix", required=True)
     parser.add_argument("-fl", "--chr-fold-path", required=True)
-    parser.add_argument("-npr", "--neg-to-pos-ratio-train", type=int, default=1)
+    # 1.x's standalone script drew one negative per peak in every fold by default.
+    parser.add_argument("-npr-train", "--neg-to-pos-ratio-train", type=int, default=1)
+    parser.add_argument("-npr-val", "--neg-to-pos-ratio-val", type=int, default=1)
+    parser.add_argument("-npr-test", "--neg-to-pos-ratio-test", type=int, default=1)
     parser.add_argument("-s", "--seed", type=int, default=DEFAULT_SEED)
     return parser.parse_args()
 
@@ -108,9 +111,12 @@ def _sample_group(candidate_frame, target_bins, rng):
     return selected, selected_bins
 
 
-def match_gc_negatives(candidate_negatives, foreground_gc_bed, splits, ratio, seed):
-    if ratio < 0:
-        raise ValueError("neg_to_pos_ratio_train must be non-negative")
+def match_gc_negatives(candidate_negatives, foreground_gc_bed, splits, ratios, seed):
+    """`ratios` is the number of negatives per peak in the train, valid and
+    test folds, in that order. The folds draw from one generator in that order
+    too, so a fold's negatives depend only on the folds before it."""
+    if len(ratios) != 3 or any(int(ratio) != ratio or ratio < 0 for ratio in ratios):
+        raise ValueError("negatives per peak must be three non-negative integers (train, valid, test)")
     group_map = _chromosome_group_map(splits)
     candidates, ignored_candidates = _read_gc_bed(candidate_negatives, group_map, "Candidate")
     foreground, ignored_foreground = _read_gc_bed(foreground_gc_bed, group_map, "Foreground")
@@ -118,7 +124,7 @@ def match_gc_negatives(candidate_negatives, foreground_gc_bed, splits, ratio, se
         raise ValueError("No foreground regions belong to the requested folds")
 
     group_codes = foreground["group"].to_numpy(dtype=np.int8)
-    repetitions = np.where(group_codes < 2, ratio, 1).astype(np.int64)
+    repetitions = np.asarray(ratios, dtype=np.int64)[group_codes]
     expanded_rows = np.repeat(np.arange(len(foreground)), repetitions)
     expanded_groups = group_codes[expanded_rows]
     target_bins = foreground["gc_bin"].to_numpy(dtype=np.int16)[expanded_rows]
@@ -160,7 +166,7 @@ def main(args):
         splits = json.load(handle)
     output, foreground_gc, ignored_candidates, ignored_foreground = match_gc_negatives(
         args.candidate_negatives, args.foreground_gc_bed, splits,
-        args.neg_to_pos_ratio_train, args.seed,
+        (args.neg_to_pos_ratio_train, args.neg_to_pos_ratio_val, args.neg_to_pos_ratio_test), args.seed,
     )
     print("Ignored background chromosomes: " + ",".join(ignored_candidates))
     print("Ignored foreground chromosomes: " + ",".join(ignored_foreground))

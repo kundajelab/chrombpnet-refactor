@@ -13,8 +13,10 @@ chrombpnet prep nonpeaks \
 
 Foreground and candidate BED files use chromosome, start, end, and GC fraction
 columns; foreground narrowPeak input additionally uses the summit in column 10.
-Train and validation folds use `--neg-to-pos-ratio-train` negatives per positive,
-while the test fold remains 1:1.
+Each fold has its own number of negatives per positive: `-npr-train`,
+`-npr-val` and `-npr-test` (defaults 2, 2 and 1, as in chrombpnet 1.x).
+Test-set evaluation uses every test negative, so `-npr-test` sets its
+peak:non-peak ratio.
 
 GC fractions are converted to integer bins from 0 through 100. Candidate rows
 are stored in NumPy arrays, randomized once, sorted by fold and GC bin, and

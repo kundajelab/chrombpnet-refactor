@@ -426,7 +426,9 @@ def build_parser():
     required_nonpeaks_parser.add_argument("-fl", "--chr-fold-path", type=str, required=True, help="Fold information - dictionary with test,valid and train keys and values with corresponding chromosomes")
     optional_nonpeaks_parser.add_argument("-il", "--inputlen", type=int, default=2114, help="inputlen to use to make bins and find gc content")
     optional_nonpeaks_parser.add_argument("-st", "--stride", type=int, default=1000, help="stride to use for shifting the bins")
-    optional_nonpeaks_parser.add_argument("-npr", "--neg-to-pos-ratio-train", type=int, default=2, help="Ratio of negatives to positives to sample in training set (test set always has 1:1 positive to negatives ratio")
+    optional_nonpeaks_parser.add_argument("-npr-train", "--neg-to-pos-ratio-train", type=int, default=2, help="Negatives to sample per peak on the training chromosomes")
+    optional_nonpeaks_parser.add_argument("-npr-val", "--neg-to-pos-ratio-val", type=int, default=2, help="Negatives to sample per peak on the validation chromosomes")
+    optional_nonpeaks_parser.add_argument("-npr-test", "--neg-to-pos-ratio-test", type=int, default=1, help="Negatives to sample per peak on the test chromosomes; test-set evaluation uses all of them, so this is its peak:non-peak ratio")
     optional_nonpeaks_parser.add_argument("-br", "--blacklist-regions", type=str, required=False, default=None, help="TSV file with 3 columns - chr, start, end")
     optional_nonpeaks_parser.add_argument("-s", "--seed", type=int, default=DEFAULT_SEED, help="seed to use for generating nonpeaks")
 

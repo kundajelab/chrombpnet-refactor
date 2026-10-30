@@ -3153,13 +3153,35 @@
     "required": false,
     "type": "int"
   },
+  "prep nonpeaks neg_to_pos_ratio_test": {
+    "choices": null,
+    "default": "1",
+    "nargs": "None",
+    "options": [
+      "--neg-to-pos-ratio-test",
+      "-npr-test"
+    ],
+    "required": false,
+    "type": "int"
+  },
   "prep nonpeaks neg_to_pos_ratio_train": {
     "choices": null,
     "default": "2",
     "nargs": "None",
     "options": [
       "--neg-to-pos-ratio-train",
-      "-npr"
+      "-npr-train"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "prep nonpeaks neg_to_pos_ratio_val": {
+    "choices": null,
+    "default": "2",
+    "nargs": "None",
+    "options": [
+      "--neg-to-pos-ratio-val",
+      "-npr-val"
     ],
     "required": false,
     "type": "int"

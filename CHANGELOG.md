@@ -1,5 +1,30 @@
 # Changelog
 
+## `prep nonpeaks`: negatives per peak set per fold
+
+- **No output change at the defaults.** `-npr` is replaced by
+  `-npr-train`, `-npr-val` and `-npr-test` (long forms
+  `--neg-to-pos-ratio-train`, `--neg-to-pos-ratio-val`,
+  `--neg-to-pos-ratio-test`). Their defaults, 2, 2 and 1, are chrombpnet
+  1.x's: `-npr` set the train and validation folds, and the test fold always
+  had one negative per peak.
+- Test-set evaluation uses every test-fold negative, so `-npr-test` is its
+  peak:non-peak ratio: `-npr-test 4` evaluates at 1:4. Training draws
+  `negative_sampling_ratio` x peaks from the train fold each epoch and
+  validation a fixed sample of the same size, so `-npr-train` and `-npr-val`
+  set only the pools those come from.
+- The folds draw from one generator in train, validation, test order, so
+  changing `-npr-test` leaves the train and validation negatives unchanged.
+  A larger ratio needs more candidates on that fold's chromosomes; if a fold
+  runs out ("Requested N negatives but only M candidates"), lower the ratio or
+  `--stride`.
+- `-npr` and `--neg-to-pos-ratio-train` with its old meaning (train and
+  validation) are gone: `-npr` is now an error, and
+  `--neg-to-pos-ratio-train` sets the train fold only.
+- From kundajelab/chrombpnet-refactor#1 (vhecht), which applied `-npr` to the
+  test fold as well; here each fold has its own option, so the 1.x defaults
+  stay.
+
 ## HDF5 outputs compressed on threads
 
 - **Same files, written faster.** Since faee27f every HDF5 output is gzip
