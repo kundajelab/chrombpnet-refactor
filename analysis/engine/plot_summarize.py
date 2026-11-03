@@ -424,14 +424,14 @@ def seed_footnote(lines, retrained=False, new_seed=False):
     parts = []
     if retrained:
         parts.append(f"hollow bar: {RETRAINED_LABEL}, the original chrombpnet retrained on the engines' inputs "
-                     "(its code, its own bias model), its DeepSHAP vs the stored scores -- the same code as the "
+                     "(its code, its own bias model), its DeepLIFT/DeepSHAP vs the stored scores -- the same code as the "
                      "stored scores, another training run.")
     if new_seed:
-        parts.append(f"grey bar: {NEW_SEED_LABEL}, the original's DeepSHAP rerun on the model whose scores are "
+        parts.append(f"grey bar: {NEW_SEED_LABEL}, the original's DeepLIFT/DeepSHAP rerun on the model whose scores are "
                      "stored, with a new seed, vs those scores -- the same model and code, only the shuffled "
                      "references differ: the ceiling.")
     if "itself" in lines:
-        parts.append("solid line: the original's DeepSHAP rerun on that model, seed vs seed -- only the shuffled "
+        parts.append("solid line: the original's DeepLIFT/DeepSHAP rerun on that model, seed vs seed -- only the shuffled "
                      "references differ.")
     if not parts:
         return f"{ORIGINAL}: a separately trained model, so 1 is not expected; compare the engines with one another."
@@ -521,7 +521,7 @@ def plot_contributions(plt, contributions, args, metric):
         if tags:
             profile_source = f"  |  profile scores: {', '.join(tags)}"
     finish(plt, fig, out,
-           f"DeepSHAP contribution scores: each {args.noun} vs the {ORIGINAL} TensorFlow model",
+           f"DeepLIFT/DeepSHAP contribution scores: each {args.noun} vs the {ORIGINAL} TensorFlow model",
            f"30K peak subsample, regions matched to the {ORIGINAL}'s genome-wide scores  |  bar = median "
            f"over regions of the per-region {metric_label}  |  legend: mean over datasets and folds"
            f"{profile_source}",

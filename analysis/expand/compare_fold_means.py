@@ -17,6 +17,8 @@ Compared against it, per dataset:
   fold k (vs 5-fold mean)    fold model k against the five-fold mean, of which
                              it is a fifth -- which flatters it
   fold k (vs other 4)        fold model k against the mean of the other four
+                             (in the TSVs only: the only row with another
+                             reference, so the plots leave it out)
   LOFO student k             against the five-fold mean (every student
                              learned from all five)
   final student              against the five-fold mean
@@ -57,6 +59,7 @@ VS_OTHERS = "fold model (vs other 4)"
 LOFO = "LOFO student"
 FINAL = "final student"
 MODELS = (VS_ALL, VS_OTHERS, LOFO, FINAL)
+PLOTTED = (VS_ALL, LOFO, FINAL)
 
 
 def load(prefix, head, keys):
@@ -140,16 +143,17 @@ def plot(out_dir, frame, panels, out_name, title, subtitle, footnote, ylims):
     import matplotlib.pyplot as plt
     import plot_summarize as ps
 
-    styles = {VS_ALL: dict(facecolor=ps.SURFACE, edgecolor=ps.INK, linewidth=0.8, hatch="////"),
-              VS_OTHERS: ps.RETRAINED_BAR, LOFO: dict(color=ps.SLOTS[2], linewidth=0),
-              FINAL: dict(color=ps.SLOTS[3], linewidth=0)}
+    # The blog's colours: the fold models white (the engine figure's hollow reference bar),
+    # the LOFO student blue and the final student green (plot_summarize.SLOTS).
+    styles = {VS_ALL: ps.RETRAINED_BAR, LOFO: dict(color=ps.SLOTS[0], linewidth=0),
+              FINAL: dict(color=ps.SLOTS[2], linewidth=0)}
     datasets = sorted({(r.biosample, r.encid, r.assay) for r in frame.itertuples()},
                       key=lambda d: ps._encid_rank(d[1]))
     fig, axes = plt.subplots(len(panels), 1, squeeze=False, figsize=(9.5, 1.7 * len(panels) + 2.4))
     axes = [a[0] for a in axes]
     fig.patch.set_facecolor(ps.SURFACE)
     step = 0.2
-    offsets = {m: (i - (len(MODELS) - 1) / 2) * step for i, m in enumerate(MODELS)}
+    offsets = {m: (i - (len(PLOTTED) - 1) / 2) * step for i, m in enumerate(PLOTTED)}
     for index, (ax, (selector, column, label)) in enumerate(zip(axes, panels)):
         sub = frame[selector(frame)]
         ax.set_axisbelow(True)
@@ -160,7 +164,7 @@ def plot(out_dir, frame, panels, out_name, title, subtitle, footnote, ylims):
         for side in ("left", "bottom"):
             ax.spines[side].set_color(ps.GRID)
         for x, (biosample, encid, assay) in enumerate(datasets):
-            for model in MODELS:
+            for model in PLOTTED:
                 values = sub[(sub["encid"] == encid) & (sub["model"] == model)][column].astype(float)
                 if values.empty:
                     continue
@@ -174,8 +178,8 @@ def plot(out_dir, frame, panels, out_name, title, subtitle, footnote, ylims):
         ax.set_xticklabels([f"{e} ({a})\n{b}" for b, e, a in datasets] if index == len(panels) - 1 else [],
                            fontsize=7.5, color=ps.INK)
         ax.tick_params(axis="x", length=0)
-    handles = [plt.Rectangle((0, 0), 1, 1, **styles[m]) for m in MODELS]
-    ps.finish(plt, fig, os.path.join(out_dir, out_name), title, subtitle, footnote, handles, list(MODELS))
+    handles = [plt.Rectangle((0, 0), 1, 1, **styles[m]) for m in PLOTTED]
+    ps.finish(plt, fig, os.path.join(out_dir, out_name), title, subtitle, footnote, handles, list(PLOTTED))
 
 
 def main(argv=None):
@@ -220,8 +224,8 @@ def main(argv=None):
     print(f"wrote {args.out_dir}/fold_mean_contributions.tsv, fold_mean_predictions.tsv")
 
     teachers = f"the five {args.label} fold models"
-    note = (f"Bars: the mean over folds (dots: each fold). Hatched: fold model k against the five-fold mean, of "
-            f"which it is a fifth. Hollow: the same against the other four's mean.\nLOFO student k: trained on "
+    note = (f"Bars: the mean over folds (dots: each fold). Fold model k: against the five-fold mean, of which it "
+            f"is a fifth.\nLOFO student k: trained on "
             f"fold k's training chromosomes (four of its five teachers saw its test chromosomes).\nFinal student: "
             f"trained on every chromosome. Both distilled from {teachers}.")
     n_regions = f"{int(pred['n_regions'].median()):,} shared peaks per dataset"
@@ -230,9 +234,9 @@ def main(argv=None):
         panels = [((lambda f, h=h, k=k: (f["head"] == h) & (f["kind"] == k)), column, f"{h}\n{k}")
                   for h in HEADS for k in KINDS]
         plot(args.out_dir, contrib, panels, f"fold_mean_contributions_{metric}",
-             f"DeepSHAP scores against the five-fold mean of {args.label}",
+             f"DeepLIFT/DeepSHAP scores against the five-fold mean of {args.label}",
              f"{n_regions}  |  bar = median over regions of the per-region {metric_label}  |  "
-             f"same DeepSHAP references (seed 1234) for every model", note, [(0, 1)] * len(panels))
+             f"same DeepLIFT/DeepSHAP references (seed 1234) for every model", note, [(0, 1)] * len(panels))
         contrib[["model", "fold", "biosample", "encid", "assay", "head", "kind", "n_regions", column]].to_csv(
             os.path.join(args.out_dir, f"fold_mean_contributions_{metric}.tsv"), sep="\t", index=False,
             float_format="%.6f")
