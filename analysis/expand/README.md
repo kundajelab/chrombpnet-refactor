@@ -17,6 +17,10 @@ was: joined with teacher k's `bias_model_scaled.pt`, predicted on teacher
 k's test peaks, DeepSHAP on teacher k's 30K subsample with the same seed,
 and marginal footprints on the same nonpeaks.
 
+`--model-selection` has since been removed (CHANGELOG, top entry): the updated runs' checkpoints
+were kept on validation counts r + 1 - median JSD, which the package no longer offers, so the
+current checkout cannot rerun them.
+
 ## Reading the results
 
 - **Noise.** The default and updated runs also differ in PyTorch (2.5.1 then, 2.14 now),

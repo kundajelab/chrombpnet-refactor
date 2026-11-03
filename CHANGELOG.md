@@ -1,5 +1,20 @@
 # Changelog
 
+## `--model-selection` removed: epochs are kept on the validation loss
+
+- **Behaviour change, opt-in mode only.** `pipeline` / `train
+  --model-selection pearsonr-jsd` (PyTorch) is gone, and `--model-selection`
+  with it. The epoch kept, and what `--early-stop` waits on, is again always
+  the lowest validation loss -- the profile multinomial NLL plus the weighted
+  counts MSE, as in chrombpnet 1.x. Runs that never passed the flag are
+  unchanged, checkpoints and logs included.
+- The validation generator no longer returns coordinates, the epoch log no
+  longer gains the three selection columns, and checkpoints no longer record
+  `model_selection` / `best_score`. `metrics.region_jsd` and
+  `metrics.selection_score`, used only by it, are removed.
+- Older logs with `val_selection_score` still summarize:
+  `analysis/engine/run_summarize.py` reads the column when present.
+
 ## PyTorch environment for glibc 2.17 hosts (Sherlock)
 
 - **No code change.** `envs/chrombpnet-pytorch-sherlock.yml` (with

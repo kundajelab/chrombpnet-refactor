@@ -2553,19 +2553,6 @@
     "required": false,
     "type": "int"
   },
-  "pipeline model_selection": {
-    "choices": [
-      "loss",
-      "pearsonr-jsd"
-    ],
-    "default": "None",
-    "nargs": "None",
-    "options": [
-      "--model-selection"
-    ],
-    "required": false,
-    "type": "str"
-  },
   "pipeline modisco_max_seqlets": {
     "choices": null,
     "default": "None",
@@ -4254,19 +4241,6 @@
     ],
     "required": false,
     "type": "int"
-  },
-  "train model_selection": {
-    "choices": [
-      "loss",
-      "pearsonr-jsd"
-    ],
-    "default": "None",
-    "nargs": "None",
-    "options": [
-      "--model-selection"
-    ],
-    "required": false,
-    "type": "str"
   },
   "train muon_lr": {
     "choices": null,

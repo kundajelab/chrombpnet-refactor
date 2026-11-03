@@ -219,20 +219,6 @@ def _add_bias_profile_only(optional):
              "apply, and the bias reports carry profile metrics and motifs only")
 
 
-def _add_model_selection(optional):
-    """``--model-selection`` on ``pipeline`` / ``train``. Bias models keep
-    loss-based selection: a profile-only one has no counts to correlate."""
-    optional.add_argument(
-        "--model-selection", type=str, default=None,
-        choices=["loss", "pearsonr-jsd"],
-        help="PyTorch engine only. Which epoch's weights are kept, and what "
-             "early stopping (--early-stop) waits on: 'loss' (default), the "
-             "lowest validation loss; 'pearsonr-jsd', the highest validation "
-             "counts Pearson r + (1 - median profile JSD), both over the "
-             "validation peaks and computed as the test metrics are. The "
-             "training loss is the same either way")
-
-
 def _add_device(optional):
     """``--device``, and ``--engine`` with it: every command that places a
     model on a device is a command that needs an engine, and no other is."""
@@ -388,7 +374,6 @@ def _add_chrombpnet_training_arguments(parser, reports=False):
     _add_training_options(optional)
     add_reproducibility_arguments(optional)
     _add_ignore_bias_flag(optional)
-    _add_model_selection(optional)
     required.add_argument("-b", "--bias-model-path", type=str, required=True, help="Path for a pretrained bias model checkpoint (.pt PyTorch, .h5 TensorFlow)")
     optional.add_argument("-sr", "--negative-sampling-ratio", type=float, default=0.1, help="Ratio of negatives to positive samples per epoch")
     _add_architecture_options(optional, filters=512, dilations=8, jitter=500)

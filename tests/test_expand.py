@@ -1,6 +1,6 @@
-"""The three opt-in PyTorch training changes: a profile-only bias model
-(``--bias-profile-only``), epoch selection by validation counts r + 1 - median
-JSD (``--model-selection pearsonr-jsd``), and ``chrombpnet distill``."""
+"""The opt-in PyTorch training changes: a profile-only bias model
+(``--bias-profile-only``) and ``chrombpnet distill``. Epoch selection stays
+chrombpnet 1.x's lowest validation loss."""
 
 from __future__ import annotations
 
@@ -27,9 +27,8 @@ from chrombpnet.engines.pytorch.model import (
     load_model,
     save_model,
 )
-from chrombpnet.engines.pytorch.train import fit_and_evaluate
+from chrombpnet.engines.pytorch.train import _run_epoch, fit_and_evaluate
 from chrombpnet.options import Options
-from chrombpnet.training import metrics
 
 INPUT, OUTPUT = 200, 50
 
@@ -184,57 +183,25 @@ def test_the_fused_kernels_refuse_a_profile_only_bias():
 
 
 # --------------------------------------------------------------------------
-# 2. --model-selection pearsonr-jsd
+# 2. The training loop
 # --------------------------------------------------------------------------
 
 
-def test_region_jsd_is_profile_metrics_jsd():
-    rng = np.random.RandomState(3)
-    observed = rng.poisson(2.0, size=(40, OUTPUT)).astype(np.float64)
-    observed[5] = 0.0                       # an empty profile: NaN in both
-    predicted = rng.dirichlet(np.ones(OUTPUT), size=40)
-    expected = metrics.profile_metrics(observed, predicted)[2]
-    got = metrics.region_jsd(observed, predicted)
-    np.testing.assert_array_equal(np.isnan(got), np.isnan(expected))
-    np.testing.assert_array_equal(got[~np.isnan(got)], expected[~np.isnan(expected)])
-    assert np.isnan(got[5])
-
-
-def test_selection_score_is_r_plus_one_minus_median_jsd():
-    from scipy.stats import pearsonr
-
-    rng = np.random.RandomState(4)
-    observed = rng.normal(size=30)
-    predicted = observed + rng.normal(scale=0.5, size=30)
-    jsd = rng.uniform(0.2, 0.8, size=30)
-    jsd[0] = np.nan
-    r, median_jsd, score = metrics.selection_score(observed, predicted, jsd)
-    assert r == pytest.approx(pearsonr(observed, predicted)[0])
-    assert median_jsd == pytest.approx(np.nanmedian(jsd))
-    assert score == pytest.approx(r + 1 - median_jsd)
-    # Undefined r (constant predictions, a single region): NaN score.
-    assert np.isnan(metrics.selection_score(observed, np.ones(30), jsd)[2])
-    assert np.isnan(metrics.selection_score(observed[:1], predicted[:1], jsd[:1])[2])
-
-
 class _Generator:
-    """One batch of fixed sequences and Poisson profiles, with coordinates
-    whose fourth column is the peak flag, as the real generators return."""
+    """One batch of fixed sequences and Poisson profiles, as the training and
+    validation generators return them."""
 
-    def __init__(self, seed, peak_flags=None, n=8):
+    def __init__(self, seed, n=8):
         rng = np.random.RandomState(seed)
         self.sequences = _sequences(n, seed)
         self.profiles = rng.poisson(1.0, size=(n, OUTPUT)).astype(np.float32)
-        flags = peak_flags if peak_flags is not None else ["1"] * (n // 2) + ["0"] * (n - n // 2)
-        self.coords = np.array([["chr1", str(100 * i), "f", flag]
-                                for i, flag in enumerate(flags)])
 
     def __len__(self):
         return 1
 
     def __getitem__(self, index):
         logcounts = np.log1p(self.profiles.sum(-1, keepdims=True))
-        return self.sequences, [self.profiles, logcounts], self.coords
+        return self.sequences, [self.profiles, logcounts]
 
     def on_epoch_end(self):
         pass
@@ -250,34 +217,20 @@ def _fit_args(tmp_path, **values):
 _NO_EXPORT = SimpleNamespace(save_model_without_bias=lambda model, prefix: None)
 
 
-def test_pearsonr_jsd_selection_logs_and_keeps_the_best_scoring_epoch(tmp_path):
+def test_the_kept_epoch_and_early_stopping_follow_the_validation_loss(tmp_path):
     torch.manual_seed(0)
-    model = BPNet(_config())
-    args = _fit_args(tmp_path, model_selection="pearsonr-jsd")
-    fit_and_evaluate(model, _Generator(1), _Generator(2), args, _NO_EXPORT,
+    args = _fit_args(tmp_path, epochs=6, early_stop=1)
+    fit_and_evaluate(BPNet(_config()), _Generator(1), _Generator(2), args, _NO_EXPORT,
                      {"counts_loss_weight": 2.0})
     with open(args.output_prefix + ".log") as handle:
-        rows = list(csv.DictReader(handle))
-    assert list(rows[0])[-3:] == ["val_counts_pearsonr", "val_profile_median_jsd",
-                                  "val_selection_score"]
-    scores = [float(row["val_selection_score"]) for row in rows]
-    provenance = _load_payload(args.output_prefix + ".pt", "cpu")["provenance"]
-    assert provenance["model_selection"] == "pearsonr-jsd"
-    assert provenance["best_epoch"] == int(np.nanargmax(scores))
-    assert provenance["best_score"] == pytest.approx(np.nanmax(scores))
-
-    # The score is computed on the validation peaks only, as the test metrics are.
-    valid = _Generator(2)
-    restored = load_model(args.output_prefix + ".pt")
-    _, logcounts = PredictionAdapter(restored).predict(valid.sequences)
-    # The kept weights are the best epoch's; rescoring them reproduces its score.
-    profile, _ = PredictionAdapter(restored).predict(valid.sequences)
-    probabilities = torch.softmax(torch.from_numpy(profile), -1).numpy()
-    peaks = valid.coords[:, 3] == "1"
-    _, _, score = metrics.selection_score(
-        np.log1p(valid.profiles.sum(-1))[peaks], logcounts[peaks, 0],
-        metrics.region_jsd(valid.profiles[peaks], probabilities[peaks]))
-    assert score == pytest.approx(provenance["best_score"], rel=1e-5)
+        losses = [float(row["val_loss"]) for row in csv.DictReader(handle)]
+    # Patience 1: training stops at the first epoch that does not improve.
+    worse = [i for i in range(1, len(losses)) if losses[i] >= min(losses[:i])]
+    assert len(losses) == (worse[0] + 1 if worse else args.epochs)
+    # The weights kept are the lowest-validation-loss epoch's.
+    kept, _ = _run_epoch(load_model(args.output_prefix + ".pt"), _Generator(2),
+                         torch.device("cpu"), 2.0)
+    assert kept[0] == pytest.approx(min(losses), rel=1e-5)
 
 
 def test_default_selection_leaves_the_log_and_checkpoint_as_they_were(tmp_path):
@@ -293,32 +246,22 @@ def test_default_selection_leaves_the_log_and_checkpoint_as_they_were(tmp_path):
                                "epochs_completed", "benchmark"}
 
 
-def test_pearsonr_jsd_needs_validation_peaks(tmp_path):
-    args = _fit_args(tmp_path, model_selection="pearsonr-jsd")
-    with pytest.raises(ValueError, match="validation peaks"):
-        fit_and_evaluate(BPNet(_config()), _Generator(1), _Generator(2, ["0"] * 8),
-                         args, _NO_EXPORT, {"counts_loss_weight": 2.0})
-
-
 def test_pytorch_only_options_are_refused_by_the_other_engines():
     for name in ("tensorflow", "jax"):
         engine = SimpleNamespace(name=name)
         with pytest.raises(ValueError, match="only apply to the PyTorch engine"):
-            engines._check_combinations(engine, SimpleNamespace(model_selection="pearsonr-jsd"))
-        with pytest.raises(ValueError, match="only apply to the PyTorch engine"):
             engines._check_combinations(engine, SimpleNamespace(bias_profile_only=True))
     engines._check_combinations(SimpleNamespace(name="pytorch"),
-                                SimpleNamespace(model_selection="pearsonr-jsd",
-                                                bias_profile_only=True))
+                                SimpleNamespace(bias_profile_only=True))
 
 
 def test_absent_pytorch_only_options_are_not_recorded():
-    args = SimpleNamespace(bias_profile_only=None, model_selection=None)
+    args = SimpleNamespace(bias_profile_only=None)
     engines.configure_from_args(args, require=False)
     assert vars(args) == {}
-    args = SimpleNamespace(bias_profile_only=True, model_selection="loss")
+    args = SimpleNamespace(bias_profile_only=True)
     engines.configure_from_args(args, require=False)
-    assert vars(args) == {"bias_profile_only": True, "model_selection": "loss"}
+    assert vars(args) == {"bias_profile_only": True}
 
 
 # --------------------------------------------------------------------------

@@ -297,7 +297,7 @@ Four options control them, all off by default:
 
 #### Experimental: PyTorch engine only
 
-Three opt-in changes, refused by the other engines. Without them nothing
+Two opt-in changes, refused by the other engines. Without them nothing
 changes, `args.json` and checkpoints included.
 
 - `bias pipeline` / `bias train --bias-profile-only`: a bias model with a
@@ -307,11 +307,6 @@ changes, `args.json` and checkpoints included.
   counts are no longer bias-corrected. `pipeline` and `train` read this off
   the checkpoint; the bias rescaling and the peak-count check are skipped,
   and the bias reports have profile metrics and motifs only.
-- `pipeline` / `train --model-selection pearsonr-jsd`: keep the epoch, and
-  stop early, on the validation peaks' counts Pearson r + (1 - median profile
-  JSD), computed as the test metrics are, instead of the validation loss.
-  The training loss is unchanged. `logs/chrombpnet.log` gains
-  `val_counts_pearsonr`, `val_profile_median_jsd` and `val_selection_score`.
 - `distill -t <chrombpnet_nobias.pt ...>`: train one bias-free student on
   several models' averaged predictions -- the mean of their profile
   probabilities times the mean of their predicted totals, and the mean of

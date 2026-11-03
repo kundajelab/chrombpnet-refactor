@@ -86,12 +86,8 @@ def main(args):
     train_generator = initializers.initialize_generators(
         args, "train", parameters, return_coords=False
     )
-    # --model-selection pearsonr-jsd scores the validation peaks, so the
-    # validation batches carry the coordinates' peak flag. Only for it: the
-    # Keras engines would read a third element as sample weights.
     valid_generator = initializers.initialize_generators(
-        args, "valid", parameters,
-        return_coords=getattr(args, "model_selection", None) == "pearsonr-jsd",
+        args, "valid", parameters, return_coords=False
     )
     engine.fit(
         model, train_generator, valid_generator, args, parameters, architecture_module

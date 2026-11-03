@@ -64,9 +64,9 @@ MODEL_PATH_ATTRIBUTES = (
 JAX_ONLY_OPTIONS = ("optimizer", "muon_lr", "ema", "ema_momentum",
                     "lr_schedule", "precision")
 
-#: Training options only the PyTorch engine has (``--bias-profile-only``,
-#: ``--model-selection``). Also default ``None`` and dropped when absent.
-PYTORCH_ONLY_OPTIONS = ("bias_profile_only", "model_selection")
+#: Training options only the PyTorch engine has (``--bias-profile-only``).
+#: Also default ``None`` and dropped when absent.
+PYTORCH_ONLY_OPTIONS = ("bias_profile_only",)
 
 _INSTANCES = {}
 _CURRENT = DEFAULT_ENGINE
