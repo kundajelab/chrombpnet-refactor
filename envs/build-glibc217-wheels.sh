@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds the two wheels chrombpnet-pytorch-sherlock.yml needs that PyPI has
+# Builds the two wheels chrombpnet-pytorch-glibc.yml needs that PyPI has
 # for glibc 2.28 and newer only -- igraph 1.0.0 and leidenalg 0.11.0, which
 # modisco pins -- for glibc 2.17 (manylinux2014), in the PyPA manylinux2014
 # image (CentOS 7, gcc 10) under apptainer or singularity. Needs network

@@ -1,5 +1,22 @@
 # Changelog
 
+## TensorFlow environment for glibc 2.17 hosts; the glibc environment files renamed
+
+- **No code change.** `envs/chrombpnet-tensorflow-glibc.yml` (with
+  `envs/requirements-tensorflow-glibc.txt`) installs both TensorFlow engines
+  where `chrombpnet-tensorflow.yml` cannot: TensorFlow 2.21's wheels need
+  glibc 2.27, and CentOS 7 hosts have 2.17.
+  TensorFlow 2.20.0, the last release with glibc 2.17 wheels, with tf-keras
+  2.20.1 and Keras 3.15.1, on Python 3.11 and NumPy 1.26 (`ml-dtypes` pinned
+  at 0.5.1, the last glibc 2.17 build). The conda packages and the glibc
+  2.17 igraph / leidenalg / hdf5plugin wheels (`build-glibc217-wheels.sh`)
+  are the PyTorch glibc environment's. Every pip requirement resolves to a
+  glibc 2.17 (`manylinux2014`) wheel; it has not yet been built on a glibc
+  2.17 node.
+- `chrombpnet-pytorch-sherlock.yml` and `requirements-pytorch-sherlock.txt`
+  are now `chrombpnet-pytorch-glibc.yml` and `requirements-pytorch-glibc.txt`
+  (environment `chrombpnet-pytorch-glibc`); the contents are unchanged.
+
 ## `--engine tensorflow` is Keras 3; the original's Keras 2 code is `--engine tensorflow-old`
 
 - **Breaking: `--engine tensorflow` changes meaning.** It now runs the JAX

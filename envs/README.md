@@ -58,8 +58,14 @@ Notes on GPUs:
 - **glibc**: the PyTorch 2.14 wheels need glibc 2.28 or newer, TensorFlow
   2.21's and jaxlib 0.11's 2.27. On an older system (CentOS 7 has 2.17) run
   the environments in a container with a newer base, such as Ubuntu 22.04,
-  or, for PyTorch, create `chrombpnet-pytorch-sherlock.yml`: PyTorch 2.5.1,
-  the last release built for glibc 2.17, on Python 3.11 and NumPy 1.26.
+  or, for PyTorch, create `chrombpnet-pytorch-glibc.yml`: PyTorch 2.5.1,
+  the last release built for glibc 2.17, on Python 3.11 and NumPy 1.26; for
+  both TensorFlow engines, `chrombpnet-tensorflow-glibc.yml`: TensorFlow
+  2.20, the last release built for glibc 2.17, with tf-keras 2.20 and Keras
+  3.15.1, on Python 3.11 and NumPy 1.26. JAX has no glibc 2.17 build of the
+  release this package uses (0.11; the last is 0.7), so on such hosts Keras 3
+  runs natively as `--engine tensorflow`, or the JAX environment in a
+  container.
 - Every command accepts `--device cpu`, `--device cuda`, or a specific
   device such as `--device cuda:1`.
 
@@ -179,7 +185,7 @@ layout. Two parts are backend-specific: device and precision settings
 turns its op determinism on) and DeepSHAP, whose rules
 (`chrombpnet/engines/tensorflow/deeplift_tf.py`) are the JAX engine's,
 op for op, on a `tf.GradientTape`. It runs in `chrombpnet-tensorflow`, beside
-`tensorflow-old`.
+`tensorflow-old`, and is the Keras 3 engine for glibc 2.17 hosts.
 `tests/parity/jax_engine.py --engine tensorflow` holds it to the JAX engine's
 checks against the original (predictions, losses, a 20-step Adam trace, the
 bias rescale, `export`, DeepSHAP), and `tests/parity/deepshap_engines.py`

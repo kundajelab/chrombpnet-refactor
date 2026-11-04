@@ -1,15 +1,15 @@
-# The PyTorch engine on glibc 2.17 (CentOS 7, as on Stanford's Sherlock),
+# The PyTorch engine on glibc 2.17 (CentOS 7 and other glibc 2.17 hosts),
 # where chrombpnet-pytorch.yml's PyTorch 2.14 wheel needs glibc 2.28 and does
 # not import. Create from the repository root, on a glibc 2.17 host (else see
-# requirements-pytorch-sherlock.txt on igraph and leidenalg), with
+# requirements-pytorch-glibc.txt on igraph and leidenalg), with
 #   envs/build-glibc217-wheels.sh <wheel dir>     # once: igraph, leidenalg
 #   PIP_FIND_LINKS=<wheel dir> CONDA_OVERRIDE_GLIBC=2.17 \
-#     conda env create -f envs/chrombpnet-pytorch-sherlock.yml
+#     conda env create -f envs/chrombpnet-pytorch-glibc.yml
 # It differs from chrombpnet-pytorch.yml in Python 3.11, NumPy 1.26 and
-# PyTorch 2.5.1 (requirements-pytorch-sherlock.txt says why); tangermeme,
+# PyTorch 2.5.1 (requirements-pytorch-glibc.txt says why); tangermeme,
 # modisco and memelite are chrombpnet-pytorch's. The package goes in without
 # its pytorch extra, which asks for PyTorch 2.14.
-name: chrombpnet-pytorch-sherlock
+name: chrombpnet-pytorch-glibc
 channels:
   - conda-forge
   - bioconda
@@ -36,5 +36,5 @@ dependencies:
   # Provides the `tomtom` executable used by modiscolite report generation.
   - meme=5.5.9
   - pip:
-      - -r requirements-pytorch-sherlock.txt
+      - -r requirements-pytorch-glibc.txt
       - -e ..

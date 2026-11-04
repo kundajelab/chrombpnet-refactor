@@ -28,7 +28,7 @@ dependencies:
   - samtools
   - ucsc-bedgraphtobigwig
   # Provides the `tomtom` executable used by modiscolite report generation.
-  # 5.5.9's tomtom binary requires at most GLIBC_2.14 (Sherlock supports 2.17).
+  # 5.5.9's tomtom binary requires at most GLIBC_2.14 (so it runs on glibc 2.17 hosts too).
   - meme=5.5.9
   - pip:
       - -r requirements-pytorch.txt

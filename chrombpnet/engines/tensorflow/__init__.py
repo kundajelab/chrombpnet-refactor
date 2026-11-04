@@ -16,7 +16,8 @@ checkpoints are read by chrombpnet 1.x, variant-scorer and bpnet-lite, and its
 DeepSHAP is the original's TF1-graph code. This one writes Keras 3 ``.keras``
 files (``chrombpnet export`` converts them to the 1.x layout), and its DeepSHAP
 matches tensorflow-old's (``tests/parity/deepshap_engines.py``). It needs the
-``chrombpnet-tensorflow`` environment, which installs Keras 3 beside tf-keras.
+``chrombpnet-tensorflow`` environment, which installs Keras 3 beside tf-keras,
+or, on glibc 2.17 hosts (CentOS 7), ``chrombpnet-tensorflow-glibc``.
 """
 
 from __future__ import annotations

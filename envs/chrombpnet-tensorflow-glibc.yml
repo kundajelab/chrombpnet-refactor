@@ -1,0 +1,42 @@
+# The TensorFlow engines (tensorflow and tensorflow-keras3) on glibc 2.17
+# (CentOS 7 and other glibc 2.17 hosts), where chrombpnet-tensorflow.yml's
+# TensorFlow 2.21 wheel needs glibc 2.27 and does not import. Create from the
+# repository root, on a glibc 2.17 host (else see
+# requirements-tensorflow-glibc.txt on igraph and leidenalg), with
+#   envs/build-glibc217-wheels.sh <wheel dir>     # once: igraph, leidenalg
+#   PIP_FIND_LINKS=<wheel dir> CONDA_OVERRIDE_GLIBC=2.17 \
+#     conda env create -f envs/chrombpnet-tensorflow-glibc.yml
+# It differs from chrombpnet-tensorflow.yml in Python 3.11, NumPy 1.26 and
+# TensorFlow 2.20 with tf-keras 2.20 (requirements-tensorflow-glibc.txt says
+# why); Keras 3.15.1 is chrombpnet-tensorflow's (and chrombpnet-jax's). The
+# conda packages are chrombpnet-pytorch-glibc's. The package goes in
+# without its tensorflow extra, which asks for TensorFlow 2.21.
+name: chrombpnet-tensorflow-glibc
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.11
+  - pip
+  - nomkl
+  - numpy=1.26.4
+  - h5py=3.16.0
+  - pandas=3.0.5
+  - scipy=1.17.1
+  - scikit-learn=1.9.0
+  - pybigwig=0.3.22
+  - pyfaidx=0.9.0.4
+  - pillow=12.3.0
+  # Native Pango/Cairo stack required by the pip-installed WeasyPrint package.
+  - pango=1.56.4
+  - pytables=3.11.1
+  - tqdm=4.70.0
+  - termcolor=3.3.0
+  - bedtools=2.31.1
+  - samtools=1.24
+  - ucsc-bedgraphtobigwig=482
+  # Provides the `tomtom` executable used by modiscolite report generation.
+  - meme=5.5.9
+  - pip:
+      - -r requirements-tensorflow-glibc.txt
+      - -e ..

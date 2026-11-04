@@ -34,15 +34,17 @@ share one. Create the ones you need from the repository root:
 | PyTorch (default) | `conda env create -f envs/chrombpnet-pytorch.yml` | `conda activate chrombpnet-pytorch` | Python 3.12, PyTorch 2.14 |
 | TensorFlow | `conda env create -f envs/chrombpnet-tensorflow.yml` | `conda activate chrombpnet-tensorflow` | Python 3.12, TensorFlow 2.21 (Keras 3.15 for `--engine tensorflow`; tf-keras 2.21 for `--engine tensorflow-old`) |
 | JAX | `conda env create -f envs/chrombpnet-jax.yml` | `conda activate chrombpnet-jax` | Python 3.12, JAX 0.11 (Keras 3.15) |
-| PyTorch on glibc 2.17 (e.g. Sherlock) | see `envs/chrombpnet-pytorch-sherlock.yml` | `conda activate chrombpnet-pytorch-sherlock` | Python 3.11, PyTorch 2.5.1 |
+| PyTorch on glibc 2.17 (e.g. CentOS 7) | see `envs/chrombpnet-pytorch-glibc.yml` | `conda activate chrombpnet-pytorch-glibc` | Python 3.11, PyTorch 2.5.1 |
+| TensorFlow on glibc 2.17 (e.g. CentOS 7) | see `envs/chrombpnet-tensorflow-glibc.yml` | `conda activate chrombpnet-tensorflow-glibc` | Python 3.11, TensorFlow 2.20 (tf-keras 2.20, Keras 3.15) |
 
 - Each file installs this package in editable mode with its engine's extra,
   plus the command-line tools preprocessing uses (`bedtools`, `samtools`,
   `bedGraphToBigWig`), MEME's `tomtom` and the Pango/Cairo stack for the PDF
   reports.
 - GPUs need a CUDA 12 driver (525 or newer), and the framework wheels need
-  glibc 2.28 or newer: on older systems (e.g. CentOS 7) use the glibc 2.17
-  PyTorch file above, or run in a container.
+  glibc 2.28 (PyTorch) or 2.27 (TensorFlow, JAX) or newer: on older systems
+  (e.g. CentOS 7) use the glibc 2.17 PyTorch or TensorFlow file above, or run
+  in a container.
   Blackwell GPUs need a different PyTorch build (see `envs/README.md`).
 - Pick the engine with `--engine` (the checkpoint suffix decides when it is
   omitted) and the device with `--device cpu`, `cuda` or e.g. `cuda:1`.

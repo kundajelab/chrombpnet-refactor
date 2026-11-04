@@ -4,7 +4,7 @@
 keras==3.15.1
 # CUDA libraries come as pip wheels, so no system CUDA is needed. CUDA 12, not
 # 13: CUDA 13 dropped Maxwell, Pascal and Volta GPUs (compute capability
-# 5.0-7.2; Sherlock's TITAN Xp nodes are Pascal) and needs an NVIDIA driver
+# 5.0-7.2; TITAN Xp GPUs are Pascal) and needs an NVIDIA driver
 # >= 580, while CUDA 12 supports them and needs only a CUDA 12 driver
 # (>= 525). Where every GPU is Turing or newer and the driver is >= 580,
 # jax[cuda13]==0.11.2 works as well.
