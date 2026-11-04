@@ -1,5 +1,31 @@
 # Changelog
 
+## `pred_bw`'s bigWig zoom levels are built as the rows arrive
+
+- **Performance only; the bigWig bytes are identical.** bigWigs are written
+  through `bigwig_writer.NumpyBigWig`, a NumPy reimplementation of
+  libBigWig's writer for the one call pattern the package uses (fixed-step
+  entries of span 1, ten zoom levels), adapted from the optimization kit's
+  `bigwig_numpy.py` (github.com/anthropics/uplifting-biomolecular-modeling,
+  Apache-2.0). libBigWig builds all ten zoom levels in `close()` by reading
+  the finished data back -- ~10 s of a 20,000-region prediction bigWig on a
+  shared CPU, against ~3.5 s for every entry together -- so with streaming
+  (below) it was the bulk of what was left after the forward. `NumpyBigWig`
+  folds each arriving chunk into the zoom levels and leaves ~1-2.6 s for
+  `close()`.
+- Byte identity with pyBigWig 0.3.22 and 0.3.25 is tested
+  (`tests/test_bigwig_writer.py`: gaps, contiguous runs, runs over several
+  data blocks, signed values, three zoom-feeding patterns) and holds on a
+  20,000-region prediction bigWig. pyBigWig is still the reader.
+  `contribs_bw`'s importance bigWigs go through the same writer.
+- Kept from the kit: the arithmetic and the byte layout, quirks included.
+  Not kept: its per-base interval layout (the stock CLI's, which this
+  package no longer writes) and its compression pool. The file is created
+  on construction, as pyBigWig did, so an unwritable path still fails first.
+- The stats file (`-os`) is computed on a thread beside the bigWig's final
+  assembly.
+
+
 ## `pred_bw` writes each model's bigWig and metrics while that model predicts
 
 - **Performance only; outputs are identical.** A model's finish work --

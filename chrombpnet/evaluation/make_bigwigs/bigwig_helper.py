@@ -1,10 +1,8 @@
-import pyBigWig
+from concurrent.futures import ThreadPoolExecutor
+
 import numpy as np
 
-
-#: pyBigWig can be built without numpy support, in which case addEntries only
-#: accepts Python lists.
-_PYBIGWIG_NUMPY = bool(getattr(pyBigWig, "numpy", 0))
+from chrombpnet.evaluation.make_bigwigs.bigwig_writer import NumpyBigWig
 from chrombpnet.training.utils.data_utils import one_hot
 import pandas as pd
 from chrombpnet.regions import NARROWPEAK_SCHEMA, window_bounds
@@ -115,7 +113,9 @@ class BigWigWriter:
 
     The bigWig calls are the same calls in the same order with the same values
     as the one-shot write, so the file is byte-identical however the rows
-    arrive.
+    arrive. They go to bigwig_writer.NumpyBigWig, which writes what pyBigWig
+    writes for them but builds the zoom levels after each arriving batch
+    instead of all at close, where libBigWig spends most of a write's time.
     """
 
     def __init__(self, regions, gs, bw_out, debug_chr=None, use_tqdm=False, outstats_file=None):
@@ -123,8 +123,7 @@ class BigWigWriter:
         # we will pick the value from the interval whose summit is closest to
         # current position
         self._regions = regions
-        self._bw = pyBigWig.open(bw_out, 'w')
-        self._bw.addHeader(gs)
+        self._bw = NumpyBigWig(bw_out, gs)
         self._order = write_order(regions, gs)
 
         # Hoisted: this set was rebuilt once per region.
@@ -166,6 +165,7 @@ class BigWigWriter:
             self._data[start:stop] = rows
         self._arrived[start:stop] = True
         self._advance()
+        self._bw.feed_zooms()
 
     def _advance(self):
         order = self._order
@@ -209,16 +209,13 @@ class BigWigWriter:
         cur_end = self._cur_end
         vals = data[i][cur_end - i_start:next_end - i_start]
 
-        # numpy arrays rather than three Python lists and a float() per base.
-        # pyBigWig's numpy branch only changes how the arguments are parsed
-        # before the same bwAddIntervals call, so the file is byte-identical;
-        # the list form is kept for builds compiled without numpy support.
         # One fixed-step block per region instead of one bedGraph interval
         # per base. Same values on read-back, ~2.8x faster to write and ~1.5x
         # smaller, but a different on-disk section type -- so the file bytes
         # differ from the interval form the package shipped before.
+        # (pyBigWig's addEntries(chrom, start, values=vals, span=1, step=1).)
         if next_end > cur_end:
-            self._bw.addEntries(i_chr, int(cur_end), values=vals, span=1, step=1)
+            self._bw.add_entries(i_chr, int(cur_end), vals)
 
         self._wrote_any = True
         if self._outstats_file is not None:
@@ -234,16 +231,21 @@ class BigWigWriter:
         if self._progress is not None:
             self._progress.close()
 
-        self._bw.close()
-
         # Deliberately a region count, not a base count: a region whose slice is
         # empty still counted as "written" under the old `if not all_entries`
         # test, because it appended a zero-length array.
-        if not self._wrote_any:
-            raise ValueError("No BigWig entries were written")
-        if self._outstats_file is None:
+        if not self._wrote_any or self._outstats_file is None:
+            self._bw.close()
+            if not self._wrote_any:
+                raise ValueError("No BigWig entries were written")
             return
-        self._write_stats()
+        # The stats beside the file's assembly, on a thread: both are mostly
+        # NumPy partitions and zlib, which release the GIL, and they write
+        # different files.
+        with ThreadPoolExecutor(1) as pool:
+            stats = pool.submit(self._write_stats)
+            self._bw.close()
+            stats.result()
 
     def _write_stats(self):
         # Only the collected case can be stacked -- np.hstack([]) raises.

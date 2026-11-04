@@ -361,29 +361,6 @@ def test_write_bigwig_bytes_do_not_depend_on_the_stats_file(tmp_path):
     assert (tmp_path / "stats.txt").is_file()
 
 
-def test_write_bigwig_numpy_and_list_argument_forms_agree(tmp_path):
-    """The numpy fast path and the list fallback must produce one file."""
-    import hashlib
-
-    from chrombpnet.evaluation.make_bigwigs import bigwig_helper
-
-    rng = np.random.default_rng(1)
-    gs = [("chr1", 1_000_000)]
-    regions = [["chr1", s, s + 100, s + 50] for s in range(1000, 21000, 400)]
-    data = rng.random((len(regions), 100)).astype(np.float32)
-
-    fast = _write_bw(tmp_path, "fast.bw", data, regions, gs)
-    original = bigwig_helper._PYBIGWIG_NUMPY
-    bigwig_helper._PYBIGWIG_NUMPY = False
-    try:
-        slow = _write_bw(tmp_path, "slow.bw", data, regions, gs)
-    finally:
-        bigwig_helper._PYBIGWIG_NUMPY = original
-
-    digest = lambda p: hashlib.sha256(open(p, "rb").read()).hexdigest()
-    assert digest(fast) == digest(slow)
-
-
 def test_write_bigwig_still_raises_when_every_region_is_filtered_out(tmp_path):
     """The raise counts emitted regions, not written bases.
 
