@@ -499,6 +499,14 @@ def build_parser():
     optional_preds.add_argument("-d", "--debug-chr", nargs="+", type=str, default=None, help="Run for specific chromosomes only (e.g. chr1 chr2) for debugging")
     optional_preds.add_argument("-bw", "--bigwig", type=str, default=None, help="If provided .h5 with predictions are output along with calculated metrics considering bigwig as groundtruth.")
     optional_preds.add_argument("-s", "--seed", type=int, default=DEFAULT_SEED, help="seed for the profile-metrics shuffled draw (with -bw)")
+    optional_preds.add_argument("--no-malloc-env", action="store_true", default=False,
+                                help="Keep glibc's default memory-allocator settings. By default pred_bw sets the "
+                                     "optimization kit's three (malloc_env): freed memory is kept for reuse instead of "
+                                     "returned to the system, large arrays come from that heap, and the heap grows "
+                                     "512 MiB at a time. Outputs are identical; on a GPU pred_bw runs 1.07-1.12x faster "
+                                     "for about 9%% more peak RAM, and a CPU-only run about twice as fast for about "
+                                     "twice the RAM. MALLOC_MMAP_MAX_, MALLOC_TRIM_THRESHOLD_ or MALLOC_TOP_PAD_ "
+                                     "already in the environment are left as they are")
     _add_device(optional_preds)
     _add_predict_fused_kernel(optional_preds)
 

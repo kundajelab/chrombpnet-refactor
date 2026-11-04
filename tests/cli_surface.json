@@ -2912,6 +2912,16 @@
     "required": false,
     "type": "None"
   },
+  "pred_bw no_malloc_env": {
+    "choices": null,
+    "default": "False",
+    "nargs": "0",
+    "options": [
+      "--no-malloc-env"
+    ],
+    "required": false,
+    "type": "None"
+  },
   "pred_bw output_prefix": {
     "choices": null,
     "default": "None",

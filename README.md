@@ -356,6 +356,11 @@ changes, `args.json` and checkpoints included.
 - **Start-up and shutdown**: heavy imports are started in the background, and
   the CLI exits without interpreter teardown once every output is verified
   and synced to disk.
+- **Memory allocator** (`pred_bw`; `--no-malloc-env` turns it off): glibc keeps
+  freed memory for reuse instead of returning it to the system, serves large
+  arrays from that heap and grows it 512 MiB at a time. On a GPU `pred_bw` is
+  1.07-1.12x faster for about 9% more peak RAM; a CPU-only run holds about
+  twice the RAM. GPU memory and outputs are unaffected.
 - **Fused Triton forward** (`--predict-fused-kernel`, optional; on `pred_bw`,
   `footprints`, `qc` and `bias qc`): fp32-exact kernels in place of the
   eager TF32 convolutions, so predictions move by about 1e-5 (closer to an
@@ -367,7 +372,8 @@ changes, `args.json` and checkpoints included.
 
 The memory-mapped reads, the lookup-table one-hot, the vectorized metrics,
 the worker-process writer, the background imports, the fast exit, the
-threaded HDF5 compression and the Triton forward are adapted from the
+threaded HDF5 compression, the allocator settings and the Triton forward are
+adapted from the
 [ChromBPNet optimization kit](https://github.com/anthropics/uplifting-biomolecular-modeling/tree/main/chrombpnet)
 (Apache-2.0); the rest were written here. The CHANGELOG records each one.
 

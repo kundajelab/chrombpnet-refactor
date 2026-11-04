@@ -1,5 +1,5 @@
 import chrombpnet.parsers as parsers
-from chrombpnet import engines, exit_fast, fused_kernels
+from chrombpnet import engines, exit_fast, fused_kernels, malloc_tuning
 import os
 from chrombpnet.data import DefaultDataFile, get_default_data_path
 import chrombpnet.pipelines as pipelines
@@ -148,6 +148,10 @@ def main():
 	
 		if not any((args.bias_model, args.chrombpnet_model, args.chrombpnet_model_nb)):
 			raise ValueError("At least one input model must be provided")
+		# glibc's allocator tuned for the run (the optimization kit's
+		# malloc_env), before the run's large arrays are allocated.
+		if not args.no_malloc_env:
+			malloc_tuning.apply()
 		import chrombpnet.evaluation.make_bigwigs.predict_to_bigwig as predict_to_bigwig
 
 		outputs = predict_to_bigwig.main(args)

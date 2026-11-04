@@ -1,5 +1,31 @@
 # Changelog
 
+## `pred_bw` tunes glibc's memory allocator (the optimization kit's `malloc_env`)
+
+- **Performance only; outputs are identical.** `pred_bw` now sets three
+  glibc `malloc` settings before its run (`chrombpnet/malloc_tuning.py`):
+  freed memory is kept for reuse instead of returned to the system
+  (`M_TRIM_THRESHOLD -1`), large arrays come from that heap instead of
+  fresh `mmap`ed pages (`M_MMAP_MAX 0`), and the heap grows 512 MiB at a
+  time (`M_TOP_PAD`). They are applied with `mallopt` and exported as
+  `MALLOC_MMAP_MAX_` / `MALLOC_TRIM_THRESHOLD_` / `MALLOC_TOP_PAD_` for
+  child processes; the forked side processes inherit them. Host memory
+  only: GPU memory is the CUDA allocators'.
+- `--no-malloc-env` keeps glibc's defaults. A setting already in the
+  environment is left as it is, and without glibc's `mallopt` nothing is
+  applied. The pipelines' own prediction steps are unchanged.
+- Adapted from the `malloc_env` lever of the ChromBPNet optimization kit
+  (github.com/anthropics/uplifting-biomolecular-modeling, Apache-2.0):
+  the same three values, applied the same way. Unlike the kit, it leaves
+  settings the user made alone, and does not refuse to run without them.
+- Measured (blog 2026-015, `pred_bw` with three models on 20,000 peaks,
+  the settings in the environment at start): L40S 76.3 s -> 71.2 s
+  (1.07x), peak RAM of the largest process 2.20 -> 2.39 GB; H200 65.8 s ->
+  59.0 s (1.12x). On a CPU-only run (one model, 2,000 peaks, a shared host)
+  the in-process settings held 2.8-3.1 GB against 1.75 GB, and ran in
+  119-153 s against 176-185 s.
+
+
 ## TensorFlow environment for glibc 2.17 hosts; the glibc environment files renamed
 
 - **No code change.** `envs/chrombpnet-tensorflow-glibc.yml` (with
