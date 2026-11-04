@@ -1,9 +1,13 @@
 # chrombpnet_k1 — vendored Triton kernels
 
-`kernels.py` and `arch_tiles.json` are copied **byte-identical** from the
-ChromBPNet optimization kit, so `sha256sum` can compare them against upstream
-indefinitely. No modifications were made to either file; the local wrapper
-lives outside this directory, in `chrombpnet/engines/pytorch/triton_forward.py`.
+`kernels.py`, `kernels_tc.py` and `arch_tiles.json` are copied
+**byte-identical** from the ChromBPNet optimization kit, so `sha256sum` can
+compare them against upstream indefinitely. No modifications were made to any
+of them; the local wrapper lives outside this directory, in
+`chrombpnet/engines/pytorch/triton_forward.py`. `kernels.py` is the fp32 forward
+(the kit's `exact` mode, `--predict-fused-kernel-exact`); `kernels_tc.py` runs
+its convolutions on the TF32 tensor cores (the kit's `fast` mode on H100/H200
+and A100, `--predict-fused-kernel-fast`) and imports the rest from `kernels.py`.
 
 | | |
 |---|---|
@@ -14,13 +18,14 @@ lives outside this directory, in `chrombpnet/engines/pytorch/triton_forward.py`.
 
 ```
 kernels.py       sha256 7026b40a233544fbbc49d464731e42e084cd53097ca7f60f606e8cf145dac915
+kernels_tc.py    sha256 4cabd701f3633ee8727abdd8f809e21748dd27e0fdbeeb9ab30b592a0e9dfcd2
 arch_tiles.json  sha256 9a886921533527199b9fcb3c2a46ee19995bd08eb2aa7eb1610bd184a8d7cbfa
 ```
 
 The `kernels.py` digest is worth noting: its first 16 hex characters,
 `7026b40a233544fb`, are exactly the `kernels_sha256_16` the kit records in
 its shipped `JIT_IDENTITY.json`, so this is the file its numerics
-certificates were measured against. A test pins both digests.
+certificates were measured against. A test pins all three digests.
 
 ## What was deliberately not vendored
 
@@ -37,7 +42,5 @@ certificates were measured against. A test pins both digests.
 * `triton_cache_sm90/`, `triton_cache_sm89_l40s/` — hundreds of megabytes of
   precompiled kernels for a torch/triton pair neither environment has. The
   kernels JIT-compile on first use instead, once per machine.
-* `kernels_tc.py` — the TF32 tensor-core variant. It is the A100 route; the
-  fp32 kernels are the route for the cards here.
 * `_te_guard.py`, `_oom.py`, `cache_identity.py`, the `chrombpnet_opt` CLI,
   the TensorFlow-side kit, and the vendored bpnet-lite / tangermeme trees.

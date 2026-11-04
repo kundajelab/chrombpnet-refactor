@@ -855,7 +855,9 @@
     "nargs": "0",
     "options": [
       "--predict-fk",
-      "--predict-fused-kernel"
+      "--predict-fused-kernel",
+      "--predict-fused-kernel-exact",
+      "--predict-fused-kernel-fast"
     ],
     "required": false,
     "type": "None"
@@ -2066,7 +2068,9 @@
     "nargs": "0",
     "options": [
       "--predict-fk",
-      "--predict-fused-kernel"
+      "--predict-fused-kernel",
+      "--predict-fused-kernel-exact",
+      "--predict-fused-kernel-fast"
     ],
     "required": false,
     "type": "None"
@@ -2950,7 +2954,9 @@
     "nargs": "0",
     "options": [
       "--predict-fk",
-      "--predict-fused-kernel"
+      "--predict-fused-kernel",
+      "--predict-fused-kernel-exact",
+      "--predict-fused-kernel-fast"
     ],
     "required": false,
     "type": "None"
@@ -3173,7 +3179,9 @@
     "nargs": "0",
     "options": [
       "--predict-fk",
-      "--predict-fused-kernel"
+      "--predict-fused-kernel",
+      "--predict-fused-kernel-exact",
+      "--predict-fused-kernel-fast"
     ],
     "required": false,
     "type": "None"
@@ -3887,7 +3895,9 @@
     "nargs": "0",
     "options": [
       "--predict-fk",
-      "--predict-fused-kernel"
+      "--predict-fused-kernel",
+      "--predict-fused-kernel-exact",
+      "--predict-fused-kernel-fast"
     ],
     "required": false,
     "type": "None"

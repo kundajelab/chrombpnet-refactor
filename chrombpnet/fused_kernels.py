@@ -1,12 +1,18 @@
-"""Whether prediction runs on the fused Triton kernels (``--predict-fused-kernel``).
+"""Whether prediction runs on the fused Triton kernels, and in which precision.
+
+``--predict-fused-kernel-exact`` runs the optimization kit's fp32 kernels
+(its ``exact`` mode's forward); ``--predict-fused-kernel-fast`` runs its TF32
+tensor-core kernels (its ``fast`` mode's forward). Neither is the default.
 
 Every other optimization in this package is unconditional: they were measured
 phase by phase behind a ``--optimize`` switch, the measurement is recorded in
 the CHANGELOG, and they are byte-identical to the code they replaced. The
-Triton forward is the one that is not -- it is fp32-exact where the eager path
-runs TF32, so it moves the profile head by ~1e-5, and it needs a CUDA GPU.
-That makes it a user's choice rather than a default, and this module is the
-one bit of state that choice needs.
+Triton forward is the one that is not: the exact kernels are fp32 where the
+eager path runs TF32, so they move the profile head by ~1e-5; the fast kernels
+are TF32 like the eager path but sum in a different order, so they move it by
+about TF32's own error; and both need a CUDA GPU. That makes it a user's
+choice rather than a default, and this module is the one bit of state that
+choice needs.
 
 The setting is process-global for the same reason the old one was:
 ``PredictionAdapter`` is constructed several frames below the CLI, in code
@@ -17,28 +23,57 @@ once, from ``CHROMBPNET.main``, before any work starts.
 
 from __future__ import annotations
 
-#: Set by `configure`. False unless a command was given ``--predict-fused-kernel``.
-_ENABLED = False
+#: The modes, and the Triton dot precision each runs its convolutions in.
+PRECISIONS = {"exact": "ieee", "fast": "tf32"}
+
+#: Set by `configure`: None (the eager forward), "exact" or "fast".
+_MODE = None
 
 
-def configure(enabled):
-    """Set the process-wide choice and return it."""
-    global _ENABLED
-    _ENABLED = bool(enabled)
-    return _ENABLED
+def configure(mode):
+    """Set the process-wide mode and return it.
+
+    ``mode`` is ``"exact"``, ``"fast"``, or anything false for the eager
+    forward. ``True`` means ``"exact"``: the single flag's meaning before
+    ``fast`` existed.
+    """
+    global _MODE
+    if mode is True:
+        mode = "exact"
+    if mode and mode not in PRECISIONS:
+        raise ValueError(f"unknown fused-kernel mode {mode!r}; expected one of {sorted(PRECISIONS)}")
+    _MODE = mode or None
+    return _MODE
 
 
 def enabled():
     """True when prediction should use the fused Triton kernels."""
-    return _ENABLED
+    return _MODE is not None
+
+
+def mode():
+    """``"exact"``, ``"fast"`` or None."""
+    return _MODE
+
+
+def precision():
+    """The Triton dot precision of the current mode: ``"ieee"`` or ``"tf32"``."""
+    if _MODE is None:
+        raise RuntimeError("the fused kernels are not enabled")
+    return PRECISIONS[_MODE]
+
+
+def flag(mode_name=None):
+    """The command-line flag of a mode (the current one by default)."""
+    return f"--predict-fused-kernel-{mode_name or _MODE}"
 
 
 def configure_from_args(args):
-    """Apply ``args.predict_fused_kernel``.
+    """Apply ``args.predict_fused_kernel`` (False, "exact" or "fast").
 
-    Commands without the flag -- the pipelines, ``train``, ``prep``,
-    ``contribs_bw`` -- leave it off. ``contribs_bw`` deliberately has no flag:
+    Commands without the flags -- the pipelines, ``train``, ``prep``,
+    ``contribs_bw`` -- leave it off. ``contribs_bw`` deliberately has none:
     DeepLIFT needs autograd and hooks on the ``nn.ReLU`` modules, which a
     fused kernel cannot provide.
     """
-    return configure(getattr(args, "predict_fused_kernel", False))
+    return configure(getattr(args, "predict_fused_kernel", None))

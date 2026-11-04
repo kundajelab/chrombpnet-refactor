@@ -24,6 +24,7 @@ VENDOR = pathlib.Path(triton_forward.__file__).parent / "_vendor" / "chrombpnet_
 VENDOR_DIGESTS = {
     "kernels.py": "7026b40a233544fbbc49d464731e42e084cd53097ca7f60f606e8cf145dac915",
     "arch_tiles.json": "9a886921533527199b9fcb3c2a46ee19995bd08eb2aa7eb1610bd184a8d7cbfa",
+    "kernels_tc.py": "4cabd701f3633ee8727abdd8f809e21748dd27e0fdbeeb9ab30b592a0e9dfcd2",
 }
 
 
@@ -45,6 +46,7 @@ def test_importing_chrombpnet_does_not_import_triton():
     assert "chrombpnet" in sys.modules
     assert "chrombpnet.triton_forward" in sys.modules
     assert "chrombpnet.engines.pytorch._vendor.chrombpnet_k1.kernels" not in sys.modules
+    assert "chrombpnet.engines.pytorch._vendor.chrombpnet_k1.kernels_tc" not in sys.modules
 
 
 def test_the_shim_maps_the_model_onto_the_kernels_vocabulary():
@@ -138,6 +140,115 @@ def test_an_unlisted_architecture_is_checked_against_the_eager_forward():
 
     with pytest.raises(triton_forward.TritonRouteRefused, match="do not run"):
         triton_forward._check_against_eager(broken, model, "cpu", "cuda-120", "t")
+
+
+def test_the_fast_check_allows_tf32_error_but_not_a_wrong_kernel():
+    """The TF32 kernels are checked against the eager forward with TF32 on,
+    relative to the output's scale: TF32's own error passes, a wrong kernel
+    does not."""
+    model = _production(filters=128).eval()
+
+    def nudged(scale):
+        def forward(x):
+            profile, counts = model(x)
+            size = max(1.0, float(profile.abs().max()), float(counts.abs().max()))
+            return profile + scale * size, counts
+        return forward
+
+    triton_forward._check_against_eager(nudged(1e-3), model, "cpu", "cuda-89", "t", tf32=True)
+    with pytest.raises(triton_forward.TritonRouteRefused, match="TF32 on"):
+        triton_forward._check_against_eager(nudged(5e-2), model, "cpu", "cuda-89", "t", tf32=True)
+    # The exact route's check stays absolute and tight.
+    with pytest.raises(triton_forward.TritonRouteRefused, match="TF32 off"):
+        triton_forward._check_against_eager(nudged(1e-2), model, "cpu", "cuda-120", "t")
+
+
+@pytest.mark.parametrize("arch,tc_tile", [("cuda-90", "256x128x32x8x3"), ("cuda-80", "64x128x32x4x3"),
+                                          ("cuda-89", None)])
+def test_the_fast_route_runs_the_tensor_core_kernels_at_the_kits_tile(monkeypatch, arch, tc_tile):
+    """`fast` builds kernels_tc's sub-model, at the kit's TF32 tile where the
+    kit lists one and kernels_tc's own default where it does not (the
+    L40S), and is checked against the eager forward on every build."""
+    pytest.importorskip("triton")
+    entry = dict(triton_forward._load_arch_tiles()["entries"][arch], measured=True)
+    assert entry.get("tc_tile") == tc_tile
+    monkeypatch.setattr(triton_forward, "require", lambda model, device: (arch, entry))
+    checks = []
+    monkeypatch.setattr(triton_forward, "_check_against_eager",
+                        lambda *args, **kwargs: checks.append(kwargs.get("tf32", False)))
+    from chrombpnet.engines.pytorch._vendor.chrombpnet_k1 import kernels, kernels_tc
+
+    built = []
+    real = kernels_tc.K1BPNetV3TC.__init__
+
+    def recording(self, *args, **kwargs):
+        built.append(type(self).__name__)
+        real(self, *args, **kwargs)
+
+    monkeypatch.setattr(kernels_tc.K1BPNetV3TC, "__init__", recording)
+    forward = triton_forward.build(_production(filters=128).eval(), "cpu", precision="tf32")
+    assert built == ["K1BPNetV3TC"]
+    assert forward.precision == "tf32"
+    assert forward.tc_tile == (tc_tile or kernels_tc._TILE)
+    assert (kernels_tc._BM, kernels_tc._BN, kernels_tc._BK, kernels_tc._NW, kernels_tc._NS) == tuple(
+        int(v) for v in forward.tc_tile.split("x"))
+    assert forward.measured is bool(tc_tile)
+    assert checks == [True]
+
+    # exact stays on kernels.py, unchecked on a listed architecture
+    checks.clear()
+    forward = triton_forward.build(_production(filters=128).eval(), "cpu", precision="ieee")
+    assert forward.precision == "ieee" and forward.tc_tile is None and checks == []
+
+
+def test_an_unknown_precision_is_refused():
+    with pytest.raises(ValueError, match="precision"):
+        triton_forward.build(_production(), "cuda", precision="bf16")
+
+
+_INTERPRETED = r"""
+import json, sys, torch
+from chrombpnet.engines.pytorch import triton_forward
+from chrombpnet.model import BiasModel, BPNet, ChromBPNet, ModelConfig
+torch.manual_seed(0)
+config = ModelConfig(206, 100, filters=128, n_dilation_layers=2)
+model = ChromBPNet(config, BiasModel(ModelConfig(206, 100, filters=128, n_dilation_layers=2))).eval()
+x = torch.nn.functional.one_hot(torch.randint(0, 4, (3, 206)), 4).permute(0, 2, 1).float().contiguous()
+entries = triton_forward._load_arch_tiles()["entries"]
+out = {}
+with torch.inference_mode():
+    eager = model(x)
+    for arch in ("cuda-89", "cuda-90"):
+        triton_forward.require = lambda m, d, arch=arch: (arch, dict(entries[arch], measured=True))
+        for precision in ("ieee", "tf32"):
+            profile, counts = triton_forward.build(model, "cpu", precision=precision)(x)
+            out[arch + " " + precision] = [float((profile - eager[0]).abs().max()),
+                                           float((counts - eager[1]).abs().max())]
+print(json.dumps(out))
+"""
+
+
+def test_both_routes_compute_the_model_under_the_triton_interpreter():
+    """No GPU needed: Triton's interpreter (TRITON_INTERPRET=1) runs the
+    vendored kernels on the CPU, so `build` -- the tiles, the sub-model
+    composition, the counts form, the fast route's check -- is exercised end
+    to end against the eager forward. The interpreter computes TF32 dots in
+    fp32, so this pins the wiring, not TF32's rounding; that is the GPU
+    tests' and the build-time check's job. A subprocess, because the flag
+    must be set before the kernels are first imported."""
+    pytest.importorskip("triton")
+    import json, os, subprocess
+    import chrombpnet
+    root = pathlib.Path(chrombpnet.__file__).resolve().parent.parent
+    env = dict(os.environ, TRITON_INTERPRET="1", CUDA_VISIBLE_DEVICES="",
+               PYTHONPATH=os.pathsep.join([str(root), os.environ.get("PYTHONPATH", "")]))
+    done = subprocess.run([sys.executable, "-c", _INTERPRETED], env=env, capture_output=True,
+                          text=True, timeout=900)
+    assert done.returncode == 0, done.stderr[-2000:]
+    differences = json.loads(done.stdout.strip().splitlines()[-1])
+    assert sorted(differences) == ["cuda-89 ieee", "cuda-89 tf32", "cuda-90 ieee", "cuda-90 tf32"]
+    for name, (profile, counts) in differences.items():
+        assert profile < 1e-4 and counts < 1e-4, (name, profile, counts)
 
 
 def test_an_out_of_window_triton_is_refused(monkeypatch):
@@ -234,6 +345,18 @@ def test_it_agrees_with_the_eager_forward(route_and_model):
         torch.backends.cudnn.allow_tf32 = previous
     assert torch.allclose(triton_out[0], eager_out[0], atol=5e-5, rtol=0)
     assert torch.allclose(triton_out[1], eager_out[1], atol=5e-6, rtol=0)
+
+
+@gpu
+def test_the_fast_route_agrees_with_the_eager_tf32_forward():
+    model = _production().cuda().eval()
+    forward = triton_forward.build(model, "cuda", precision="tf32")
+    x = torch.randint(0, 2, (64, 4, 2114), device="cuda").float()
+    with torch.inference_mode():
+        fast, eager = forward(x), model(x)      # eager: TF32 on, the default
+    for a, b in zip(fast, eager):
+        scale = max(1.0, float(b.abs().max()))
+        assert float((a - b).abs().max()) <= triton_forward.TF32_CHECK_RTOL * scale
 
 
 @gpu

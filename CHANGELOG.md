@@ -1,5 +1,33 @@
 # Changelog
 
+## `--predict-fused-kernel-fast` (the kit's TF32 kernels) beside `--predict-fused-kernel-exact`
+
+- **New option; defaults unchanged.** The fused Triton forward now comes in
+  the optimization kit's two modes. `--predict-fused-kernel-exact` is the
+  former `--predict-fused-kernel`: the fp32 kernels (`kernels.py`), the
+  forward of the kit's `exact` mode. `--predict-fused-kernel-fast` runs the
+  kit's TF32 kernels (`kernels_tc.py`, now vendored byte-identical from
+  github.com/anthropics/uplifting-biomolecular-modeling, Apache-2.0), the
+  forward of its `fast` mode on H100/H200 and A100: the first convolution
+  and the dilated stack as TF32 tensor-core dots, the profile and counts
+  heads on the fp32 kernels. The two are mutually exclusive; on `pred_bw`,
+  `footprints`, `qc` and `bias qc`, as before.
+- `fast` uses the kit's TF32 tile where `arch_tiles.json` lists one
+  (H100/H200, A100) and `kernels_tc`'s default elsewhere. The kit never runs
+  these kernels on an L40S (its `fast` mode runs TensorFlow's graph there,
+  to stay bitwise equal to stock's default run), so this package always
+  checks the TF32 route against the eager forward (TF32 on, within 1e-2 of
+  the output's scale) when it builds it, and refuses on a mismatch or a
+  kernel that does not compile.
+- `--predict-fused-kernel` and `--predict-fk` still mean `exact`, without a
+  help entry. The setting (`chrombpnet.fused_kernels`) is now a mode: None,
+  "exact" or "fast"; `configure(True)` still means exact.
+- Why: blog 2026-015 compares chrombpnet-refactor's inference against the
+  kit's `fast` mode, and the TF32 kernels are what that mode runs. On an
+  H200 the kit's TF32 forward took 9.5 s for 20,000 regions, against 13.4 s
+  for its fp32 forward and 5.9 s for this package's eager PyTorch forward.
+
+
 ## A failed bigWig preprocessing pipeline no longer leaves its processes behind
 
 - **Fixed:** when streaming reads into awk (the default, without `--no-st`),

@@ -250,26 +250,39 @@ def _add_engine(optional):
 
 
 def _add_predict_fused_kernel(optional):
-    """Register ``--predict-fused-kernel`` on a command that predicts.
+    """Register ``--predict-fused-kernel-exact`` / ``--predict-fused-kernel-fast``
+    on a command that predicts; at most one of them.
 
+    Both store into ``predict_fused_kernel`` (False, "exact" or "fast").
     Not on ``contribs_bw``: DeepLIFT needs autograd and hooks on the
-    ``nn.ReLU`` modules, which a fused kernel cannot provide. Its first name,
-    ``--predict-fk``, is still accepted, without a help entry, so scripts
-    written for it keep running.
+    ``nn.ReLU`` modules, which a fused kernel cannot provide. The single flag
+    this replaced, ``--predict-fused-kernel``, and its first name,
+    ``--predict-fk``, are still accepted as ``exact`` -- what they always ran
+    -- without a help entry, so scripts written for them keep running.
     """
-    optional.add_argument(
-        "--predict-fused-kernel", action="store_true",
-        help="Prediction using fused kernels: run the forward on the Triton "
-             "chrombpnet_k1 kernels instead of the eager graph. They are "
-             "fp32-exact where the default runs TF32 convolutions, so they "
-             "are closer to an fp64 reference (1.0e-05 against 1.1e-03) but "
-             "they do move the output -- the profile head shifts by ~1e-5. "
-             "Any CUDA GPU: the optimization kit's measured tile on H100/H200, "
-             "L40S and A100, a tile chosen from the GPU's shared memory "
-             "elsewhere (checked against the default forward first). It has "
-             "not been faster end to end on the GPUs measured.")
-    optional.add_argument("--predict-fk", dest="predict_fused_kernel", action="store_true",
-                          help=argparse.SUPPRESS)
+    group = optional.add_mutually_exclusive_group()
+    group.add_argument(
+        "--predict-fused-kernel-exact", dest="predict_fused_kernel",
+        action="store_const", const="exact", default=False,
+        help="Prediction on the optimization kit's fused Triton kernels in fp32 "
+             "(its `exact` mode's forward), instead of the eager graph. Each "
+             "convolution is one fp32 FMA chain where the default runs TF32, so "
+             "the output is closer to an fp64 reference (1.0e-05 against "
+             "1.1e-03) but moves: the profile head shifts by ~1e-5. Slower than "
+             "the default where TF32 tensor cores are fast (2.3x on an H200), "
+             "about as fast on an L40S.")
+    group.add_argument(
+        "--predict-fused-kernel-fast", dest="predict_fused_kernel",
+        action="store_const", const="fast", default=False,
+        help="Prediction on the optimization kit's fused Triton kernels in TF32 "
+             "(its `fast` mode's forward): the convolutions on the tensor cores, "
+             "the profile and counts heads in fp32. The default's precision "
+             "class, summed in another order, so the output moves by about "
+             "TF32's error (~1e-3 relative). Checked against the default "
+             "forward when the route is built.")
+    for legacy in ("--predict-fused-kernel", "--predict-fk"):
+        group.add_argument(legacy, dest="predict_fused_kernel", action="store_const",
+                           const="exact", default=False, help=argparse.SUPPRESS)
 
 
 def _add_jax_training_options(optional):

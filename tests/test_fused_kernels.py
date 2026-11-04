@@ -1,4 +1,5 @@
-"""`--predict-fused-kernel`: where the flag lives, and what it switches.
+"""`--predict-fused-kernel-exact` / `-fast`: where the flags live, and what
+they switch.
 
 The other optimizations are unconditional now, so what remains testable about
 them is that the legacy bodies kept beside them still agree -- those functions
@@ -25,27 +26,54 @@ def test_the_default_is_off():
     """It moves the output, so it cannot be a default."""
     args = read_parser(["pred_bw", *PREDICTING_COMMANDS["pred_bw"]])
     assert args.predict_fused_kernel is False
-    assert fused_kernels.configure_from_args(args) is False
+    assert fused_kernels.configure_from_args(args) is None
+    assert not fused_kernels.enabled()
+
+
+@pytest.mark.parametrize("mode,precision", [("exact", "ieee"), ("fast", "tf32")])
+@pytest.mark.parametrize("command", sorted(PREDICTING_COMMANDS))
+def test_each_flag_reaches_the_commands_that_predict(command, mode, precision):
+    args = read_parser([command, *PREDICTING_COMMANDS[command], f"--predict-fused-kernel-{mode}"])
+    assert args.predict_fused_kernel == mode
+    assert fused_kernels.configure_from_args(args) == mode
+    assert fused_kernels.enabled() and fused_kernels.precision() == precision
+    assert fused_kernels.flag() == f"--predict-fused-kernel-{mode}"
 
 
 @pytest.mark.parametrize("command", sorted(PREDICTING_COMMANDS))
-def test_the_flag_reaches_the_commands_that_predict(command):
-    args = read_parser([command, *PREDICTING_COMMANDS[command], "--predict-fused-kernel"])
-    assert args.predict_fused_kernel is True
-    assert fused_kernels.configure_from_args(args) is True
+def test_the_two_modes_exclude_each_other(command, capsys):
+    with pytest.raises(SystemExit):
+        read_parser([command, *PREDICTING_COMMANDS[command],
+                     "--predict-fused-kernel-exact", "--predict-fused-kernel-fast"])
+    assert "not allowed with" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("legacy", ["--predict-fused-kernel", "--predict-fk"])
 @pytest.mark.parametrize("command", sorted(PREDICTING_COMMANDS))
-def test_the_first_name_still_works_but_is_not_advertised(command, capsys):
-    """``--predict-fk`` was the flag's name before ``--predict-fused-kernel``;
-    scripts written for it must keep running, and ``--help`` shows only the
-    new name."""
-    args = read_parser([command, *PREDICTING_COMMANDS[command], "--predict-fk"])
-    assert args.predict_fused_kernel is True
+def test_the_old_names_still_mean_exact_but_are_not_advertised(command, legacy, capsys):
+    """``--predict-fk``, then ``--predict-fused-kernel``, ran the fp32 kernels
+    before ``fast`` existed; scripts written for them must keep running, and
+    ``--help`` shows only the two current names."""
+    args = read_parser([command, *PREDICTING_COMMANDS[command], legacy])
+    assert args.predict_fused_kernel == "exact"
     with pytest.raises(SystemExit):
         read_parser([command, "--help"])
     shown = capsys.readouterr().out
-    assert "--predict-fused-kernel" in shown and "--predict-fk" not in shown
+    assert "--predict-fused-kernel-exact" in shown and "--predict-fused-kernel-fast" in shown
+    assert "--predict-fk" not in shown
+    assert not any(word in ("--predict-fused-kernel", "[--predict-fused-kernel]")
+                   for word in shown.replace("|", " ").split())
+
+
+def test_true_means_exact():
+    """`configure(True)` was the only way to switch the route on before."""
+    assert fused_kernels.configure(True) == "exact"
+    assert fused_kernels.precision() == "ieee"
+
+
+def test_an_unknown_mode_is_refused():
+    with pytest.raises(ValueError, match="fused-kernel mode"):
+        fused_kernels.configure("fastest")
 
 
 def test_contribs_bw_has_no_flag():
@@ -55,22 +83,22 @@ def test_contribs_bw_has_no_flag():
     args = read_parser(["contribs_bw", "-m", "m.pt", "-r", "r.bed", "-g",
                         "g.fa", "-c", "c.sizes", "-op", "out"])
     assert not hasattr(args, "predict_fused_kernel")
-    assert fused_kernels.configure_from_args(args) is False
+    assert fused_kernels.configure_from_args(args) is None
 
 
 def test_commands_without_the_flag_leave_it_off():
     """A namespace that never had the attribute must not switch it on."""
     from types import SimpleNamespace
-    fused_kernels.configure(True)
-    assert fused_kernels.configure_from_args(SimpleNamespace()) is False
+    fused_kernels.configure("fast")
+    assert fused_kernels.configure_from_args(SimpleNamespace()) is None
 
 
 def test_qc_carries_it_so_a_model_can_be_scored_on_the_fused_route():
     args = read_parser(["qc", "-bw", "o.bw", "-cm", "c.pt", "-cmb", "n.pt",
                         "-g", "g.fa", "-c", "c.sizes", "-o", "out",
                         "-d", "DNASE", "-p", "p.bed", "-n", "n.bed",
-                        "-fl", "f.json", "--predict-fused-kernel"])
-    assert args.predict_fused_kernel is True
+                        "-fl", "f.json", "--predict-fused-kernel-fast"])
+    assert args.predict_fused_kernel == "fast"
 
 
 def test_the_optimize_flag_is_gone():

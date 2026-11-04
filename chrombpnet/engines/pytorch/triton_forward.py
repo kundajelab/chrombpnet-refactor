@@ -1,11 +1,14 @@
-"""The ChromBPNet forward on the kit's Triton kernels (``--predict-fused-kernel``).
+"""The ChromBPNet forward on the kit's Triton kernels
+(``--predict-fused-kernel-exact`` / ``--predict-fused-kernel-fast``).
 
 `chrombpnet/engines/pytorch/_vendor/chrombpnet_k1/kernels.py` is the ChromBPNet forward
-re-expressed as Triton kernels, taken byte-identical from the ChromBPNet
-optimization kit at github.com/anthropics/uplifting-biomolecular-modeling
-(Apache-2.0). This module is the local half: it presents a `BPNet` to those
-kernels, picks the per-architecture tile, and refuses when any of the
-kernels' assumptions does not hold.
+re-expressed as Triton kernels in fp32, and `kernels_tc.py` the same
+convolutions on the TF32 tensor cores, both taken byte-identical from the
+ChromBPNet optimization kit at
+github.com/anthropics/uplifting-biomolecular-modeling (Apache-2.0). They are
+the forwards of the kit's `exact` and `fast` modes. This module is the local
+half: it presents a `BPNet` to those kernels, picks the per-architecture tile,
+and refuses when any of the kernels' assumptions does not hold.
 
 **GPUs.** Any CUDA GPU Triton supports. The tile comes from the kit's
 `arch_tiles.json` where it lists the GPU's architecture (H100/H200, L40S,
@@ -17,16 +20,27 @@ opt-in flag here has no use for. On an architecture the table does not list,
 `build` checks the kernels against the eager forward and refuses if they
 disagree or do not compile.
 
-**Numerics.** The kernels are fp32-exact -- each convolution output is one
-serial FMA chain, the order cuDNN's IMPLICIT_GEMM uses. The eager path is
+**Numerics, exact (precision "ieee").** The kernels are fp32-exact -- each
+convolution output is one serial FMA chain, the order cuDNN's IMPLICIT_GEMM
+uses. The eager path is
 not: `torch.backends.cudnn.allow_tf32` defaults to True, so ordinary
 convolutions here run in TF32, whose error against an fp64 reference is
 about 1.1e-3. Measured against the eager path with TF32 disabled, a single
 dilated convolution is *bitwise* equal and the full model's log-counts are
 bitwise equal at every batch shape tested; the profile head agrees to ~2e-5,
 because `head_serial` sums the 75-tap kernel in TensorFlow's order rather
-than cuDNN's. So phase 2 makes the forward more accurate, not less -- but it
-does move the output, which is why it is off by default.
+than cuDNN's. So the exact kernels make the forward more accurate, not less --
+but they do move the output, which is why they are off by default.
+
+**Numerics, fast (precision "tf32").** `kernels_tc.K1BPNetV3TC` runs the first
+convolution and the dilated stack as TF32 tensor-core dots with fp32
+accumulation; the profile and counts heads stay on the fp32 kernels. That is
+the eager path's own precision class, but not its summation order, so the
+output moves by about TF32's error. Its tile is the kit's `tc_tile` for the
+architecture where `arch_tiles.json` lists one (H100/H200, A100) and
+`kernels_tc`'s default otherwise (the L40S has none: the kit never runs these
+kernels there), and the route is always checked against the eager forward
+(TF32 on) when it is built.
 
 **Refusals, not fallbacks.** Every unmet precondition raises
 `TritonRouteRefused` naming the check. Two of the kernels' constraints fail
@@ -68,6 +82,16 @@ UNLISTED_SMALL_TILE = "64x256x16x8x3"
 #: (profile ~2e-5, log-counts bitwise; see the module docstring) and far
 #: below what a wrong kernel produces.
 UNLISTED_CHECK_ATOL = 1e-3
+
+#: The same check for the TF32 kernels against the eager forward with TF32 on,
+#: relative to the eager output's largest magnitude (at least 1). Two TF32
+#: implementations differ by about TF32's error (~1e-3 relative; the kit
+#: reports its TF32 outputs within ~1e-3 of stock's); a wrong kernel is off by
+#: order one.
+TF32_CHECK_RTOL = 1e-2
+
+#: The modes' flags, for the refusal messages.
+LEAVE_OUT = "leave out --predict-fused-kernel-exact / --predict-fused-kernel-fast"
 
 
 class TritonRouteRefused(RuntimeError):
@@ -117,15 +141,15 @@ def describe(device=None):
 
     if not torch.cuda.is_available():
         raise TritonRouteRefused(
-            "the Triton forward needs a CUDA device; none is available "
-            "(leave out --predict-fused-kernel)")
+            f"the Triton forward needs a CUDA device; none is available "
+            f"({LEAVE_OUT})")
     index = None
     if device is not None:
         resolved = torch.device(device)
         if resolved.type != "cuda":
             raise TritonRouteRefused(
                 f"the Triton forward needs a CUDA device; asked for "
-                f"'{resolved}' (leave out --predict-fused-kernel)")
+                f"'{resolved}' ({LEAVE_OUT})")
         index = resolved.index
     major, minor = torch.cuda.get_device_capability(index)
     arch = f"cuda-{major}{minor}"
@@ -196,8 +220,8 @@ def _require_model(model):
                     "convolutions must be unpadded, unstrided and biased")
         if submodel.count_dense is None:
             raise TritonRouteRefused(
-                "a model without a counts head (a profile-only bias model) is "
-                "not supported by the fused kernels; leave out --predict-fused-kernel")
+                f"a model without a counts head (a profile-only bias model) is "
+                f"not supported by the fused kernels; {LEAVE_OUT}")
         if submodel.count_dense.bias is None:
             raise TritonRouteRefused("the counts head must be biased")
 
@@ -236,9 +260,11 @@ class _KitView:
         self.linear = bpnet.count_dense
 
 
-def build(model, device=None, counts="exact"):
+def build(model, device=None, counts="exact", precision="ieee"):
     """A callable `(N,4,L) -> (profile, logcounts)` on the Triton kernels.
 
+    ``precision`` is ``"ieee"`` (the fp32 kernels, ``--predict-fused-kernel-exact``)
+    or ``"tf32"`` (the tensor-core kernels, ``--predict-fused-kernel-fast``).
     Call it only after `model` is on `device`: `K1BPNetV3` snapshots and
     transposes the weights at construction.
     """
@@ -246,6 +272,8 @@ def build(model, device=None, counts="exact"):
 
     from chrombpnet.engines.pytorch.model import ChromBPNet
 
+    if precision not in ("ieee", "tf32"):
+        raise ValueError(f"precision must be 'ieee' or 'tf32', not {precision!r}")
     arch, entry = require(model, device)
     from chrombpnet.engines.pytorch._vendor.chrombpnet_k1 import kernels
 
@@ -256,12 +284,23 @@ def build(model, device=None, counts="exact"):
     kernels._BM, kernels._BN = block_m, block_n
     kernels._BK, kernels._NW, kernels._NS = block_k, warps, stages
 
+    # The fast route: the convolutions on kernels_tc's tensor-core dot, with
+    # its own tile (set the same way, through its module globals); the heads
+    # stay on kernels.py, with the tile above.
+    tc_tile = None
+    submodel = kernels.K1BPNetV3
+    if precision == "tf32":
+        from chrombpnet.engines.pytorch._vendor.chrombpnet_k1 import kernels_tc
+        tc_tile = entry.get("tc_tile") or kernels_tc._TILE
+        kernels_tc.set_tile(tc_tile)
+        submodel = kernels_tc.K1BPNetV3TC
+
     # The whole record, not its name: exact_counts reads form.get("form")
     # and the group size alongside it.
     counts_form = entry.get("counts_form")
     def _sub(bpnet):
-        return kernels.K1BPNetV3(_KitView(bpnet), counts_mode=counts,
-                                 head="serial", counts_form=counts_form)
+        return submodel(_KitView(bpnet), counts_mode=counts,
+                        head="serial", counts_form=counts_form)
 
     if isinstance(model, ChromBPNet):
         accessibility = _sub(model.tf_model)
@@ -287,16 +326,23 @@ def build(model, device=None, counts="exact"):
 
     forward.arch = arch
     forward.tile = tile
-    forward.measured = entry["measured"]
-    if not entry["measured"]:
+    forward.precision = precision
+    forward.tc_tile = tc_tile
+    # The fast route is new to this package and the kit lists no TF32 tile
+    # for every card it lists, so it is checked on every build.
+    forward.measured = entry["measured"] and (precision == "ieee" or bool(entry.get("tc_tile")))
+    if precision == "tf32":
+        _check_against_eager(forward, model, device, arch, tc_tile, tf32=True)
+    elif not entry["measured"]:
         _check_against_eager(forward, model, device, arch, tile)
     return forward
 
 
-def _check_against_eager(forward, model, device, arch, tile):
+def _check_against_eager(forward, model, device, arch, tile, tf32=False):
     """Refuse unless the kernels compile, run and agree with the eager
-    forward (TF32 off) on a small batch: for an architecture the kit's table
-    does not list, where nothing else has shown they do."""
+    forward on a small batch: for the exact kernels on an architecture the
+    kit's table does not list (TF32 off, `UNLISTED_CHECK_ATOL`), and for the
+    fast kernels always (TF32 on, `TF32_CHECK_RTOL`)."""
     import torch
 
     length = int(model.config.input_length)
@@ -304,7 +350,7 @@ def _check_against_eager(forward, model, device, arch, tile):
     bases = torch.randint(0, 4, (2, length), generator=generator)
     x = torch.nn.functional.one_hot(bases, 4).permute(0, 2, 1).float().contiguous().to(device)
     previous = torch.backends.cudnn.allow_tf32
-    torch.backends.cudnn.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = tf32
     try:
         with torch.inference_mode():
             eager = model(x)
@@ -313,15 +359,19 @@ def _check_against_eager(forward, model, device, arch, tile):
             except Exception as exc:
                 raise TritonRouteRefused(
                     f"the fused kernels do not run on {arch} at tile {tile}: {exc!r} "
-                    f"(leave out --predict-fused-kernel)") from exc
+                    f"({LEAVE_OUT})") from exc
     finally:
         torch.backends.cudnn.allow_tf32 = previous
     worst = max(float((a - b).abs().max()) for a, b in zip(fused, eager))
-    if not worst <= UNLISTED_CHECK_ATOL:      # NaN fails too
+    if tf32:
+        scale = max(1.0, max(float(b.abs().max()) for b in eager))
+        limit, kind = TF32_CHECK_RTOL * scale, f"{TF32_CHECK_RTOL:g} x {scale:.3g}, TF32 on"
+    else:
+        limit, kind = UNLISTED_CHECK_ATOL, f"{UNLISTED_CHECK_ATOL:g}, TF32 off"
+    if not worst <= limit:      # NaN fails too
         raise TritonRouteRefused(
             f"the fused kernels disagree with the eager forward on {arch} at tile "
-            f"{tile} (max |difference| {worst:.3g} > {UNLISTED_CHECK_ATOL:g}); "
-            f"leave out --predict-fused-kernel")
+            f"{tile} (max |difference| {worst:.3g} > {kind}); {LEAVE_OUT}")
 
 
 def _prepare(x):

@@ -361,14 +361,15 @@ changes, `args.json` and checkpoints included.
   arrays from that heap and grows it 512 MiB at a time. On a GPU `pred_bw` is
   1.07-1.12x faster for about 9% more peak RAM; a CPU-only run holds about
   twice the RAM. GPU memory and outputs are unaffected.
-- **Fused Triton forward** (`--predict-fused-kernel`, optional; on `pred_bw`,
-  `footprints`, `qc` and `bias qc`): fp32-exact kernels in place of the
-  eager TF32 convolutions, so predictions move by about 1e-5 (closer to an
-  fp64 reference). On any CUDA GPU: the kit's measured tile on H100/H200,
-  L40S and A100, one chosen from the GPU's shared memory elsewhere (checked
-  against the default forward first). It buys accuracy, not speed: on an
-  H200 and an L40S it was slower end to end. Not on `contribs_bw`, whose
-  DeepLIFT needs autograd and hooks a fused kernel cannot provide.
+- **Fused Triton forward** (`--predict-fused-kernel-exact`, optional; on
+  `pred_bw`, `footprints`, `qc` and `bias qc`): fp32-exact kernels in place
+  of the eager TF32 convolutions, so predictions move by about 1e-5 (closer
+  to an fp64 reference). On any CUDA GPU: the kit's measured tile on
+  H100/H200, L40S and A100, one chosen from the GPU's shared memory elsewhere
+  (checked against the default forward first). It buys accuracy, not speed:
+  on an H200 and an L40S it was slower end to end. `--predict-fused-kernel-fast`
+  runs the kit's TF32 kernels instead. Not on `contribs_bw`, whose DeepLIFT
+  needs autograd and hooks a fused kernel cannot provide.
 
 The memory-mapped reads, the lookup-table one-hot, the vectorized metrics,
 the worker-process writer, the background imports, the fast exit, the

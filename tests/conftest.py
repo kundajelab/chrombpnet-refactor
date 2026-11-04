@@ -39,7 +39,7 @@ def _fused_kernels_off():
     The setting is process-global, so without this a test that turned the
     fused kernels on would leak that into every test that ran after it.
     """
-    previous = fused_kernels.enabled()
+    previous = fused_kernels.mode()
     fused_kernels.configure(False)
     yield
     fused_kernels.configure(previous)
@@ -47,5 +47,6 @@ def _fused_kernels_off():
 
 @pytest.fixture
 def predict_fused_kernel():
-    """Turn the fused-kernel route on for one test: `predict_fused_kernel(True)`."""
+    """Turn the fused-kernel route on for one test: `predict_fused_kernel("fast")`
+    (or ``"exact"``; ``True`` means exact)."""
     return fused_kernels.configure
