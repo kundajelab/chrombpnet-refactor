@@ -1,4 +1,4 @@
-# TensorFlow engine. From the kundajelab fork of shap (kundajelab-shap==1,
+# tensorflow-old engine (chrombpnet 1.x's Keras 2 code). From the kundajelab fork of shap (kundajelab-shap==1,
 # https://github.com/kundajelab/shap), shap/explainers/deep/deep_tf.py, the
 # TFDeepExplainer chrombpnet 1.x computes its contribution scores with. The
 # fork no longer imports on Python 3.12 with NumPy 2 (its compiled extension

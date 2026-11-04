@@ -1,5 +1,48 @@
 # Changelog
 
+## `--engine tensorflow` is Keras 3; the original's Keras 2 code is `--engine tensorflow-old`
+
+- **Breaking: `--engine tensorflow` changes meaning.** It now runs the JAX
+  engine's Keras 3 ChromBPNet (`chrombpnet/engines/jax`) on the TensorFlow
+  backend, and writes `.keras` checkpoints. The engine it named before,
+  chrombpnet 1.x's Keras 2 code on tf-keras (whose `.h5` checkpoints
+  chrombpnet 1.x, variant-scorer and bpnet-lite read), is unchanged as
+  `--engine tensorflow-old` (`chrombpnet/engines/tensorflow_old`, moved from
+  `chrombpnet/engines/tensorflow`). `.h5` inputs without `--engine` still go
+  to it; an `args.json` that records `"engine": "tensorflow"` from before
+  this change meant it. Both run in `chrombpnet-tensorflow`.
+- The new `tensorflow` engine shares the JAX engine's architectures, loss,
+  optimizers, callbacks, training call, `.keras` checkpoints (each loads the
+  other's) and model loader, which also reads the original's `.h5` models.
+  What is TensorFlow-specific: `jax/runtime.py` and `jax/train.py` gained
+  TensorFlow branches for the device (`--device`), precision (`--precision
+  highest` turns TF32 off) and determinism (`--reproducibility-max`), and
+  DeepSHAP is `engines/tensorflow/{deeplift_tf,explainer}.py`: the JAX
+  engine's DeepLIFT rules and explainer, ported op for op. The JAX
+  explainer's backend-neutral helpers moved to `jax/attribution/common.py`
+  (re-exported), and `chrombpnet.engines.jax` sets `KERAS_BACKEND=jax` only
+  where JAX is installed.
+- The JAX engine's training options (`--optimizer`, `--muon-lr`, `--ema`,
+  `--ema-momentum`, `--lr-schedule`, `--precision`) apply to it too.
+  `.keras` inputs without `--engine` go to the installed Keras 3 engine
+  (JAX where it is installed, else `tensorflow`), and inputs that several
+  engines read go to an installed one first. `export` takes
+  `--engine tensorflow`.
+- `requirements-tensorflow.txt` pins `keras==3.15.1` (the release the
+  environment already had, as TensorFlow 2.21's dependency, and the one
+  `chrombpnet-jax` pins), and the `tensorflow` extra asks for Keras 3.
+- Checks: DeepSHAP of the `tensorflow` engine equals `tensorflow-old`'s (the
+  original's code) within relative L2 1.7e-6 (counts 8.4e-8, profile
+  1.7e-6, profile with the stop-gradient 1.7e-7), JAX's within 2.1e-7 and
+  PyTorch's within 1e-6, with bitwise-identical references
+  (`tests/parity/deepshap_engines.py`, now four engines, 24 checks);
+  `tests/parity/jax_engine.py --engine tensorflow` (new option) passes the
+  JAX engine's 71 checks against the original; `tests/tensorflow_engine`
+  reruns the JAX engine's behavioural tests on it and tests the rules
+  against the JAX tests' NumPy brute-force DeepLIFT (moved to
+  `tests/keras3_deeplift.py`); the regression harness takes
+  `--engine tensorflow` and `--engine tensorflow-old`.
+
 ## `--model-selection` removed: epochs are kept on the validation loss
 
 - **Behaviour change, opt-in mode only.** `pipeline` / `train

@@ -18,18 +18,25 @@ Loading is the exception. A checkpoint's suffix names the engine that wrote it,
 so :func:`for_model` and :func:`load_model_wrapper` load with the configured
 engine when it can read the file, and otherwise with the engine whose suffix
 it has. The JAX engine, for one, also reads the original ChromBPNet's ``.h5``
-models.
+models. ``.keras`` checkpoints are Keras 3's, which both Keras 3 engines read
+(``jax``, and ``tensorflow``, the JAX engine's code on the TensorFlow backend);
+the one whose framework is installed loads them. ``.h5`` files are written by
+``tensorflow-old``, chrombpnet 1.x's Keras 2 code.
 """
 
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import os
 
 from chrombpnet.engines.base import Engine, EngineNotImplemented, EngineUnavailable
 
 #: Every engine name, in the order ``--engine`` lists them.
-ENGINE_NAMES = ("pytorch", "tensorflow", "jax")
+ENGINE_NAMES = ("pytorch", "tensorflow", "jax", "tensorflow-old")
+
+#: The engines that run the Keras 3 code (``chrombpnet.engines.jax``) and share its checkpoints and options.
+KERAS3_ENGINES = ("jax", "tensorflow")
 
 #: What an omitted ``--engine`` means when no model path says otherwise.
 DEFAULT_ENGINE = "pytorch"
@@ -38,13 +45,22 @@ _MODULES = {
     "pytorch": "chrombpnet.engines.pytorch",
     "tensorflow": "chrombpnet.engines.tensorflow",
     "jax": "chrombpnet.engines.jax",
+    "tensorflow-old": "chrombpnet.engines.tensorflow_old",
+}
+
+#: The module each engine's framework is imported as (to tell, without importing it, whether it is installed).
+_FRAMEWORKS = {
+    "pytorch": "torch",
+    "tensorflow": "tensorflow",
+    "jax": "jax",
+    "tensorflow-old": "tensorflow",
 }
 
 #: Checkpoint suffix -> engine that writes it.
 _SUFFIX_TO_ENGINE = {
     ".pt": "pytorch",
-    ".h5": "tensorflow",
-    ".hdf5": "tensorflow",
+    ".h5": "tensorflow-old",
+    ".hdf5": "tensorflow-old",
     ".keras": "jax",
 }
 
@@ -59,7 +75,7 @@ MODEL_PATH_ATTRIBUTES = (
     "chrombpnet_model_nb",
 )
 
-#: Training options only the JAX engine has (``parsers._add_jax_training_options``).
+#: Training options only the Keras 3 engines have (``parsers._add_jax_training_options``).
 #: Like ``--engine`` they default to ``None`` and are dropped when absent.
 JAX_ONLY_OPTIONS = ("optimizer", "muon_lr", "ema", "ema_momentum",
                     "lr_schedule", "precision")
@@ -74,6 +90,7 @@ _CURRENT = DEFAULT_ENGINE
 __all__ = [
     "DEFAULT_ENGINE",
     "ENGINE_NAMES",
+    "KERAS3_ENGINES",
     "Engine",
     "EngineNotImplemented",
     "EngineUnavailable",
@@ -111,11 +128,29 @@ def current():
     return get(_CURRENT)
 
 
+def installed(name):
+    """True if engine ``name``'s framework can be imported here (checked without importing it)."""
+    try:
+        return importlib.util.find_spec(_FRAMEWORKS[name]) is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def keras3_engine():
+    """The Keras 3 engine for this environment: ``jax`` where JAX is installed, else
+    ``tensorflow`` where TensorFlow is, else ``jax`` (whose error names its environment)."""
+    if not installed("jax") and installed("tensorflow"):
+        return "tensorflow"
+    return "jax"
+
+
 def infer_from_path(path):
-    """The engine whose checkpoints end like ``path``, or ``None``."""
+    """The engine whose checkpoints end like ``path``, or ``None``. A Keras 3
+    ``.keras`` file is the installed Keras 3 engine's (``keras3_engine``)."""
     if not path or not isinstance(path, str):
         return None
-    return _SUFFIX_TO_ENGINE.get(os.path.splitext(path)[1].lower())
+    name = _SUFFIX_TO_ENGINE.get(os.path.splitext(path)[1].lower())
+    return keras3_engine() if name == "jax" else name
 
 
 def for_model(path):
@@ -154,8 +189,12 @@ def resolve_name(args):
         return explicit
     names = sorted(set(inferred.values()))
     if len(names) > 1:
-        readers = [name for name in ENGINE_NAMES
-                   if all(get(name).can_read(getattr(args, a)) for a in inferred)]
+        # installed engines first, then the Keras 3 engine a .keras file alone
+        # would get, then the --engine order
+        preferred = keras3_engine()
+        readers = sorted((name for name in ENGINE_NAMES
+                          if all(get(name).can_read(getattr(args, a)) for a in inferred)),
+                         key=lambda name: (not installed(name), name != preferred))
         if readers:
             return readers[0]
         raise ValueError(
@@ -175,7 +214,7 @@ def configure_from_args(args, require=True):
     An omitted ``--engine`` (``None``) is removed from ``args`` afterwards, so
     the namespaces later dumped to ``<prefix>.args.json`` are exactly what they
     were before the flag existed; an explicit one stays and is recorded. The
-    same goes for the JAX-only training options.
+    same goes for the Keras 3 engines' training options.
     """
     engine = configure(resolve_name(args))
     _check_combinations(engine, args)
@@ -190,12 +229,13 @@ def configure_from_args(args, require=True):
 
 def _check_combinations(engine, args):
     """Reject flags that only mean something for another engine."""
-    if engine.name != "jax":
+    if engine.name not in KERAS3_ENGINES:
         given = [a for a in JAX_ONLY_OPTIONS if getattr(args, a, None) is not None]
         if given:
             flags = ", ".join("--" + a.replace("_", "-") for a in given)
             raise ValueError(
-                f"{flags} only apply to the JAX engine, not the {engine.name} engine")
+                f"{flags} only apply to the Keras 3 engines (jax, tensorflow), "
+                f"not the {engine.name} engine")
     if engine.name == "pytorch":
         return
     given = [a for a in PYTORCH_ONLY_OPTIONS if getattr(args, a, None) is not None]

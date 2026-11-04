@@ -9,7 +9,7 @@ from tensorflow.keras.backend import int_shape
 from tensorflow.keras.layers import Input, Cropping1D, add, Conv1D, GlobalAvgPool1D, Dense, Flatten
 from tensorflow.keras.optimizers.legacy import Adam
 from tensorflow.keras.models import Model
-from chrombpnet.engines.tensorflow.losses import multinomial_nll
+from chrombpnet.engines.tensorflow_old.losses import multinomial_nll
 import tensorflow as tf
 import random as rn
 import os 

@@ -1,4 +1,4 @@
-"""Training for the TensorFlow engine.
+"""Training for the tensorflow-old engine.
 
 ``get_model`` and ``fit_and_evaluate`` are adapted from kundajelab/chrombpnet
 @09938fd, chrombpnet/training/train.py. The callbacks, their arguments and
@@ -6,7 +6,7 @@ their order, the ``model.fit`` call and the two saves are the original's. What
 differs:
 
 * batches come from the shared generator through
-  :class:`~chrombpnet.engines.tensorflow.sequence_adapter.KerasSequence`;
+  :class:`~chrombpnet.engines.tensorflow_old.sequence_adapter.KerasSequence`;
 * the architecture file is loaded exactly as the original loads it,
   ``SourceFileLoader('', path).load_module()``, not with the shared loader:
   Keras records a ``Lambda`` layer's defining module name in the saved model,
@@ -32,15 +32,15 @@ import os
 
 import tensorflow as tf
 
-from chrombpnet.engines.tensorflow import require_tf_keras
+from chrombpnet.engines.tensorflow_old import require_tf_keras
 
 require_tf_keras()  # before tensorflow.keras.callbacks, which could be Keras 3's
 import tensorflow.keras.callbacks as tfcallbacks  # noqa: E402
 
-from chrombpnet.engines.tensorflow import callbacks
-from chrombpnet.engines.tensorflow.layers import make_original_readable
-from chrombpnet.engines.tensorflow.predictor import configure_device
-from chrombpnet.engines.tensorflow.sequence_adapter import KerasSequence
+from chrombpnet.engines.tensorflow_old import callbacks
+from chrombpnet.engines.tensorflow_old.layers import make_original_readable
+from chrombpnet.engines.tensorflow_old.predictor import configure_device
+from chrombpnet.engines.tensorflow_old.sequence_adapter import KerasSequence
 from chrombpnet.engines.keras_weights import assign_canonical_weights
 from chrombpnet.training.utils.benchmark_utils import (
     benchmark_enables,

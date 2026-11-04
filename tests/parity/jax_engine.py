@@ -18,7 +18,10 @@ Three interpreters, files in between, like ``tf_engine.py``:
              a 1.x bias model (``tf_engine.task_bias_init``), model outputs,
              ``test_on_batch`` losses, a 20-step Adam trace, the bias rescale
              and DeepSHAP; its models are saved as 1.x ``.h5`` files.
-``jax``      this package's JAX engine, in ``chrombpnet-jax``, CPU, full float32.
+``jax``      this package's JAX engine, in ``chrombpnet-jax``, CPU, full float32;
+             with ``--engine tensorflow``, the same Keras 3 code on the
+             TensorFlow backend, in ``chrombpnet-tensorflow``, held to the
+             same checks.
 
 Checks (tolerances as in the PR, CPU, full float32):
 
@@ -50,8 +53,8 @@ The golden worker is checked against itself first.
 
 Usage::
 
-    python tests/parity/jax_engine.py [--original-repo PATH] [--reference-python P]
-        [--tf-python P] [--jax-python P] [--keep]
+    python tests/parity/jax_engine.py [--engine jax|tensorflow] [--original-repo PATH]
+        [--reference-python P] [--tf-python P] [--jax-python P] [--keep]
     CHROMBPNET_JAX_ENGINE_PARITY=1 pytest tests/parity/test_jax_engine.py
 """
 
@@ -236,13 +239,14 @@ def golden_shap(workdir, out, original_repo):
 # jax: this package's JAX engine, in the JAX environment
 # --------------------------------------------------------------------------
 
-def jax_side(workdir, golden_dir, out):
+def jax_side(workdir, golden_dir, out, engine_name="jax"):
+    """The Keras 3 engine's side: ``jax``, or ``tensorflow`` (the same code on TensorFlow)."""
     _import_this_package()
     from chrombpnet import engines
     tf_engine = _tf_engine()
 
-    engine = engines.configure("jax")
-    engine.require()
+    engine = engines.configure(engine_name)
+    engine.require()  # starts Keras on the engine's backend
     import keras
 
     fixture = np.load(os.path.join(workdir, "fixture.npz"))
@@ -355,7 +359,7 @@ def tf_export(workdir, jax_dir):
     """This package's TensorFlow engine loads the exports."""
     _import_this_package()
     from chrombpnet import engines
-    engine = engines.get("tensorflow")  # before TensorFlow: it sets TF_USE_LEGACY_KERAS
+    engine = engines.get("tensorflow-old")  # before TensorFlow: it sets TF_USE_LEGACY_KERAS
     _tf_engine()._pin_tensorflow()
     _predict_exports(lambda path: engine.load_predictor(path, announce=False, summary=False),
                      workdir, jax_dir, "tf_export")
@@ -468,7 +472,7 @@ def compare(golden_dir, golden_dir2, jax_dir, report):
 
     for reader in ("tf_export", "golden_export"):
         loaded = np.load(os.path.join(jax_dir, reader + ".npz"))
-        who = "TensorFlow engine" if reader == "tf_export" else "original"
+        who = "tensorflow-old engine" if reader == "tf_export" else "original"
         for name in EXPORTS:
             for output in ("profile", "counts"):
                 key = "{}_{}".format(name, output)
@@ -493,7 +497,8 @@ def compare(golden_dir, golden_dir2, jax_dir, report):
 
 def _run(python, mode, workdir, out, arguments, log_name):
     command = [python, str(Path(__file__).resolve()), "--worker", mode,
-               "--workdir", workdir, "--out", out, "--original-repo", arguments.original_repo]
+               "--workdir", workdir, "--out", out, "--original-repo", arguments.original_repo,
+               "--engine", arguments.engine]
     env = dict(os.environ, **PINNED_ENV)
     env.pop("PYTHONPATH", None)
     log = os.path.join(workdir, "logs", log_name + ".log")
@@ -527,11 +532,12 @@ def main(arguments):
             print("running the original implementation ({}) ...".format(os.path.basename(out)))
             _run(arguments.reference_python, "golden", workdir, out, arguments, os.path.basename(out))
         _run(arguments.reference_python, "golden_shap", workdir, golden_dir, arguments, "golden-shap")
-        print("running the JAX engine ...")
+        print("running the {} engine ...".format(arguments.engine))
         golden_link = os.path.join(jax_dir, ".golden")
         os.makedirs(jax_dir)
         os.symlink(golden_dir, golden_link)
-        _run(arguments.jax_python, "jax", workdir, jax_dir, arguments, "jax")
+        python = arguments.jax_python if arguments.engine == "jax" else arguments.tf_python
+        _run(python, "jax", workdir, jax_dir, arguments, arguments.engine)
         _run(arguments.tf_python, "tf_export", workdir, jax_dir, arguments, "tf-export")
         _run(arguments.reference_python, "golden_export", workdir, jax_dir, arguments, "golden-export")
         report = Report()
@@ -539,8 +545,8 @@ def main(arguments):
         if report.failed:
             print("\n{} of {} checks failed.".format(len(report.failed), len(report.rows)))
             return 1
-        print("\nAll {} checks passed: the JAX engine agrees with the original implementation "
-              "within the tolerances above.".format(len(report.rows)))
+        print("\nAll {} checks passed: the {} engine agrees with the original implementation "
+              "within the tolerances above.".format(len(report.rows), arguments.engine))
         return 0
     finally:
         if arguments.keep:
@@ -558,6 +564,9 @@ def parser():
     result.add_argument("--tf-python", default=_sibling_python("chrombpnet-tensorflow"),
                         help="this package's TensorFlow environment")
     result.add_argument("--jax-python", default=_sibling_python("chrombpnet-jax"))
+    result.add_argument("--engine", default="jax", choices=["jax", "tensorflow"],
+                        help="the Keras 3 engine checked: jax (in --jax-python) or tensorflow "
+                             "(in --tf-python)")
     result.add_argument("--keep", action="store_true", help="keep the work directory")
     result.add_argument("--worker", help=argparse.SUPPRESS)
     result.add_argument("--workdir", help=argparse.SUPPRESS)
@@ -572,7 +581,7 @@ if __name__ == "__main__":
     elif arguments.worker == "golden_shap":
         golden_shap(arguments.workdir, arguments.out, arguments.original_repo)
     elif arguments.worker == "jax":
-        jax_side(arguments.workdir, os.path.join(arguments.out, ".golden"), arguments.out)
+        jax_side(arguments.workdir, os.path.join(arguments.out, ".golden"), arguments.out, arguments.engine)
     elif arguments.worker == "tf_export":
         tf_export(arguments.workdir, arguments.out)
     elif arguments.worker == "golden_export":

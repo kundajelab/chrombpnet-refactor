@@ -247,7 +247,7 @@ def test_default_selection_leaves_the_log_and_checkpoint_as_they_were(tmp_path):
 
 
 def test_pytorch_only_options_are_refused_by_the_other_engines():
-    for name in ("tensorflow", "jax"):
+    for name in ("tensorflow", "jax", "tensorflow-old"):
         engine = SimpleNamespace(name=name)
         with pytest.raises(ValueError, match="only apply to the PyTorch engine"):
             engines._check_combinations(engine, SimpleNamespace(bias_profile_only=True))

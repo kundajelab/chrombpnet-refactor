@@ -22,11 +22,31 @@ def _restore_engine():
     engines._CURRENT = previous
 
 
+#: tensorflow-old shares the TensorFlow environment, which has tf-keras beside Keras 3.
+ENVIRONMENTS = {"tensorflow-old": "chrombpnet-tensorflow"}
+
+
 def test_every_engine_is_registered_and_importable_without_its_framework():
     for name in engines.ENGINE_NAMES:
         engine = engines.get(name)
         assert engine.name == name
-        assert engine.environment == f"chrombpnet-{name}"
+        assert engine.environment == ENVIRONMENTS.get(name, f"chrombpnet-{name}")
+
+
+def test_keras3_files_go_to_the_installed_keras3_engine(monkeypatch):
+    """Both Keras 3 engines read .keras; JAX where it is installed, else TensorFlow's."""
+    def installed(present):
+        return lambda name: engines._FRAMEWORKS[name] in present
+    monkeypatch.setattr(engines, "installed", installed({"jax", "tensorflow"}))
+    assert engines.keras3_engine() == "jax"
+    monkeypatch.setattr(engines, "installed", installed({"tensorflow"}))
+    assert engines.keras3_engine() == "tensorflow"
+    assert engines.infer_from_path("m.keras") == "tensorflow"
+    assert engines.infer_from_path("m.h5") == "tensorflow-old"
+    mixed = Namespace(bias_model="original_bias.h5", chrombpnet_model="chrombpnet.keras")
+    assert engines.resolve_name(mixed) == "tensorflow"
+    monkeypatch.setattr(engines, "installed", installed(set()))
+    assert engines.keras3_engine() == "jax"   # whose error names its environment
 
 
 def test_the_default_is_pytorch():
@@ -37,10 +57,10 @@ def test_the_default_is_pytorch():
 
 @pytest.mark.parametrize("path,expected", [
     ("models/bias.pt", "pytorch"),
-    ("models/bias.h5", "tensorflow"),
-    ("models/BIAS.H5", "tensorflow"),
-    ("models/bias.hdf5", "tensorflow"),
-    ("models/bias.keras", "jax"),
+    ("models/bias.h5", "tensorflow-old"),
+    ("models/BIAS.H5", "tensorflow-old"),
+    ("models/bias.hdf5", "tensorflow-old"),
+    ("models/bias.keras", engines.keras3_engine()),
     ("models/bias.ckpt", None),
     ("None", None),
     (None, None),
@@ -51,29 +71,32 @@ def test_checkpoint_suffix_names_the_engine(path, expected):
 
 def test_an_omitted_engine_follows_the_input_models():
     args = Namespace(engine=None, chrombpnet_model="a.h5", chrombpnet_model_nb="b.h5")
-    assert engines.resolve_name(args) == "tensorflow"
+    assert engines.resolve_name(args) == "tensorflow-old"
     assert engines.resolve_name(Namespace(engine=None, bias_model_path="b.pt")) == "pytorch"
-    assert engines.resolve_name(Namespace(engine=None, model_h5="m.keras")) == "jax"
+    assert engines.resolve_name(Namespace(engine=None, model_h5="m.keras")) == engines.keras3_engine()
 
 
 def test_an_explicit_engine_must_agree_with_the_input_models():
     with pytest.raises(ValueError, match="--model-h5 'm.pt' is a pytorch checkpoint"):
-        engines.resolve_name(Namespace(engine="tensorflow", model_h5="m.pt"))
-    with pytest.raises(ValueError, match="--model-h5 'm.keras' is a jax checkpoint"):
-        engines.resolve_name(Namespace(engine="tensorflow", model_h5="m.keras"))
+        engines.resolve_name(Namespace(engine="tensorflow-old", model_h5="m.pt"))
+    with pytest.raises(ValueError, match=f"--model-h5 'm.keras' is a {engines.keras3_engine()} checkpoint"):
+        engines.resolve_name(Namespace(engine="tensorflow-old", model_h5="m.keras"))
     # An unrecognised suffix is trusted to the explicit engine.
-    assert engines.resolve_name(Namespace(engine="tensorflow", model_h5="m.ckpt")) == "tensorflow"
+    assert engines.resolve_name(Namespace(engine="tensorflow-old", model_h5="m.ckpt")) == "tensorflow-old"
+    # The Keras 3 tensorflow engine reads .h5 (1.x models) as well as .keras.
+    assert engines.resolve_name(Namespace(engine="tensorflow", model_h5="m.h5")) == "tensorflow"
 
 
 def test_an_explicit_engine_may_read_another_engines_checkpoints():
-    """The JAX engine loads the original ChromBPNet's .h5 models."""
-    args = Namespace(engine="jax", bias_model_path="original_bias.h5")
-    assert engines.resolve_name(args) == "jax"
+    """The Keras 3 engines load the original ChromBPNet's .h5 models, and each other's .keras files."""
+    for name in engines.KERAS3_ENGINES:
+        assert engines.resolve_name(Namespace(engine=name, bias_model_path="original_bias.h5")) == name
+        assert engines.resolve_name(Namespace(engine=name, model_h5="m.keras")) == name
 
 
 def test_mixed_input_models_go_to_the_engine_that_reads_them_all():
     args = Namespace(bias_model="original_bias.h5", chrombpnet_model="chrombpnet.keras")
-    assert engines.resolve_name(args) == "jax"
+    assert engines.resolve_name(args) == engines.keras3_engine()
 
 
 def test_input_models_from_two_engines_are_refused():
@@ -96,7 +119,7 @@ def test_an_omitted_engine_leaves_no_trace_in_the_namespace():
 def test_pytorch_only_flags_are_refused_for_other_engines():
     with pytest.raises(ValueError, match="--predict-fused-kernel"):
         engines.configure_from_args(
-            Namespace(engine="tensorflow", predict_fused_kernel=True), require=False)
+            Namespace(engine="tensorflow-old", predict_fused_kernel=True), require=False)
     # Inferred engines get the same check.
     with pytest.raises(ValueError, match="--predict-fused-kernel"):
         engines.configure_from_args(
@@ -119,16 +142,26 @@ def test_reproducibility_max_reaches_xla_before_jax_starts(monkeypatch):
     engines.configure_from_args(Namespace(engine="jax", reproducibility_max=True), require=False)
     assert os.environ["XLA_FLAGS"].count(DETERMINISTIC_XLA_FLAG) == 1
     monkeypatch.delenv("XLA_FLAGS")
+    engines.configure_from_args(Namespace(engine="tensorflow-old", reproducibility_max=True), require=False)
+    assert "XLA_FLAGS" not in os.environ
+    monkeypatch.setenv("KERAS_BACKEND", "jax")   # restored afterwards: prepare() sets it
     engines.configure_from_args(Namespace(engine="tensorflow", reproducibility_max=True), require=False)
     assert "XLA_FLAGS" not in os.environ
     engines.configure("pytorch")
 
 
 def test_jax_only_training_options_are_refused_for_other_engines():
-    for engine in ("pytorch", "tensorflow"):
-        with pytest.raises(ValueError, match="--optimizer, --ema only apply to the JAX engine"):
+    for engine in ("pytorch", "tensorflow-old"):
+        with pytest.raises(ValueError, match=r"--optimizer, --ema only apply to the Keras 3 engines \(jax, tensorflow\)"):
             engines.configure_from_args(
                 Namespace(engine=engine, optimizer="muon", ema=True), require=False)
+
+
+def test_keras3_training_options_apply_to_the_tensorflow_engine_too(monkeypatch):
+    monkeypatch.setenv("KERAS_BACKEND", "jax")   # restored afterwards: prepare() sets it
+    given = Namespace(engine="tensorflow", optimizer="muon", ema=True)
+    engines.configure_from_args(given, require=False)
+    assert given.optimizer == "muon" and given.ema is True
 
 
 def test_absent_jax_options_leave_no_trace_in_the_namespace():
@@ -144,18 +177,21 @@ def test_absent_jax_options_leave_no_trace_in_the_namespace():
 
 
 def test_model_loading_follows_the_checkpoint_not_the_configured_engine():
-    engines.configure("tensorflow")
+    engines.configure("tensorflow-old")
     assert engines.for_model("bias.pt").name == "pytorch"
-    assert engines.for_model("bias.keras").name == "jax"
-    assert engines.for_model("bias.unknown").name == "tensorflow"
+    assert engines.for_model("bias.keras").name == engines.keras3_engine()
+    assert engines.for_model("bias.unknown").name == "tensorflow-old"
 
 
 def test_the_configured_engine_loads_what_it_can_read():
     engines.configure("jax")
     assert engines.for_model("original_bias.h5").name == "jax"
     assert engines.for_model("bias.pt").name == "pytorch"
-    engines.configure("pytorch")
+    engines.configure("tensorflow")
     assert engines.for_model("original_bias.h5").name == "tensorflow"
+    assert engines.for_model("bias.keras").name == "tensorflow"
+    engines.configure("pytorch")
+    assert engines.for_model("original_bias.h5").name == "tensorflow-old"
 
 
 def _jax_installed():
@@ -175,6 +211,26 @@ def test_an_unavailable_engine_fails_before_creating_any_output(tmp_path):
         capture_output=True, text=True, cwd=tmp_path)
     assert completed.returncode != 0
     assert "chrombpnet-jax conda environment" in completed.stderr
+    assert not output_dir.exists()
+
+
+def _tensorflow_installed():
+    import importlib.util
+    return importlib.util.find_spec("tensorflow") is not None
+
+
+@pytest.mark.skipif(_tensorflow_installed(), reason="TensorFlow is installed here")
+def test_the_tensorflow_engines_without_tensorflow_name_their_environment(tmp_path):
+    output_dir = tmp_path / "out"
+    completed = subprocess.run(
+        [sys.executable, "-m", "chrombpnet.CHROMBPNET", "bias", "train",
+         "-g", "genome.fa", "-c", "chrom.sizes", "-ibam", "reads.bam",
+         "-o", str(output_dir), "-d", "ATAC", "-p", "peaks.bed",
+         "-n", "nonpeaks.bed", "-fl", "folds.json", "-b", "0.5",
+         "--engine", "tensorflow"],
+        capture_output=True, text=True, cwd=tmp_path)
+    assert completed.returncode != 0
+    assert "chrombpnet-tensorflow conda environment" in completed.stderr
     assert not output_dir.exists()
 
 
@@ -201,7 +257,7 @@ def test_engine_help_describes_every_engine_and_its_suffix(capsys):
 
 
 @pytest.mark.parametrize("given, expected", [(None, "true"), ("false", "false")])
-def test_the_tensorflow_engine_allocates_gpu_memory_as_needed(given, expected):
+def test_the_tensorflow_old_engine_allocates_gpu_memory_as_needed(given, expected):
     """Its DeepSHAP child process shares the GPU with the process that
     trained; an explicit setting still wins."""
     import os
@@ -209,16 +265,16 @@ def test_the_tensorflow_engine_allocates_gpu_memory_as_needed(given, expected):
     env = {k: v for k, v in os.environ.items() if k != "TF_FORCE_GPU_ALLOW_GROWTH"}
     if given is not None:
         env["TF_FORCE_GPU_ALLOW_GROWTH"] = given
-    code = ("import os, chrombpnet.engines.tensorflow; "
+    code = ("import os, chrombpnet.engines.tensorflow_old; "
             "print(os.environ['TF_FORCE_GPU_ALLOW_GROWTH'])")
     completed = subprocess.run([sys.executable, "-c", code], env=env,
                                capture_output=True, text=True, check=True)
     assert completed.stdout.strip() == expected
 
 
-@pytest.mark.parametrize("framework,cpu_only", [("jax", ("JAX_PLATFORMS", "cpu")),
-                                                ("tensorflow", ("CUDA_VISIBLE_DEVICES", ""))])
-def test_engines_load_shadowed_cuda_libraries_dependencies_first(tmp_path, monkeypatch, framework,
+@pytest.mark.parametrize("module,framework,cpu_only", [("jax", "jax", ("JAX_PLATFORMS", "cpu")),
+                                                       ("tensorflow_old", "tensorflow", ("CUDA_VISIBLE_DEVICES", ""))])
+def test_engines_load_shadowed_cuda_libraries_dependencies_first(tmp_path, monkeypatch, module, framework,
                                                                  cpu_only):
     """A system CUDA on LD_LIBRARY_PATH would shadow the CUDA wheels jax and
     TensorFlow bring; the engine loads the shadowed ones by path,
@@ -229,7 +285,7 @@ def test_engines_load_shadowed_cuda_libraries_dependencies_first(tmp_path, monke
     import os
     import types
 
-    engine = importlib.import_module("chrombpnet.engines." + framework)
+    engine = importlib.import_module("chrombpnet.engines." + module)
     variable, cpu_value = cpu_only
 
     nvidia = tmp_path / "nvidia"

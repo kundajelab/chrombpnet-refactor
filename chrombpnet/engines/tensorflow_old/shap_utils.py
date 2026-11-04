@@ -1,4 +1,4 @@
-# TensorFlow engine. Verbatim from kundajelab/chrombpnet@09938fd,
+# tensorflow-old engine (chrombpnet 1.x's Keras 2 code). Verbatim from kundajelab/chrombpnet@09938fd,
 # chrombpnet/evaluation/interpret/shap_utils.py, except that
 # shuffle_several_times passes an optional RandomState to dinuc_shuffle, and
 # the unused `import shap` is gone (the explainer is in deep_tf).

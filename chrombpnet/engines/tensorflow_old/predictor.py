@@ -24,7 +24,7 @@ def custom_objects():
     head's Lambda, which loads 1.x's Python 3.8 bytecode head on any Python
     (``layers``)."""
     import tensorflow as tf
-    from chrombpnet.engines.tensorflow import layers, losses
+    from chrombpnet.engines.tensorflow_old import layers, losses
     return {"tf": tf, "multinomial_nll": losses.multinomial_nll,
             "Lambda": layers.CountHeadLambda,
             layers.chrombpnet_logsumexp.__name__: layers.chrombpnet_logsumexp}
@@ -48,11 +48,11 @@ def refuse_keras3(path):
     if str(version).startswith("3."):
         raise ValueError(
             f"{path} was written by Keras {version} (e.g. ChromBPNet 2.0) and "
-            f"cannot be loaded by the TensorFlow engine's Keras 2 (tf-keras); use --engine jax")
+            f"cannot be loaded by the tensorflow-old engine's Keras 2 (tf-keras); use --engine tensorflow or jax")
 
 
 def load_model(path, compile=True):
-    from chrombpnet.engines.tensorflow import require_tf_keras
+    from chrombpnet.engines.tensorflow_old import require_tf_keras
 
     require_tf_keras()
     from tensorflow.keras.models import load_model as keras_load_model

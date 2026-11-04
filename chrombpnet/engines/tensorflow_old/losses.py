@@ -1,4 +1,4 @@
-# TensorFlow engine. Verbatim from kundajelab/chrombpnet@09938fd,
+# tensorflow-old engine (chrombpnet 1.x's Keras 2 code). Verbatim from kundajelab/chrombpnet@09938fd,
 # chrombpnet/training/utils/losses.py.
 import tensorflow as tf
 import tensorflow_probability as tfp

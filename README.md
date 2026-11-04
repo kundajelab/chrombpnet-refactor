@@ -32,7 +32,7 @@ share one. Create the ones you need from the repository root:
 | Engine | Create the environment | Then | Python and framework |
 |---|---|---|---|
 | PyTorch (default) | `conda env create -f envs/chrombpnet-pytorch.yml` | `conda activate chrombpnet-pytorch` | Python 3.12, PyTorch 2.14 |
-| TensorFlow | `conda env create -f envs/chrombpnet-tensorflow.yml` | `conda activate chrombpnet-tensorflow` | Python 3.12, TensorFlow 2.21 (tf-keras) |
+| TensorFlow | `conda env create -f envs/chrombpnet-tensorflow.yml` | `conda activate chrombpnet-tensorflow` | Python 3.12, TensorFlow 2.21 (Keras 3.15 for `--engine tensorflow`; tf-keras 2.21 for `--engine tensorflow-old`) |
 | JAX | `conda env create -f envs/chrombpnet-jax.yml` | `conda activate chrombpnet-jax` | Python 3.12, JAX 0.11 (Keras 3.15) |
 | PyTorch on glibc 2.17 (e.g. Sherlock) | see `envs/chrombpnet-pytorch-sherlock.yml` | `conda activate chrombpnet-pytorch-sherlock` | Python 3.11, PyTorch 2.5.1 |
 
@@ -321,9 +321,10 @@ changes, `args.json` and checkpoints included.
 
 ### Compared with original ChromBPNet ([kundajelab/chrombpnet](https://github.com/kundajelab/chrombpnet)):
 
-- **Three engines instead of one.** PyTorch (default), TensorFlow (with
-  tf-keras, the Keras 2 API) and JAX (with Keras 3), all behind one shared,
-  framework-neutral pipeline. Contribution scoring is batched over
+- **Three frameworks instead of one.** PyTorch (default), TensorFlow and JAX
+  (both with Keras 3), all behind one shared, framework-neutral pipeline; the
+  original's own Keras 2 code also runs, on tf-keras, as `--engine
+  tensorflow-old`. Contribution scoring is batched over
   (sequence, reference) pairs in PyTorch, and computes both heads in one
   jitted pass in JAX, where the original explains one example at a time. See
   [`envs/README.md`](envs/README.md).

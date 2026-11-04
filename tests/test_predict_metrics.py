@@ -58,7 +58,7 @@ def test_pipeline_json_includes_profile_pearsonr(
     if importlib.util.find_spec("torch") is None:
         # The training pipelines ask the engine for its architecture file;
         # use an engine this environment has. Nothing here builds a model.
-        monkeypatch.setattr(engines, "_CURRENT", "tensorflow")
+        monkeypatch.setattr(engines, "_CURRENT", "tensorflow-old")
 
     layout = RunLayout(str(tmp_path), "run")
     layout.create_training_dirs()

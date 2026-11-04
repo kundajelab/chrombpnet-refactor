@@ -1,4 +1,4 @@
-"""The bias model's count-head rescale, for the TensorFlow engine.
+"""The bias model's count-head rescale, for the tensorflow-old engine.
 
 ``adjust_bias_model_logcounts`` is verbatim from kundajelab/chrombpnet@09938fd,
 chrombpnet/helpers/hyperparameters/find_chrombpnet_hyperparams.py;
@@ -10,8 +10,8 @@ from __future__ import annotations
 import numpy as np
 import tensorflow.keras as keras
 
-from chrombpnet.engines.tensorflow.layers import make_original_readable
-from chrombpnet.engines.tensorflow.predictor import load_model
+from chrombpnet.engines.tensorflow_old.layers import make_original_readable
+from chrombpnet.engines.tensorflow_old.predictor import load_model
 
 
 def adjust_bias_model_logcounts(bias_model, seqs, cts):

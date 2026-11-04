@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Agreement of the TensorFlow engine with the original Keras ChromBPNet.
 
-The TensorFlow engine (``chrombpnet/engines/tensorflow``) claims to reproduce
+The tensorflow-old engine (``chrombpnet/engines/tensorflow_old``) claims to reproduce
 the original implementation (kundajelab/chrombpnet@09938fd), given the same
 inputs. "The same inputs" is deliberately narrow: the data pipeline,
 preprocessing and seeding are this package's and may differ, so this harness
@@ -190,7 +190,7 @@ def honour_stop_gradient():
     """Register the shap fork's ``break_dependence`` for ``StopGradient`` --
     the line it has commented out, ``deep_tf.py:595`` -- and restore the
     previous entry on exit. The harness's own copy of what the engine does
-    (``engines/tensorflow/attribution.honour_stop_gradient``), for the
+    (``engines/tensorflow_old/attribution.honour_stop_gradient``), for the
     reference worker, which must not import this package.
     """
     from shap.explainers.deep import deep_tf
@@ -462,7 +462,7 @@ class EngineSide:
         sys.path.insert(0, str(REPO_ROOT))
         import chrombpnet  # noqa: F401
         from chrombpnet import engines
-        self.engine = engines.configure("tensorflow")
+        self.engine = engines.configure("tensorflow-old")
 
     def architecture(self, kind):
         return self.engine.default_architecture(kind)
@@ -477,7 +477,7 @@ class EngineSide:
         return self.engine.load_predictor(path)
 
     def load_compiled(self, path):
-        from chrombpnet.engines.tensorflow.predictor import load_model
+        from chrombpnet.engines.tensorflow_old.predictor import load_model
         return load_model(path, compile=True)
 
     def rescale(self, bias_path, out, seqs, cts):
@@ -487,8 +487,8 @@ class EngineSide:
         import tensorflow as tf
         tf.compat.v1.disable_eager_execution()
         _pin_tensorflow()
-        from chrombpnet.engines.tensorflow import attribution
-        from chrombpnet.engines.tensorflow.predictor import load_model
+        from chrombpnet.engines.tensorflow_old import attribution
+        from chrombpnet.engines.tensorflow_old.predictor import load_model
 
         model = load_model(model_path, compile=False)
         # The engine seeds its own references, a fresh RandomState(seed) per

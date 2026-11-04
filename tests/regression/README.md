@@ -41,17 +41,21 @@ engine's environment:
 # chrombpnet-pytorch (the default; argv exactly as written in scenarios.py)
 python -m tests.regression.harness against --ref main
 
-# chrombpnet-tensorflow
+# chrombpnet-tensorflow: the Keras 3 engine, and the original's Keras 2 code
 python -m tests.regression.harness capture --engine tensorflow --out /tmp/tf-base
 python -m tests.regression.harness compare --engine tensorflow --baseline /tmp/tf-base
+python -m tests.regression.harness capture --engine tensorflow-old --out /tmp/tf-old-base
+python -m tests.regression.harness compare --engine tensorflow-old --baseline /tmp/tf-old-base
 
 # chrombpnet-jax
 python -m tests.regression.harness capture --engine jax --out /tmp/jax-base
 python -m tests.regression.harness compare --engine jax --baseline /tmp/jax-base
 ```
 
-For `--engine tensorflow` the harness swaps every `.pt` path for `.h5`,
-appends `--engine tensorflow` to each command that takes it, and pins
+For the other engines the harness swaps every `.pt` path for the engine's
+suffix (`.keras` for `tensorflow` and `jax`, `.h5` for `tensorflow-old`),
+appends `--engine <engine>` to each command that takes it, and, for the two
+TensorFlow engines, pins
 TensorFlow's own thread pools (`TF_NUM_INTRAOP_THREADS`,
 `TF_NUM_INTEROP_THREADS`) and `SOURCE_DATE_EPOCH`, which fontTools stamps into
 the font subsets WeasyPrint embeds in every PDF. PyTorch runs get none of

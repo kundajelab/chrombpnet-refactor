@@ -27,3 +27,16 @@ def test_jax_engine_agrees_with_the_original():
     if not (Path(arguments.original_repo) / "chrombpnet").is_dir():
         pytest.skip("original repository not found: {}".format(arguments.original_repo))
     assert jax_engine.main(arguments) == 0
+
+
+def test_tensorflow_engine_agrees_with_the_original():
+    """The same checks for the tensorflow engine, the JAX engine's code on TensorFlow (chrombpnet-tensorflow)."""
+    if not os.environ.get(jax_engine.PARITY_OPT_IN):
+        pytest.skip("set {}=1 to run the agreement harness (needs the chrombpnet-tensorflow "
+                    "environment)".format(jax_engine.PARITY_OPT_IN))
+    arguments = jax_engine.parser().parse_args(["--engine", "tensorflow"])
+    if not Path(arguments.tf_python).exists():
+        pytest.skip("environment not found: {}".format(arguments.tf_python))
+    if not (Path(arguments.original_repo) / "chrombpnet").is_dir():
+        pytest.skip("original repository not found: {}".format(arguments.original_repo))
+    assert jax_engine.main(arguments) == 0

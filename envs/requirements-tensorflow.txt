@@ -1,9 +1,13 @@
 # TensorFlow 2.21 with its CUDA 12.5 wheels (any driver >= 525), and the
 # Keras 2 API through tf-keras: the engine's models, losses and .h5
-# checkpoints are written for it, and chrombpnet/engines/tensorflow sets
+# checkpoints are written for it, and chrombpnet/engines/tensorflow_old sets
 # TF_USE_LEGACY_KERAS=1 before TensorFlow is imported.
 tensorflow[and-cuda]==2.21.0
 tf-keras==2.21.0
+# Keras 3, beside tf-keras: the tensorflow-keras3 engine runs the JAX engine's
+# Keras 3 code on TensorFlow. The release chrombpnet-jax pins (TF 2.21 itself
+# asks for keras>=3.10 and would take the newest).
+keras==3.15.1
 tensorflow-probability==0.25.0
 # cuDNN 9.3, the release TF 2.21 is built against. Unpinned, pip takes the
 # newest 9.x, whose precompiled kernels start at compute capability 7.5, and
@@ -12,7 +16,7 @@ nvidia-cudnn-cu12==9.3.0.75
 
 # The dinucleotide shuffle DeepSHAP's references are drawn with. DeepSHAP
 # itself is the kundajelab shap fork's TFDeepExplainer, copied into
-# chrombpnet/engines/tensorflow/deep_tf.py: the fork no longer imports on
+# chrombpnet/engines/tensorflow_old/deep_tf.py: the fork no longer imports on
 # Python 3.12 with NumPy 2.
 deeplift==0.6.13.0
 

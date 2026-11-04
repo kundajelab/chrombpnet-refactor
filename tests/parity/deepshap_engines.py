@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""DeepSHAP agreement of the three engines, with PyTorch as the reference.
+"""DeepSHAP agreement of the four engines, with PyTorch as the reference.
 
 The profile target weights the mean-normalized logits by their softmax under a
 stop-gradient, and the engines compute it two ways, which must agree:
@@ -15,28 +15,37 @@ stop-gradient, and the engines compute it two ways, which must agree:
 
 One bias-architecture BPNet with fixed Keras-layout weights, including
 non-zero biases so that ReLUs switch between a sequence and its references;
-random sequences; one reference set. Three interpreters, files in between:
+random sequences; one reference set. Four interpreters, files in between:
 
-``tensorflow`` this package's TensorFlow engine, in ``chrombpnet-tensorflow``:
-               builds the model and saves it as a 1.x ``.h5``, records the
-               engine's reference stream (``shap_utils.shuffle_several_times``
-               on one ``RandomState(seed)``), and scores both heads, and the
-               profile head again with the stop-gradient, through
+``tensorflow-old`` this package's tensorflow-old engine (chrombpnet 1.x's
+               Keras 2 code and the kundajelab shap fork's DeepSHAP), in
+               ``chrombpnet-tensorflow``: builds the model and saves it as a
+               1.x ``.h5``, records the engine's reference stream
+               (``shap_utils.shuffle_several_times`` on one
+               ``RandomState(seed)``), and scores both heads, and the profile
+               head again with the stop-gradient, through
                ``engine.attribute``, the path the CLI takes.
 ``jax``        the JAX engine, in ``chrombpnet-jax``: loads that ``.h5`` and
                scores the same through ``engine.attribute``.
+``tensorflow`` the tensorflow engine (the JAX engine's Keras 3 code on
+               TensorFlow), in ``chrombpnet-tensorflow``, a process of its
+               own: loads that ``.h5`` and scores the same through
+               ``engine.attribute``, with the TensorFlow port of the JAX
+               engine's DeepLIFT rules.
 ``pytorch``    the PyTorch engine's target wrappers with tangermeme, in
                ``chrombpnet-pytorch``: the same weights
-               (``assign_keras_layout_weights``) and the TensorFlow engine's
+               (``assign_keras_layout_weights``) and tensorflow-old's
                references, passed explicitly, because ``engine.attribute``
                draws tangermeme's own.
 
 Checks:
 
-* the JAX engine's references equal the TensorFlow engine's bitwise;
-* the three models' predictions agree within 1e-4;
-* TensorFlow and JAX each agree with PyTorch within relative L2 1e-4: counts,
-  profile, and profile with the stop-gradient;
+* the JAX and tensorflow engines' references equal tensorflow-old's bitwise;
+* the four models' predictions agree within 1e-4;
+* tensorflow-old, JAX and tensorflow each agree with PyTorch within relative
+  L2 1e-4: counts, profile, and profile with the stop-gradient; and the
+  tensorflow engine with tensorflow-old (the original's DeepSHAP) and with
+  JAX (whose rules it ports) within 1e-5;
 * the two profile weightings differ (relative L2 above
   ``tf_engine.MIN_PROFILE_DEPARTURE``), so the comparison tells them apart.
 
@@ -118,15 +127,15 @@ def sequences():
 # Workers
 # --------------------------------------------------------------------------
 
-def tensorflow_worker(workdir):
+def tensorflow_old_worker(workdir):
     _import_this_package()
     from chrombpnet import engines
 
     # Before TensorFlow is imported: the engine sets TF_USE_LEGACY_KERAS.
-    engine = engines.configure("tensorflow")
+    engine = engines.configure("tensorflow-old")
     tf_engine = _parity_module("tf_engine")
     tf_engine._pin_tensorflow()
-    from chrombpnet.engines.tensorflow import shap_utils
+    from chrombpnet.engines.tensorflow_old import shap_utils
 
     values, seqs = model_weights(), sequences()
     args = types.SimpleNamespace(seed=SEED, learning_rate=1e-3,
@@ -152,7 +161,7 @@ def tensorflow_worker(workdir):
     scores["profile_stopgrad"] = dict(engine.attribute(
         handle, seqs, ["profile"], device=None, batch_size=1, num_shuffles=NUM_SHUFFLES,
         seed=SEED, profile_stop_gradient=True))["profile"]
-    np.savez(os.path.join(workdir, "tensorflow.npz"), predicted_profile=profile,
+    np.savez(os.path.join(workdir, "tensorflow_old.npz"), predicted_profile=profile,
              predicted_counts=counts, **scores)
 
 
@@ -172,6 +181,28 @@ def jax_worker(workdir):
         num_shuffles=NUM_SHUFFLES, seed=SEED, profile_stop_gradient=True))["profile"]
     scores["references"] = SequentialReferences(NUM_SHUFFLES, SEED)(seqs, 0, len(seqs))
     np.savez(os.path.join(workdir, "jax.npz"), predicted_profile=profile,
+             predicted_counts=counts, **scores)
+
+
+def tensorflow_worker(workdir):
+    _import_this_package()
+    from chrombpnet import engines
+    from chrombpnet.engines.jax.attribution import SequentialReferences
+
+    # require() starts Keras on TensorFlow (the pinned environment asks for JAX)
+    engine = engines.configure("tensorflow")
+    engine.require()
+    _parity_module("tf_engine")._pin_tensorflow()
+    seqs = np.load(os.path.join(workdir, "inputs.npz"))["seqs"]
+    model = engine.load_attribution_model(os.path.join(workdir, "bias.h5"), "cpu")
+    profile, counts = model.predict(seqs, batch_size=NUM_SEQS, verbose=0)
+    scores = dict(engine.attribute(model, seqs, list(HEADS), device="cpu",
+                                   batch_size=NUM_SHUFFLES, num_shuffles=NUM_SHUFFLES, seed=SEED))
+    scores["profile_stopgrad"] = dict(engine.attribute(
+        model, seqs, ["profile"], device="cpu", batch_size=NUM_SHUFFLES,
+        num_shuffles=NUM_SHUFFLES, seed=SEED, profile_stop_gradient=True))["profile"]
+    scores["references"] = SequentialReferences(NUM_SHUFFLES, SEED)(seqs, 0, len(seqs))
+    np.savez(os.path.join(workdir, "tensorflow.npz"), predicted_profile=profile,
              predicted_counts=counts, **scores)
 
 
@@ -205,7 +236,10 @@ def pytorch_worker(workdir):
     np.savez(os.path.join(workdir, "pytorch.npz"), **results)
 
 
-WORKERS = {"tensorflow": tensorflow_worker, "jax": jax_worker, "pytorch": pytorch_worker}
+WORKERS = {"tensorflow_old": tensorflow_old_worker, "jax": jax_worker,
+           "tensorflow": tensorflow_worker, "pytorch": pytorch_worker}
+#: The tensorflow engine against tensorflow-old (the original's DeepSHAP) and JAX (the rules it ports).
+KERAS3_TOLERANCE = 1e-5
 
 
 # --------------------------------------------------------------------------
@@ -214,19 +248,25 @@ WORKERS = {"tensorflow": tensorflow_worker, "jax": jax_worker, "pytorch": pytorc
 
 def compare(workdir, report):
     tf_engine = _parity_module("tf_engine")
-    inputs, tf, jx, pt = (np.load(os.path.join(workdir, name + ".npz"))
-                          for name in ("inputs", "tensorflow", "jax", "pytorch"))
-    report.equal("references: JAX engine = TensorFlow engine",
-                 jx["references"].astype(np.int8), inputs["references"].astype(np.int8))
+    inputs, old, jx, tf, pt = (np.load(os.path.join(workdir, name + ".npz"))
+                               for name in ("inputs", "tensorflow_old", "jax", "tensorflow", "pytorch"))
+    engines = (("tensorflow-old", old), ("JAX", jx), ("tensorflow", tf))
+    for name, side in engines[1:]:
+        report.equal("references: {} engine = tensorflow-old engine".format(name),
+                     side["references"].astype(np.int8), inputs["references"].astype(np.int8))
     for output in ("profile", "counts"):
         key = "predicted_" + output
-        for name, side in (("TensorFlow", tf), ("JAX", jx)):
+        for name, side in engines:
             report.close("predictions: {} {} vs PyTorch".format(name, output),
                          np.reshape(side[key], pt[key].shape), pt[key], 1e-4)
     for head in SCORES:
-        for name, side in (("TensorFlow", tf), ("JAX", jx)):
+        for name, side in engines:
             report.relative_l2("shap {}: {} vs PyTorch".format(head, name),
                                side[head], pt[head], TOLERANCE)
+        report.relative_l2("shap {}: tensorflow vs tensorflow-old".format(head),
+                           tf[head], old[head], KERAS3_TOLERANCE)
+        report.relative_l2("shap {}: tensorflow vs JAX".format(head),
+                           tf[head], jx[head], KERAS3_TOLERANCE)
     distance = tf_engine.relative_l2(pt["profile"], pt["profile_stopgrad"])
     report.check("control: the midpoint and stop-gradient weightings differ",
                  distance > tf_engine.MIN_PROFILE_DEPARTURE,
@@ -256,7 +296,8 @@ def main(arguments):
     workdir = tempfile.mkdtemp(prefix="chrombpnet-deepshap-engines-")
     print("workdir:", workdir)
     try:
-        for worker, python in (("tensorflow", arguments.tf_python), ("jax", arguments.jax_python),
+        for worker, python in (("tensorflow_old", arguments.tf_python), ("jax", arguments.jax_python),
+                               ("tensorflow", arguments.tf_python),
                                ("pytorch", arguments.torch_python)):
             print("running the {} engine ...".format(worker))
             _run(python, worker, workdir)
@@ -265,8 +306,8 @@ def main(arguments):
         if report.failed:
             print("\n{} of {} checks failed.".format(len(report.failed), len(report.rows)))
             return 1
-        print("\nAll {} checks passed: the TensorFlow and JAX engines' DeepSHAP scores agree "
-              "with the PyTorch engine's.".format(len(report.rows)))
+        print("\nAll {} checks passed: the tensorflow-old, JAX and tensorflow engines' DeepSHAP "
+              "scores agree with the PyTorch engine's, and tensorflow's with tensorflow-old's.".format(len(report.rows)))
         return 0
     finally:
         if arguments.keep:

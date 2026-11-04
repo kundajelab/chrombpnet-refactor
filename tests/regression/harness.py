@@ -11,8 +11,9 @@ Usage::
     # Or do both in one step against a git ref (uses a temporary worktree):
     python -m tests.regression.harness against --ref main
 
-    # The TensorFlow engine, from the chrombpnet-tensorflow environment:
-    python -m tests.regression.harness capture --engine tensorflow --out DIR
+    # The TensorFlow engines, from the chrombpnet-tensorflow environment:
+    python -m tests.regression.harness capture --engine tensorflow --out DIR       # Keras 3
+    python -m tests.regression.harness capture --engine tensorflow-old --out DIR   # 1.x's Keras 2
 
     # The JAX engine, from the chrombpnet-jax environment:
     python -m tests.regression.harness capture --engine jax --out DIR
@@ -71,13 +72,13 @@ PINNED_ENV = {
 }
 
 #: Engines the sweep can run, and the checkpoint suffix each one writes.
-ENGINE_SUFFIXES = {"pytorch": ".pt", "tensorflow": ".h5", "jax": ".keras"}
+ENGINE_SUFFIXES = {"pytorch": ".pt", "tensorflow": ".keras", "jax": ".keras", "tensorflow-old": ".h5"}
 
 #: TensorFlow sizes its own thread pools rather than following OMP_NUM_THREADS;
 #: with one thread each its CPU kernels reduce in a fixed order. Added only for
-#: --engine tensorflow, so the PyTorch environment is exactly what it was.
+#: --engine tensorflow-old, so the PyTorch environment is exactly what it was.
 ENGINE_PINNED_ENV = {
-    "tensorflow": {
+    "tensorflow-old": {
         "TF_NUM_INTRAOP_THREADS": "1",
         "TF_NUM_INTEROP_THREADS": "1",
         "TF_CPP_MIN_LOG_LEVEL": "2",
@@ -94,6 +95,14 @@ ENGINE_PINNED_ENV = {
         "KERAS_BACKEND": "jax",
         "JAX_PLATFORMS": "cpu",
         "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1",
+        "SOURCE_DATE_EPOCH": "0",
+    },
+    # The JAX engine's Keras 3 code on TensorFlow: TensorFlow's thread pins.
+    "tensorflow": {
+        "KERAS_BACKEND": "tensorflow",
+        "TF_NUM_INTRAOP_THREADS": "1",
+        "TF_NUM_INTEROP_THREADS": "1",
+        "TF_CPP_MIN_LOG_LEVEL": "2",
         "SOURCE_DATE_EPOCH": "0",
     },
 }

@@ -166,14 +166,15 @@ def test_pytorch_scenarios_run_exactly_as_written(tmp_path):
         assert harness._for_engine(list(scenario.argv), "pytorch") == scenario.argv
 
 
-def test_tensorflow_scenarios_swap_checkpoints_and_name_the_engine():
+@pytest.mark.parametrize("engine,suffix", [("tensorflow-old", ".h5"), ("tensorflow", ".keras"), ("jax", ".keras")])
+def test_other_engines_scenarios_swap_checkpoints_and_name_the_engine(engine, suffix):
     for scenario in scenarios.SCENARIOS:
-        argv = harness._for_engine(list(scenario.argv), "tensorflow")
+        argv = harness._for_engine(list(scenario.argv), engine)
         assert not any(part.endswith(".pt") for part in argv), scenario.name
         takes_engine = scenario.argv[0] not in ("prep", "modisco_motifs")
-        assert (argv[-2:] == ["--engine", "tensorflow"]) == takes_engine, scenario.name
-    train = harness._for_engine(list(scenarios.BY_NAME["04_train"].argv), "tensorflow")
-    assert "{root}/03_bias_train/models/bias.h5" in train
+        assert (argv[-2:] == ["--engine", engine]) == takes_engine, scenario.name
+    train = harness._for_engine(list(scenarios.BY_NAME["04_train"].argv), engine)
+    assert "{root}/03_bias_train/models/bias" + suffix in train
 
 
 def test_hdf5_attributes_digest_as_before_unless_they_hold_a_keras_lambda():

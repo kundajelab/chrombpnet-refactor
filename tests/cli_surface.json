@@ -204,7 +204,8 @@
     "choices": [
       "jax",
       "pytorch",
-      "tensorflow"
+      "tensorflow",
+      "tensorflow-old"
     ],
     "default": "None",
     "nargs": "None",
@@ -719,7 +720,8 @@
     "choices": [
       "jax",
       "pytorch",
-      "tensorflow"
+      "tensorflow",
+      "tensorflow-old"
     ],
     "default": "None",
     "nargs": "None",
@@ -1063,7 +1065,8 @@
     "choices": [
       "jax",
       "pytorch",
-      "tensorflow"
+      "tensorflow",
+      "tensorflow-old"
     ],
     "default": "None",
     "nargs": "None",
@@ -1471,7 +1474,8 @@
     "choices": [
       "jax",
       "pytorch",
-      "tensorflow"
+      "tensorflow",
+      "tensorflow-old"
     ],
     "default": "None",
     "nargs": "None",
@@ -1898,6 +1902,19 @@
     "required": false,
     "type": "None"
   },
+  "export engine": {
+    "choices": [
+      "jax",
+      "tensorflow"
+    ],
+    "default": "'jax'",
+    "nargs": "None",
+    "options": [
+      "--engine"
+    ],
+    "required": false,
+    "type": "None"
+  },
   "export format": {
     "choices": null,
     "default": "'legacy-h5'",
@@ -1977,7 +1994,8 @@
     "choices": [
       "jax",
       "pytorch",
-      "tensorflow"
+      "tensorflow",
+      "tensorflow-old"
     ],
     "default": "None",
     "nargs": "None",
@@ -2356,7 +2374,8 @@
     "choices": [
       "jax",
       "pytorch",
-      "tensorflow"
+      "tensorflow",
+      "tensorflow-old"
     ],
     "default": "None",
     "nargs": "None",
@@ -2860,7 +2879,8 @@
     "choices": [
       "jax",
       "pytorch",
-      "tensorflow"
+      "tensorflow",
+      "tensorflow-old"
     ],
     "default": "None",
     "nargs": "None",
@@ -3060,7 +3080,8 @@
     "choices": [
       "jax",
       "pytorch",
-      "tensorflow"
+      "tensorflow",
+      "tensorflow-old"
     ],
     "default": "None",
     "nargs": "None",
@@ -3721,7 +3742,8 @@
     "choices": [
       "jax",
       "pytorch",
-      "tensorflow"
+      "tensorflow",
+      "tensorflow-old"
     ],
     "default": "None",
     "nargs": "None",
@@ -4055,7 +4077,8 @@
     "choices": [
       "jax",
       "pytorch",
-      "tensorflow"
+      "tensorflow",
+      "tensorflow-old"
     ],
     "default": "None",
     "nargs": "None",

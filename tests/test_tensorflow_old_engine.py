@@ -1,4 +1,4 @@
-"""The TensorFlow engine, in-process. Runs only in the chrombpnet-tensorflow env.
+"""The tensorflow-old engine (chrombpnet 1.x's Keras 2 code), in-process. Runs only in the chrombpnet-tensorflow env.
 
 Byte-identity with the original implementation is tests/parity/tf_engine.py's
 job; these pin the engine's own behaviour, including where it deliberately
@@ -20,7 +20,7 @@ INPUTLEN, OUTPUTLEN, FILTERS, N_DIL = 128, 20, 4, 2
 
 @pytest.fixture(scope="module")
 def engine():
-    return engines.get("tensorflow")
+    return engines.get("tensorflow-old")
 
 
 def _args(engine, kind, seed=7, **extra):
@@ -66,9 +66,9 @@ def test_seed_controls_the_bias_factorized_tower(engine, bias_path):
 
 
 def test_honour_stop_gradient_restores_the_shap_forks_handlers():
-    from chrombpnet.engines.tensorflow import deep_tf
+    from chrombpnet.engines.tensorflow_old import deep_tf
 
-    from chrombpnet.engines.tensorflow.attribution import honour_stop_gradient
+    from chrombpnet.engines.tensorflow_old.attribution import honour_stop_gradient
 
     before = dict(deep_tf.op_handlers)
     assert "StopGradient" not in before  # commented out in the fork (deep_tf.py:595)
@@ -88,8 +88,8 @@ import sys
 import numpy as np
 import tensorflow as tf
 tf.compat.v1.disable_eager_execution()
-from chrombpnet.engines.tensorflow import attribution
-from chrombpnet.engines.tensorflow.predictor import load_model
+from chrombpnet.engines.tensorflow_old import attribution
+from chrombpnet.engines.tensorflow_old.predictor import load_model
 model = load_model(sys.argv[1], compile=False)
 scores = attribution.explain(model, np.load(sys.argv[2]), ["profile"], 3, 11,
                              stop_gradient=sys.argv[3] == "with-handler")
@@ -138,7 +138,7 @@ def test_require_refuses_keras3_as_tf_keras(first):
     import sys
 
     code = (first + "\n"
-            "import chrombpnet.engines.tensorflow as e\n"
+            "import chrombpnet.engines.tensorflow_old as e\n"
             "e.ENGINE.require()\n")
     # KERAS_BACKEND too: the JAX engine sets it to jax, and Keras 3 would
     # then fail on the missing jax before the engine is reached.
@@ -161,8 +161,8 @@ def test_saved_models_are_rewritten_for_the_original(tmp_path):
     import h5py
 
     from chrombpnet import legacy_lambda
-    from chrombpnet.engines.tensorflow import layers
-    from chrombpnet.engines.tensorflow.predictor import load_model
+    from chrombpnet.engines.tensorflow_old import layers
+    from chrombpnet.engines.tensorflow_old.predictor import load_model
 
     inputs = tf.keras.layers.Input(shape=(2,), name="counts")
     model = tf.keras.Model(inputs, layers.count_head()(inputs))

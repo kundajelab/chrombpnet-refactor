@@ -1,6 +1,8 @@
 # Engines and their environments
 
-ChromBPNet runs on one of three deep-learning engines. Everything else --
+ChromBPNet runs on one of four deep-learning engines, two of them on
+TensorFlow: `tensorflow` (the JAX engine's Keras 3 code) and `tensorflow-old`
+(the original's Keras 2 code). Everything else --
 preprocessing, GC-matched negatives, the data generators, metrics, bigwigs,
 footprints, motif discovery and the reports -- is shared, framework-neutral
 code; DeepLIFT/DeepSHAP is the only downstream step that differs between
@@ -10,14 +12,14 @@ engines.
 
 Each engine has its own conda environment. All three run Python 3.12 and
 NumPy 2, but their frameworks cannot share one: each brings its own CUDA and
-cuDNN wheels, at releases the others do not accept, and the TensorFlow
-engine needs Keras 2 (tf-keras) where the JAX engine needs Keras 3. Create
-them from the repository root:
+cuDNN wheels, at releases the others do not accept. `chrombpnet-tensorflow`
+serves both TensorFlow engines: Keras 3 for `tensorflow`, and tf-keras (Keras
+2) for `tensorflow-old`. Create them from the repository root:
 
 | Engine | Environment file | Python and framework | GPU libraries |
 |---|---|---|---|
 | PyTorch (default) | `chrombpnet-pytorch.yml` | Python 3.12, PyTorch 2.14.1 | the PyTorch wheel's CUDA 12.6 build; falls back to the CPU |
-| TensorFlow | `chrombpnet-tensorflow.yml` | Python 3.12, TensorFlow 2.21 with tf-keras 2.21 | `tensorflow[and-cuda]`: CUDA 12.5 and cuDNN 9.3 as pip wheels |
+| TensorFlow (`tensorflow`, `tensorflow-old`) | `chrombpnet-tensorflow.yml` | Python 3.12, TensorFlow 2.21 with tf-keras 2.21 and Keras 3.15.1 | `tensorflow[and-cuda]`: CUDA 12.5 and cuDNN 9.3 as pip wheels |
 | JAX | `chrombpnet-jax.yml` | Python 3.12, Keras 3.15, JAX 0.11.2 | `jax[cuda12]`: CUDA 12 and cuDNN 9 as pip wheels |
 
 Each file installs the package in editable mode with its engine's extra
@@ -42,8 +44,8 @@ Notes on GPUs:
   engine loads its bundled CUDA libraries first where a system CUDA or
   cuDNN on `LD_LIBRARY_PATH` has the same names, as the JAX engine does.
   Memory growth is on (`TF_FORCE_GPU_ALLOW_GROWTH=true`),
-  because contribution scoring runs in a second process on the same GPU
-  while the first still holds what it trained with. For the same reason
+  because `tensorflow-old`'s contribution scoring runs in a second process
+  on the same GPU while the first still holds what it trained with. For the same reason
   the GPU must not be in Exclusive_Process compute mode.
 - **JAX**: the `jax[cuda12]` wheels need any CUDA 12 driver (525 or newer);
   `jax[cuda13]==0.11.2` also works, with driver 580 or newer. In practice
@@ -64,29 +66,32 @@ Notes on GPUs:
 ## Choosing an engine
 
 ```bash
-chrombpnet pipeline --engine pytorch ...      # the default
-chrombpnet pipeline --engine tensorflow ...   # from the chrombpnet-tensorflow env
-chrombpnet pipeline --engine jax ...          # from the chrombpnet-jax env
-chrombpnet pred_bw -cm models/chrombpnet.h5 ...   # engine inferred: TensorFlow
+chrombpnet pipeline --engine pytorch ...         # the default
+chrombpnet pipeline --engine tensorflow ...      # Keras 3, from the chrombpnet-tensorflow env
+chrombpnet pipeline --engine jax ...             # from the chrombpnet-jax env
+chrombpnet pipeline --engine tensorflow-old ...  # chrombpnet 1.x's Keras 2 code, from the chrombpnet-tensorflow env
+chrombpnet pred_bw -cm models/chrombpnet.h5 ...  # engine inferred: tensorflow-old
 ```
 
 `--engine` is accepted by every command that builds or loads a model. When it
 is omitted the input models' checkpoint suffixes decide (`.pt` PyTorch, `.h5`
-TensorFlow, `.keras` JAX), else PyTorch. An explicit `--engine` must be able to
-read every input model: `--engine jax` also reads the original's `.h5` models,
-so `chrombpnet pipeline --engine jax -b original_bias.h5 ...` works, and inputs
-in both formats (`-bm bias.h5 -cm chrombpnet.keras`) go to JAX. `prep` and
-`modisco_motifs` never touch a model, take no `--engine`, and run in any of the
-three environments.
+tensorflow-old, `.keras` the installed Keras 3 engine: JAX where it is
+installed, else `tensorflow`), else PyTorch. An explicit `--engine` must be
+able to read every input model: `--engine jax` and `--engine tensorflow` also
+read the original's `.h5` models, so `chrombpnet pipeline --engine tensorflow -b
+original_bias.h5 ...` works, and inputs in both formats (`-bm bias.h5 -cm
+chrombpnet.keras`) go to the installed Keras 3 engine. The two Keras 3 engines
+read each other's `.keras` files. `prep` and `modisco_motifs` never touch a
+model, take no `--engine`, and run in any of the environments.
 
-| | PyTorch | TensorFlow | JAX |
-|---|---|---|---|
-| environment | `chrombpnet-pytorch` (Python 3.12, PyTorch 2.14) | `chrombpnet-tensorflow` (Python 3.12, TF 2.21, tf-keras) | `chrombpnet-jax` (Python 3.12, Keras 3.15, JAX 0.11) |
-| checkpoints | `.pt` | `.h5` (Keras 2, readable by chrombpnet 1.x) | `.keras` (Keras 3); also reads `.h5` |
-| DeepLIFT/DeepSHAP | Tangermeme | the kundajelab `shap` fork's, vendored | native JAX (ChromBPNet 2.0) |
-| TF-MoDISco | git checkout (2.6 API) | git checkout | git checkout |
-| status | default | within float tolerance of the original | within float32 tolerances of the original |
-| reproducibility gate | `tests/regression` (golden artifacts) | `tests/parity/tf_engine.py` | `tests/parity/jax_engine.py` |
+| | PyTorch | tensorflow | JAX | tensorflow-old |
+|---|---|---|---|---|
+| environment | `chrombpnet-pytorch` (Python 3.12, PyTorch 2.14) | `chrombpnet-tensorflow` (Python 3.12, TF 2.21, Keras 3.15) | `chrombpnet-jax` (Python 3.12, Keras 3.15, JAX 0.11) | `chrombpnet-tensorflow` (Python 3.12, TF 2.21, tf-keras) |
+| checkpoints | `.pt` | `.keras`, the JAX engine's format; also reads `.h5` | `.keras` (Keras 3); also reads `.h5` | `.h5` (Keras 2, readable by chrombpnet 1.x) |
+| DeepLIFT/DeepSHAP | Tangermeme | the JAX engine's rules, ported to TensorFlow | native JAX (ChromBPNet 2.0) | the kundajelab `shap` fork's, vendored |
+| TF-MoDISco | git checkout (2.6 API) | git checkout | git checkout | git checkout |
+| status | default | within float32 tolerances of the original | within float32 tolerances of the original | within float tolerance of the original |
+| reproducibility gate | `tests/regression` (golden artifacts) | `tests/parity/jax_engine.py --engine tensorflow` | `tests/parity/jax_engine.py` | `tests/parity/tf_engine.py` |
 
 ## How the engines plug in
 
@@ -97,7 +102,7 @@ only through it, and the predictor it hands back has the Keras-shaped surface
 the shared code always used (NLC one-hot in, `(profile_logits, logcounts)`
 out).
 
-**TensorFlow** is the original implementation (kundajelab/chrombpnet@09938fd)
+**tensorflow-old** is the original implementation (kundajelab/chrombpnet@09938fd)
 behind that interface: its model definitions, loss, callbacks, `model.fit`
 call, bias rescale and DeepSHAP code, each module stating what it changes.
 It runs them on TensorFlow 2.21 with tf-keras, the Keras 2 API (the engine
@@ -111,7 +116,7 @@ original in its own environment and compares every output. Porting it to
 TensorFlow 2.21 took four changes, each stated in its module:
 
 - DeepSHAP is the kundajelab `shap` fork's `TFDeepExplainer`, copied into
-  `chrombpnet/engines/tensorflow/deep_tf.py`, because the fork no longer
+  `chrombpnet/engines/tensorflow_old/deep_tf.py`, because the fork no longer
   imports on Python 3.12 with NumPy 2.
 - The bias-factorized model's count head is a `Lambda` of a named function:
   1.x saved its `lambda` as Python 3.8 bytecode, which Python 3.11 and newer
@@ -151,17 +156,36 @@ recipe. It cannot be byte-identical to TensorFlow 2.8, so
 `tests/parity/jax_engine.py` checks agreement with the original on identical
 inputs: predictions within 1e-4, a 20-step Adam trace within 1e-3, DeepSHAP
 within 1e-4 relative L2 in both profile weightings (below) with
-bitwise-identical references (drawn exactly as the TensorFlow engine draws
+bitwise-identical references (drawn exactly as tensorflow-old draws
 them), and the original's models loaded within 1e-4. Models are
 `.keras` files; `chrombpnet export --legacy-h5 -m model.keras -o model.h5`
-writes a copy in the original's `.h5` layout, which the TensorFlow engine,
+writes a copy in the original's `.h5` layout, which tensorflow-old,
 chrombpnet 1.x, variant-scorer and bpnet-lite read. `--interpret-batch-size`
 counts (sequence, reference) pairs, as for PyTorch.
 
-The JAX engine also has ChromBPNet 2.0's opt-in training options, refused for
-the other engines: `--optimizer muon` (Muon on the dilated convolutions,
+The JAX engine also has ChromBPNet 2.0's opt-in training options, which the
+tensorflow engine shares and PyTorch and tensorflow-old refuse: `--optimizer muon` (Muon on the dilated convolutions,
 experimental), `--muon-lr`, `--ema`/`--ema-momentum`, `--lr-schedule cosine`
 and `--precision {default,highest,bf16}` (bf16 is faster but loses accuracy).
+
+**tensorflow** runs the JAX engine's Keras 3 code on the TensorFlow
+backend (`KERAS_BACKEND=tensorflow`, set when the engine is chosen): the same
+architectures, loss, optimizers and options (`--optimizer`, `--ema`,
+`--lr-schedule`, `--precision`), callbacks, `model.fit` call, `.keras`
+checkpoints and model loader, so a model either engine trains loads in the
+other, and `chrombpnet export --engine tensorflow` writes the 1.x `.h5`
+layout. Two parts are backend-specific: device and precision settings
+(`--precision highest` turns TensorFlow's TF32 off, `--reproducibility-max`
+turns its op determinism on) and DeepSHAP, whose rules
+(`chrombpnet/engines/tensorflow/deeplift_tf.py`) are the JAX engine's,
+op for op, on a `tf.GradientTape`. It runs in `chrombpnet-tensorflow`, beside
+`tensorflow-old`.
+`tests/parity/jax_engine.py --engine tensorflow` holds it to the JAX engine's
+checks against the original (predictions, losses, a 20-step Adam trace, the
+bias rescale, `export`, DeepSHAP), and `tests/parity/deepshap_engines.py`
+compares its DeepSHAP with the other three engines', tensorflow-old's (the
+original's DeepSHAP code) included. Until 2026-11, `--engine tensorflow` was
+the Keras 2 engine now called `tensorflow-old`.
 
 **The profile DeepSHAP target** is `sum(softmax(stop_gradient(mn)) * mn)` over
 the mean-normalized profile logits `mn`; the stop-gradient means the softmax
@@ -169,14 +193,14 @@ to act as fixed weights. chrombpnet 1.x and bpnet compute it with the
 kundajelab `shap` fork, which has its `StopGradient` handler commented out
 (`deep_tf.py:595`), so the weights count as a second varying input and each
 logit of an (input, reference) pair is weighted by the midpoint
-`0.5 * (softmax(mn_x) + softmax(mn_r))`. All three engines do the same by
+`0.5 * (softmax(mn_x) + softmax(mn_r))`. All four engines do the same by
 default. `--contribs-profile-stopgrad` (on `pipeline`, `qc`, `bias pipeline`,
 `bias qc` and `contribs_bw`) honours the stop-gradient instead, weighting each
 logit by the input's own softmax. The counts head is the same either way.
-`tests/parity/deepshap_engines.py` checks that the three engines agree within
+`tests/parity/deepshap_engines.py` checks that the four engines agree within
 1e-4 in both modes; on a real model the two profile weightings correlate at
 about 0.97.
 
 `--predict-fused-kernel` (the fused Triton forward) is PyTorch-only and refused for the
 other engines. `--reproducibility` and `--reproducibility-max` work on all
-three.
+four.

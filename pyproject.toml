@@ -33,9 +33,11 @@ pytorch = [
   "tangermeme @ git+https://github.com/jmschrei/tangermeme.git",
   "torch>=2.14,<2.15",
 ]
-# TensorFlow 2.21 with the Keras 2 API (tf-keras); envs/ adds its CUDA wheels.
+# TensorFlow 2.21 with the Keras 2 API (tf-keras) for the tensorflow engine, and
+# Keras 3 for tensorflow-keras3; envs/ adds its CUDA wheels.
 tensorflow = [
   "deeplift==0.6.13.0",
+  "keras>=3.15.1,<4",
   "tensorflow>=2.21,<2.22",
   "tensorflow-probability>=0.25,<0.26",
   "tf-keras>=2.21,<2.22",
