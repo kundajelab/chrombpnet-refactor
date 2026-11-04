@@ -169,6 +169,36 @@ def test_bigwig_from_truncated_gzip_raises(tmp_path, genome, kind, no_st):
     assert not (tmp_path / "out_unstranded.bw").exists()
 
 
+@pytest.mark.parametrize("no_st", [False, True])
+@pytest.mark.parametrize("kind", ["fragment", "tagalign"])
+def test_a_failed_bigwig_pipeline_leaves_no_process_or_pipe_behind(tmp_path, genome, kind, no_st,
+                                                                   monkeypatch):
+    """Streaming into awk, the input check raising on a truncated gzip used to
+    leave awk's stdin open: awk and the stages after it waited on it forever,
+    unreaped, and the pipe surfaced as an unclosed-file warning at exit."""
+    needs_tools("bedtools", "bedGraphToBigWig", "awk", "sort", "gzip")
+    fasta, sizes = genome
+    started = []
+
+    class Recorded(subprocess.Popen):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            started.append(self)
+
+    # The one subprocess module, so this records auto_shift_detect's input
+    # processes too.
+    monkeypatch.setattr(reads_to_bigwig.subprocess, "Popen", Recorded)
+    truncated = truncated_copy(gzip_file(write_input(tmp_path, kind, 3000)))
+    with pytest.raises(subprocess.CalledProcessError, match="gzip"):
+        reads_to_bigwig.generate_bigwig(*bigwig_inputs(kind, truncated), str(tmp_path / "out"), fasta,
+                                        False, None, no_st, sizes, [(4, -4)])
+    assert len(started) >= 5
+    for process in started:
+        assert process.returncode is not None, f"{process.args} was never reaped"
+        for stream in (process.stdin, process.stdout):
+            assert stream is None or stream.closed, f"a pipe of {process.args} is still open"
+
+
 def test_uncompressed_fragments_stream_like_the_cat_awk_pipeline(tmp_path):
     """The file is awk's stdin now, instead of `cat -- file | awk`."""
     needs_tools("awk", "sh")

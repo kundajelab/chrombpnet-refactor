@@ -65,6 +65,34 @@ def _awk_program(n_deposits):
             'else if ($6=="-") {' + minus + '}}')
 
 
+def _stop_pipeline(processes):
+    """End a pipeline that is being abandoned on an error.
+
+    Without this, a failure while streaming reads into awk -- the input check
+    raising on a truncated gzip, say -- left awk's stdin open, so awk and the
+    stages after it waited on a pipe that would never close, unreaped, and the
+    open pipe surfaced as an unclosed-file ResourceWarning at exit.
+
+    Each stage is killed before its pipes are closed: closing a stdin flushes
+    it, which could block on a stage that is still running but no longer
+    reading. Closing a pipe to a killed stage raises BrokenPipeError after
+    closing it, which is ignored. The caller re-raises the original error.
+    """
+    processes = [process for process in processes if process is not None]
+    for process in processes:
+        if process.poll() is None:
+            process.kill()
+    for process in processes:
+        for stream in (process.stdin, process.stdout):
+            if stream is not None and not stream.closed:
+                try:
+                    stream.close()
+                except OSError:
+                    pass
+    for process in processes:
+        process.wait()
+
+
 def generate_bigwig(input_bam_file, input_fragment_file, input_tagalign_file, output_prefix, genome_fasta_file, bsort, tmpdir, no_st, chrom_sizes_file, delta_pairs, scale=1.0):
     if sum(value is not None for value in (input_bam_file, input_fragment_file, input_tagalign_file)) != 1:
         raise ValueError("Exactly one input file must be provided")
@@ -89,36 +117,46 @@ def generate_bigwig(input_bam_file, input_fragment_file, input_tagalign_file, ou
     awk_cmd.append(awk_program)
 
     tmp_bedgraph = tempfile.NamedTemporaryFile()
-    with open(tmp_bedgraph.name, "w") as output:
-        p_awk = subprocess.Popen(awk_cmd, stdin=p1.stdout if no_st else subprocess.PIPE,
-                                 stdout=subprocess.PIPE)
-        if no_st:
-            p1.stdout.close()
-        p_sort = subprocess.Popen(sort_args, stdin=p_awk.stdout, stdout=subprocess.PIPE)
-        p_awk.stdout.close()
-        genomecov_cmd = ["bedtools", "genomecov", "-bg", "-5", "-i", "stdin",
-                         "-g", chrom_sizes_file]
-        if scale != 1.0:
-            # Half a count on each of the two bases flanking a cut, so the
-            # track total matches the single-deposit conventions exactly.
-            # bigWig values are float32 and 0.5 is binary-exact, so this is
-            # lossless, and genomecov still omits zero intervals under -scale.
-            genomecov_cmd += ["-scale", repr(float(scale))]
-        p_cov = subprocess.Popen(genomecov_cmd, stdin=p_sort.stdout,
-                                 stdout=subprocess.PIPE)
-        p_sort.stdout.close()
-        env = os.environ.copy()
-        env["LC_COLLATE"] = "C"
-        p_final = subprocess.Popen(final_sort, stdin=p_cov.stdout, stdout=output, env=env)
-        p_cov.stdout.close()
-        if not no_st:
-            auto_shift_detect.stream_filtered_tagaligns(p1, genome_fasta_file, p_awk.stdin.write)
-            p_awk.stdin.close()
-        return_codes = [p_final.wait(), p_cov.wait(), p_sort.wait(), p_awk.wait()]
-        if any(code != 0 for code in return_codes):
-            raise subprocess.CalledProcessError(1, "BedGraph generation pipeline")
-        if no_st:
-            auto_shift_detect.check_input_streams(p1)
+    # Every process of the pipeline, so a failure can stop them all.
+    pipeline = [p1, getattr(p1, "_chrombpnet_upstream", None)]
+    try:
+        with open(tmp_bedgraph.name, "w") as output:
+            p_awk = subprocess.Popen(awk_cmd, stdin=p1.stdout if no_st else subprocess.PIPE,
+                                     stdout=subprocess.PIPE)
+            pipeline.append(p_awk)
+            if no_st:
+                p1.stdout.close()
+            p_sort = subprocess.Popen(sort_args, stdin=p_awk.stdout, stdout=subprocess.PIPE)
+            pipeline.append(p_sort)
+            p_awk.stdout.close()
+            genomecov_cmd = ["bedtools", "genomecov", "-bg", "-5", "-i", "stdin",
+                             "-g", chrom_sizes_file]
+            if scale != 1.0:
+                # Half a count on each of the two bases flanking a cut, so the
+                # track total matches the single-deposit conventions exactly.
+                # bigWig values are float32 and 0.5 is binary-exact, so this is
+                # lossless, and genomecov still omits zero intervals under -scale.
+                genomecov_cmd += ["-scale", repr(float(scale))]
+            p_cov = subprocess.Popen(genomecov_cmd, stdin=p_sort.stdout,
+                                     stdout=subprocess.PIPE)
+            pipeline.append(p_cov)
+            p_sort.stdout.close()
+            env = os.environ.copy()
+            env["LC_COLLATE"] = "C"
+            p_final = subprocess.Popen(final_sort, stdin=p_cov.stdout, stdout=output, env=env)
+            pipeline.append(p_final)
+            p_cov.stdout.close()
+            if not no_st:
+                auto_shift_detect.stream_filtered_tagaligns(p1, genome_fasta_file, p_awk.stdin.write)
+                p_awk.stdin.close()
+            return_codes = [p_final.wait(), p_cov.wait(), p_sort.wait(), p_awk.wait()]
+            if any(code != 0 for code in return_codes):
+                raise subprocess.CalledProcessError(1, "BedGraph generation pipeline")
+            if no_st:
+                auto_shift_detect.check_input_streams(p1)
+    except BaseException:
+        _stop_pipeline(pipeline)
+        raise
 
     if os.path.getsize(tmp_bedgraph.name) == 0:
         source = input_bam_file or input_fragment_file or input_tagalign_file

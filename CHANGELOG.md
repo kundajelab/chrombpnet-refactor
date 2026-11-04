@@ -1,5 +1,18 @@
 # Changelog
 
+## A failed bigWig preprocessing pipeline no longer leaves its processes behind
+
+- **Fixed:** when streaming reads into awk (the default, without `--no-st`),
+  an error while streaming -- the input check raising on a truncated gzip,
+  for one -- skipped closing awk's stdin. awk, the two sorts and
+  `bedtools genomecov` then waited on a pipe that never closed, were never
+  reaped, and the open pipe surfaced at exit as
+  `ResourceWarning: unclosed file <_io.BufferedWriter name=...>` (the warning
+  that ended full test runs). `reads_to_bigwig.generate_bigwig` now stops,
+  closes and reaps every stage of the pipeline on any error, then re-raises
+  it. A run that succeeds is unchanged.
+
+
 ## Observed bigWig counts are read ~3.5x faster
 
 - **Performance only; the values are identical.** `data_utils.get_cts`
