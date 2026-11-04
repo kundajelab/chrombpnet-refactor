@@ -109,21 +109,30 @@ def test_predict_shuffles_profiles_with_seed(tmp_path, monkeypatch, seed, expect
 
 def test_pred_bw_shuffles_profiles_with_seed(tmp_path, monkeypatch):
     from chrombpnet import finish_stage
-    from chrombpnet.evaluation.make_bigwigs import bigwig_helper
+    from chrombpnet.evaluation.make_bigwigs import predict_to_bigwig
 
-    import chrombpnet.training.metrics as metrics  # imported lazily by compare_with_observed
+    import chrombpnet.training.metrics as metrics  # imported lazily by the comparison
 
-    seen = _capture_profile_metrics(monkeypatch, SimpleNamespace(metrics=metrics))
-    monkeypatch.setattr(bigwig_helper, "write_bigwig", lambda *a, **k: None)
+    _capture_profile_metrics(monkeypatch, SimpleNamespace(metrics=metrics))
+    seen = []
+    for name in ("ProfileBaseline", "ProfileMetrics"):
+        real = getattr(metrics, name)
+
+        def recording(*args, _real=real, _name=name, **kwargs):
+            seen.append((_name, kwargs.get("seed")))
+            return _real(*args, **kwargs)
+
+        monkeypatch.setattr(metrics, name, recording)
     counts = np.array([[1., 2., 3., 4.], [2., 4., 6., 8.]])
-    finish_stage._run_finish({
-        "data": None, "regions": [["chr1", 0, 4, 2], ["chr1", 10, 14, 12]],
-        "chrom_sizes": None, "bigwig_out": None, "outstats_file": None,
-        "debug_chr": None, "use_tqdm": False, "observed_bigwig": "observed.bw",
-        "used_regions_df": None, "outputlen": 4,
-        "pred_logits": np.log(np.full((2, 4), 0.25)), "pred_logcts": np.log1p(counts.sum(1)),
-        "output_prefix": str(tmp_path / "prediction"), "obs_data": counts, "seed": 5})
-    assert seen == [5]
+    monkeypatch.setattr(predict_to_bigwig, "read_observed_counts", lambda *a: counts.copy())
+    task = finish_stage._metrics_task({
+        "regions": [["chr1", 0, 4, 2], ["chr1", 10, 14, 12]],
+        "observed_bigwig": "observed.bw", "used_regions_df": None,
+        "geometry": (8, 4), "outputlen": 4,
+        "output_prefix": str(tmp_path / "prediction"), "seed": 5}, {})
+    task.add(0, np.log(np.full((2, 4), 0.25)), np.log1p(counts.sum(1, keepdims=True)))
+    task.close()
+    assert seen == [("ProfileBaseline", 5), ("ProfileMetrics", 5)]
 
 
 QC_REQUIRED = ["-bw", "obs.bw", "-g", "genome.fa", "-c", "chrom.sizes", "-o", "out", "-d", "ATAC",

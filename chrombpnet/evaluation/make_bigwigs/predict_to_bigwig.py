@@ -7,12 +7,18 @@ import chrombpnet.evaluation.make_bigwigs.bigwig_helper as bigwig_helper
 import chrombpnet.training.utils.data_utils as data_utils 
 from chrombpnet.engines import load_model_wrapper
 from chrombpnet.predictions import softmax, write_predictions_h5py
-from chrombpnet import finish_stage, preimport
+from chrombpnet import finish_stage
 from chrombpnet.regions import NARROWPEAK_SCHEMA
 from chrombpnet.seed import DEFAULT_SEED
 import contextlib
 import h5py
 import json
+from concurrent.futures import ThreadPoolExecutor
+
+#: Most regions per forward call in pred_bw, rounded down to whole batches:
+#: each call's predictions go to the finish stage as soon as they exist. The
+#: optimization kit's pipelined predict uses chunks of 4,096.
+STREAM_ROWS = 4096
 
 
 def read_observed_counts(bigwig, regions_df, outputlen):
@@ -23,46 +29,121 @@ def read_observed_counts(bigwig, regions_df, outputlen):
 
 def compare_with_observed(bigwig, regions_df, regions, outputlen, pred_logits, pred_logcts, output_prefix, obs_data=None,
                           seed=DEFAULT_SEED):
+	"""Write ``<output_prefix>_predictions.h5`` and ``_metrics.json`` (and the
+	two plots) for predictions over ``regions`` against the observed bigwig."""
+	comparison = ObservedComparison(bigwig, regions_df, regions, outputlen, output_prefix,
+	                                obs_data=obs_data, seed=seed)
+	comparison.add(0, pred_logits, pred_logcts)
+	comparison.close()
 
-	import chrombpnet.training.metrics as metrics 
-	
-	if obs_data is None:
-		obs_data = read_observed_counts(bigwig, regions_df, outputlen)
-	
-	true_counts = obs_data
-	true_counts_sum = np.log(np.sum(true_counts, axis=-1)+1)
-	profile_probs_predictions = softmax(pred_logits) ##
-	counts_sum_predictions = np.asarray(pred_logcts).reshape(-1)
-	coordinates =  [[r[0], r[-1]] for r in regions]
-	
-	write_predictions_h5py(output_prefix, profile_probs_predictions,
-		counts_sum_predictions, coordinates, include_peak_flag=False)
-	
-	# store regions, their predictions and corresponding pointwise metrics
-	mnll_pw, mnll_norm, jsd_pw, jsd_norm, jsd_rnd, jsd_rnd_norm, mnll_rnd, mnll_rnd_norm =  metrics.profile_metrics(true_counts,profile_probs_predictions, seed=seed)
 
-	spearman_cor, pearson_cor, mse = metrics.counts_metrics(true_counts_sum, counts_sum_predictions, output_prefix, "All regions provided")
-	
-	metrics_dictionary={}
-	metrics_dictionary["counts_metrics"] = {}
-	metrics_dictionary["profile_metrics"] = {}
-	metrics_dictionary["counts_metrics"]["regions"] = {}
-	metrics_dictionary["counts_metrics"]["regions"]["spearmanr"] = spearman_cor
-	metrics_dictionary["counts_metrics"]["regions"]["pearsonr"] = pearson_cor
-	metrics_dictionary["counts_metrics"]["regions"]["mse"] = mse
-	
-	metrics_dictionary["profile_metrics"]["regions"] = {}
-	metrics_dictionary["profile_metrics"]["regions"]["median_jsd"] = np.nanmedian(jsd_pw)
-	metrics_dictionary["profile_metrics"]["regions"]["median_norm_jsd"] = np.nanmedian(jsd_norm)
-	profile_cor = metrics.profile_pearsonr(true_counts, profile_probs_predictions)
-	valid_cor = profile_cor[np.isfinite(profile_cor)]
-	metrics_dictionary["profile_metrics"]["regions"]["median_pearsonr"] = (
-		float(np.median(valid_cor)) if valid_cor.size else None)
-	
-	metrics.plot_histogram(jsd_pw, jsd_rnd, output_prefix, "All regions provided")
-	
-	with open(output_prefix+'_metrics.json', 'w') as fp:
-		json.dump(metrics_dictionary, fp,  indent=4)
+class ObservedComparison:
+	"""``compare_with_observed``, fed predictions as they are made.
+
+	Adapted from the optimization kit's ``metrics_overlap``
+	(github.com/anthropics/uplifting-biomolecular-modeling, Apache-2.0): what
+	needs only the observed signal -- reading it, and the shuffled baseline
+	with its seeded draws (``metrics.ProfileBaseline``) -- is done on
+	construction, before any prediction exists, and each arriving chunk gets
+	its softmax, its per-region JSD (``metrics.ProfileMetrics``) and its
+	per-region profile Pearson R. ``close`` then does what needs every
+	prediction: the HDF5 (on a thread, beside the plots), the counts metrics,
+	the two plots and the JSON. The kit also deflates the HDF5 chunks as the
+	rows arrive; here the HDF5 is written whole, as before.
+
+	Every value is the one ``compare_with_observed`` computed before: the
+	softmax, the JSD and the Pearson R are each computed row by row, so a
+	chunk's rows come out as they would from the whole array, and the
+	baseline is used only when the predictions leave it valid (see
+	``ProfileBaseline``).
+	"""
+
+	def __init__(self, bigwig, regions_df, regions, outputlen, output_prefix, obs_data=None,
+	             seed=DEFAULT_SEED, baseline=None):
+		import chrombpnet.training.metrics as metrics
+
+		if obs_data is None:
+			obs_data = read_observed_counts(bigwig, regions_df, outputlen)
+		self._true_counts = obs_data
+		self._regions = regions
+		self._output_prefix = output_prefix
+		self._seed = seed
+		self._profile = metrics.ProfileMetrics(obs_data, seed=seed, baseline=baseline)
+		self._profile_cor = np.full(len(regions), np.nan)
+		self._probs = None
+		self._logcts = None
+		self._arrived = np.zeros(len(regions), dtype=bool)
+
+	def add(self, start, pred_logits, pred_logcts):
+		"""Predictions for regions ``start`` to ``start + len(pred_logits)``."""
+		import chrombpnet.training.metrics as metrics
+
+		probs = softmax(pred_logits) ##
+		logcts = np.asarray(pred_logcts)
+		stop = start + len(probs)
+		if start < 0 or stop > len(self._regions):
+			raise ValueError(f"rows {start}:{stop} are outside the {len(self._regions)} regions")
+		if self._probs is None and start == 0 and stop == len(self._regions):
+			self._probs, self._logcts = probs, logcts
+		else:
+			if self._probs is None:
+				self._probs = np.empty((len(self._regions),) + probs.shape[1:], dtype=probs.dtype)
+				self._logcts = np.empty((len(self._regions),) + logcts.shape[1:], dtype=logcts.dtype)
+			self._probs[start:stop] = probs
+			self._logcts[start:stop] = logcts
+		self._profile.add(start, probs)
+		self._profile_cor[start:stop] = metrics.profile_pearsonr(self._true_counts[start:stop], probs)
+		self._arrived[start:stop] = True
+
+	def close(self):
+		if not self._arrived.all():
+			raise ValueError(f"{int((~self._arrived).sum())} of {len(self._arrived)} regions "
+			                 f"have no prediction")
+		output_prefix = self._output_prefix
+		true_counts = self._true_counts
+		true_counts_sum = np.log(np.sum(true_counts, axis=-1)+1)
+		profile_probs_predictions = self._probs
+		counts_sum_predictions = self._logcts.reshape(-1)
+		coordinates =  [[r[0], r[-1]] for r in self._regions]
+
+		# The HDF5 on a thread, beside everything below: its compression runs
+		# in zlib, which releases the GIL, and its file is written by nothing
+		# else.
+		with ThreadPoolExecutor(1) as pool:
+			h5 = pool.submit(write_predictions_h5py, output_prefix, profile_probs_predictions,
+				counts_sum_predictions, coordinates, include_peak_flag=False)
+			self._metrics_files(true_counts, true_counts_sum, counts_sum_predictions)
+			h5.result()
+
+	def _metrics_files(self, true_counts, true_counts_sum, counts_sum_predictions):
+		import chrombpnet.training.metrics as metrics
+
+		output_prefix = self._output_prefix
+		# store regions, their predictions and corresponding pointwise metrics
+		mnll_pw, mnll_norm, jsd_pw, jsd_norm, jsd_rnd, jsd_rnd_norm, mnll_rnd, mnll_rnd_norm = self._profile.result()
+
+		spearman_cor, pearson_cor, mse = metrics.counts_metrics(true_counts_sum, counts_sum_predictions, output_prefix, "All regions provided")
+
+		metrics_dictionary={}
+		metrics_dictionary["counts_metrics"] = {}
+		metrics_dictionary["profile_metrics"] = {}
+		metrics_dictionary["counts_metrics"]["regions"] = {}
+		metrics_dictionary["counts_metrics"]["regions"]["spearmanr"] = spearman_cor
+		metrics_dictionary["counts_metrics"]["regions"]["pearsonr"] = pearson_cor
+		metrics_dictionary["counts_metrics"]["regions"]["mse"] = mse
+
+		metrics_dictionary["profile_metrics"]["regions"] = {}
+		metrics_dictionary["profile_metrics"]["regions"]["median_jsd"] = np.nanmedian(jsd_pw)
+		metrics_dictionary["profile_metrics"]["regions"]["median_norm_jsd"] = np.nanmedian(jsd_norm)
+		profile_cor = self._profile_cor
+		valid_cor = profile_cor[np.isfinite(profile_cor)]
+		metrics_dictionary["profile_metrics"]["regions"]["median_pearsonr"] = (
+			float(np.median(valid_cor)) if valid_cor.size else None)
+
+		metrics.plot_histogram(jsd_pw, jsd_rnd, output_prefix, "All regions provided")
+
+		with open(output_prefix+'_metrics.json', 'w') as fp:
+			json.dump(metrics_dictionary, fp,  indent=4)
 
 
 # need full paths!
@@ -98,15 +179,12 @@ class _SharedInputs:
 
     ``main`` runs ``_write_model_bigwig`` up to three times. Only the model
     changes between passes -- the region file, the chromosome sizes, the
-    sequences and the observed counts are functions of the arguments and of
-    the model *geometry*, and for the standard bias/ChromBPNet pair the
+    sequences are functions of the arguments and of the model *geometry*, and for the standard bias/ChromBPNet pair the
     geometry is identical too. Each entry is therefore keyed by exactly what
     it depends on, so a bias model with a different input length still gets
     its own sequences rather than silently borrowing the accessibility
-    model's.
-
-    The observed counts are handed out read-only: three passes now share one
-    array, and an in-place write by any of them would corrupt the other two.
+    model's. (The observed counts, which used to be cached here too, are read
+    and cached by the finish stage's metrics worker; see finish_stage.)
     """
 
     def __init__(self, args, genome):
@@ -116,7 +194,6 @@ class _SharedInputs:
         self._chrom_sizes = None
         self._sequences = {}
         self._regions = {}
-        self._observed = {}
 
     def regions_df(self):
         if self._regions_df is None:
@@ -150,14 +227,6 @@ class _SharedInputs:
             self._regions[key] = bigwig_helper.get_regions(
                 self.regions_df(), outputlen, regions_used)
         return self._regions[key]
-
-    def observed_counts(self, used_regions_df, inputlen, outputlen):
-        key = (inputlen, outputlen)
-        if key not in self._observed:
-            counts = read_observed_counts(self._args.bigwig, used_regions_df, outputlen)
-            counts.flags.writeable = False
-            self._observed[key] = counts
-        return self._observed[key]
 
 
 def _write_model_bigwig(args, model_path, name, shared, finish):
@@ -194,28 +263,14 @@ def _write_model_bigwig(args, model_path, name, shared, finish):
         f"{args.output_prefix}_{name}_preds.bed", sep="\t",
         header=False, index=False)
 
-    pred_logits, pred_logcts = model.predict(
-        [seqs], batch_size=args.batch_size, verbose=True)
-    if pred_logcts is None:
-        raise ValueError(
-            f"{model_path} is a profile-only bias model: it predicts no counts, "
-            f"so there is no counts-scaled prediction bigwig to write")
-    # Reshape with an explicit batch dimension; an unrestricted squeeze
-    # collapses a single region's (1, outputlen) profile to one dimension
-    # (defect 3 in chrombpnet_bugs.md).
-    pred_logits = np.asarray(pred_logits).reshape(len(seqs), -1)
-
-    # Hand the bigwig write and the metrics to the finish stage, which runs
-    # them alongside the *next* model's forward. Both were pure CPU work
-    # sitting behind an idle GPU.
-    #
-    # The filtered frame, not regions_df: compare_with_observed reads observed
-    # counts per row and lines them up against the predictions, which cover
-    # only the in-bounds regions. Passing the unfiltered frame made the two
-    # disagree in length whenever a region sat near a chromosome edge.
-    finish.submit({
-        # expm1, because the training target is log(1 + counts) (defect 4).
-        "data": softmax(pred_logits) * np.expm1(pred_logcts),
+    # Open the model's finish work before the forward, so the metrics worker
+    # reads the observed signal and draws the shuffled baseline while the GPU
+    # works. The filtered frame, not regions_df: the observed counts are read
+    # per row and lined up against the predictions, which cover only the
+    # in-bounds regions. Passing the unfiltered frame made the two disagree in
+    # length whenever a region sat near a chromosome edge.
+    stream = finish.open({
+        "name": name,
         "regions": regions,
         "chrom_sizes": gs,
         "bigwig_out": f"{args.output_prefix}_{name}.bw",
@@ -224,14 +279,32 @@ def _write_model_bigwig(args, model_path, name, shared, finish):
         "use_tqdm": args.tqdm,
         "observed_bigwig": args.bigwig,
         "used_regions_df": used_regions_df,
+        "geometry": (inputlen, outputlen),
         "outputlen": outputlen,
-        "pred_logits": pred_logits,
-        "pred_logcts": pred_logcts,
         "output_prefix": f"{args.output_prefix}_{name}",
-        "obs_data": (shared.observed_counts(used_regions_df, inputlen, outputlen)
-                     if args.bigwig else None),
         "seed": getattr(args, "seed", DEFAULT_SEED),
     })
+
+    # The forward in runs of whole batches, each handed to the finish stage
+    # as it lands, so the bigwig and the metrics are written while this same
+    # model is still predicting -- not only while the next one is, which left
+    # a single-model run with all of it after the forward. The batches are the
+    # ones a single predict call makes, so every prediction is unchanged; they
+    # run in the order the bigwig is written in (bigwig_helper.stream_plan).
+    for start, stop in bigwig_helper.stream_plan(regions, gs, args.batch_size, STREAM_ROWS):
+        # verbose off: one progress bar per call would be dozens of bars.
+        pred_logits, pred_logcts = model.predict(
+            [seqs[start:stop]], batch_size=args.batch_size, verbose=False)
+        if pred_logcts is None:
+            raise ValueError(
+                f"{model_path} is a profile-only bias model: it predicts no counts, "
+                f"so there is no counts-scaled prediction bigwig to write")
+        # Reshape with an explicit batch dimension; an unrestricted squeeze
+        # collapses a single region's (1, outputlen) profile to one dimension
+        # (defect 3 in chrombpnet_bugs.md).
+        pred_logits = np.asarray(pred_logits).reshape(len(pred_logits), -1)
+        stream.add(start, pred_logits, np.asarray(pred_logcts))
+    stream.close()
 
 
 def _expected_outputs(args, models):
@@ -262,16 +335,11 @@ def main(args):
                (args.chrombpnet_model, "chrombpnet"),
                (args.bias_model, "bias")) if path]
 
-    # Fork the finish worker FIRST, before any model is loaded: forking a
+    # Fork the finish workers FIRST, before any model is loaded: forking a
     # process that has already initialized CUDA yields a child with unusable
-    # CUDA state. The worker never touches the GPU, but it inherits whatever
+    # CUDA state. The workers never touch the GPU, but they inherit whatever
     # the parent had at fork time.
-    with finish_stage.start(len(models)) as finish:
-        if args.bigwig:
-            # The metrics stage imports scipy and matplotlib, ~6s that would
-            # otherwise be paid with the GPU idle. Start them now so they
-            # land under the forward.
-            preimport.start()
+    with finish_stage.start() as finish:
         # The FASTA is opened once for the whole invocation, not per model.
         with pyfaidx.Fasta(args.genome) as genome:
             # One cache across all models: the regions, the featurization

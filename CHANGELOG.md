@@ -1,5 +1,44 @@
 # Changelog
 
+## `pred_bw` writes each model's bigWig and metrics while that model predicts
+
+- **Performance only; outputs are identical.** A model's finish work --
+  the bigWig, and with `-bw` the predictions HDF5, the metrics JSON and the
+  two plots -- used to start when its forward was done. A worker overlapped
+  model N's with model N+1's forward, and a single-model run did all of it
+  after its forward, inline. Now the forward runs in calls of whole batches
+  (up to 4,096 regions), and each call's predictions go to two forked
+  workers as they land (`chrombpnet/finish_stage.py`). One writes the bigWig
+  down the regions' sorted order as far as the arrived rows allow. The other
+  reads the observed signal and draws the shuffled-profile baseline as soon
+  as the model's pass opens, then takes each chunk's softmax, per-region JSD
+  and profile Pearson R. Only what needs every prediction is left for after
+  the last chunk: the bigWig's close and stats, the HDF5 (now on a thread
+  beside the plots), the counts metrics, the plots and the JSON.
+- The batches are the ones a single predict call makes. Only the order they
+  run in changes, to the order the bigWig is written in (the chromosome-sizes
+  order), so a regions file sorted with `sort -k1,1` (chr1, chr10, ...,
+  chr2) still streams. Every prediction, and so every output, is unchanged.
+  The Keras engines' per-call progress bars are off.
+- `metrics.profile_metrics` is now `ProfileBaseline` (the observed side: the
+  seeded draws, `jsd_rnd`, the `max_jsd` bound) plus `ProfileMetrics` (the
+  predicted side, fed rows as they arrive). The baseline is drawn for every
+  region whose observed profile normalizes. If a predicted profile does not
+  normalize (a non-finite model output), the draws skip that region and the
+  baseline is drawn again, so the values are the single call's either way.
+  The metrics worker reads the observed counts and draws the baseline once
+  per model geometry and seed, as the parent cached the counts before.
+- `chrombpnet/preimport.py` is gone: the parent no longer computes metrics,
+  and the metrics worker imports SciPy and Matplotlib right after its fork.
+- Adapted from the optimization kit's pipelined predict, `bigwig_writer` and
+  `metrics_overlap` levers (github.com/anthropics/uplifting-biomolecular-modeling,
+  Apache-2.0). Differences: the kit predicts in sorted region order, which
+  changes which regions share a batch, where this reorders whole batches;
+  the kit deflates HDF5 chunks as rows arrive, where this writes the HDF5
+  after the last chunk on a thread; the kit assumes every predicted profile
+  normalizes, where this checks and redraws.
+
+
 ## `pred_bw` tunes glibc's memory allocator (the optimization kit's `malloc_env`)
 
 - **Performance only; outputs are identical.** `pred_bw` now sets three

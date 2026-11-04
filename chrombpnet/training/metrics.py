@@ -123,58 +123,135 @@ def _profile_metrics_looped(true_counts, pred_probs, seed):
             np.array(jsd_rnd), np.array(jsd_rnd_norm), empty, empty)
 
 
-def profile_metrics(true_counts, pred_probs, pseudocount=0.001, seed=DEFAULT_SEED):
+class ProfileBaseline:
+    """The half of `profile_metrics` that needs only the observed counts.
+
+    The shuffled-profile baseline -- one seeded permutation per region, in
+    region order -- depends on the predictions only through which regions it
+    skips: `profile_metrics` draws for the regions whose observed *and*
+    predicted profiles normalize, and a softmax row always normalizes unless
+    the model produced a non-finite value. So the draws, `jsd_rnd` and the
+    `max_jsd` bound can be computed before the predictions exist, for the
+    regions whose observed profile normalizes, and `profile_metrics` keeps
+    them only if its predictions leave exactly that set; otherwise it draws
+    again over the right set. Either way the values are the ones the single
+    call computes.
+
+    That is the optimization kit's `metrics_overlap` phase A
+    (github.com/anthropics/uplifting-biomolecular-modeling, Apache-2.0),
+    which runs the observed side and the RNG ahead of the forward. The kit
+    assumes every row is valid; the check and redraw are this package's.
+    """
+
+    def __init__(self, true_counts, seed=DEFAULT_SEED, rows=None):
+        true_counts = np.asarray(true_counts)
+        self.seed = seed
+        self.observed_prob, self.observed_ok = _normalize_rows(true_counts)
+        # The regions drawn for: every normalizable observed profile, or
+        # those of them that `rows` (the predicted profiles' mask) also keeps.
+        valid = self.observed_ok if rows is None else self.observed_ok & rows
+        self.valid = valid
+
+        # The old loop drew one permutation per *surviving* region, in order, and
+        # skipped the draw entirely for regions it discarded. `rng.permutation(x)`
+        # on a 1-D array consumes the same state as `x[rng.permutation(len(x))]`
+        # and returns the same values, so drawing an index permutation per valid
+        # region row reproduces the stream exactly.
+        rng = np.random.default_rng(seed)
+        num_regions, width = true_counts.shape
+        shuffled = np.zeros_like(self.observed_prob)
+        for idx in np.flatnonzero(valid):
+            shuffled[idx] = true_counts[idx][rng.permutation(width)]
+        shuffled_prob, _ = _normalize_rows(shuffled)
+
+        self.jsd_rnd = np.full(num_regions, np.nan)
+        self.max_jsd = np.full(num_regions, np.nan)
+        if valid.any():
+            self.jsd_rnd[valid] = jensenshannon(self.observed_prob[valid], shuffled_prob[valid],
+                                                axis=1, base=JSD_BASE)
+            # jsd_min_max_bounds: (0, jsd(profile, uniform)). The profile it
+            # normalizes is true_counts, i.e. observed_prob again.
+            uniform = np.full((int(valid.sum()), width), 1.0 / width)
+            self.max_jsd[valid] = jensenshannon(self.observed_prob[valid], uniform,
+                                                axis=1, base=JSD_BASE)
+
+
+class ProfileMetrics:
+    """`profile_metrics`, fed the predicted profiles as they arrive.
+
+    Each arriving block of rows is normalized and its per-region JSD taken
+    against the observed profiles right away; `result()` then only assembles.
+    The JSD is computed row by row (`jensenshannon(..., axis=1)` reduces each
+    row on its own), so a row's value does not depend on which rows arrive
+    with it, and the result is the single call's.
+    """
+
+    def __init__(self, true_counts, seed=DEFAULT_SEED, baseline=None):
+        self._true_counts = np.asarray(true_counts)
+        if baseline is not None and baseline.seed != seed:
+            raise ValueError(f"the baseline was drawn with seed {baseline.seed}, not {seed}")
+        self._seed = seed
+        self._baseline = baseline if baseline is not None else ProfileBaseline(true_counts, seed=seed)
+        num_regions = self._true_counts.shape[0]
+        self._jsd_pw = np.full(num_regions, np.nan)
+        self._predicted_ok = np.zeros(num_regions, dtype=bool)
+        self._arrived = np.zeros(num_regions, dtype=bool)
+
+    def add(self, start, pred_probs):
+        """Predicted profiles for regions ``start`` to ``start + len(pred_probs)``."""
+        rows = slice(start, start + len(pred_probs))
+        predicted_prob, predicted_ok = _normalize_rows(pred_probs)
+        valid = self._baseline.observed_ok[rows] & predicted_ok
+        jsd_pw = np.full(len(predicted_ok), np.nan)
+        if valid.any():
+            jsd_pw[valid] = jensenshannon(self._baseline.observed_prob[rows][valid],
+                                          predicted_prob[valid], axis=1, base=JSD_BASE)
+        self._jsd_pw[rows] = jsd_pw
+        self._predicted_ok[rows] = predicted_ok
+        self._arrived[rows] = True
+
+    def result(self):
+        """The eight arrays `profile_metrics` returns."""
+        if not self._arrived.all():
+            raise ValueError(f"{int((~self._arrived).sum())} regions have no predicted profile")
+        num_regions = len(self._jsd_pw)
+        baseline = self._baseline
+        if not np.array_equal(baseline.valid, baseline.observed_ok & self._predicted_ok):
+            baseline = ProfileBaseline(self._true_counts, seed=self._seed, rows=self._predicted_ok)
+        valid = baseline.valid
+        # A copy: a baseline can serve several calls, and jsd_rnd is returned.
+        jsd_pw, jsd_rnd, max_jsd = self._jsd_pw.copy(), baseline.jsd_rnd.copy(), baseline.max_jsd
+        min_jsd = np.where(valid, 0.0, np.nan)
+
+        jsd_norm = np.full(num_regions, np.nan)
+        jsd_rnd_norm = np.full(num_regions, np.nan)
+        jsd_norm[valid] = _min_max_normalize(jsd_pw[valid], min_jsd[valid], max_jsd[valid])
+        jsd_rnd_norm[valid] = _min_max_normalize(jsd_rnd[valid], min_jsd[valid], max_jsd[valid])
+
+        # The four mNLL arrays have been empty since the dead mNLL chain was
+        # removed; both call sites unpack and discard them.
+        empty = np.array([])
+        return empty, empty, jsd_pw, jsd_norm, jsd_rnd, jsd_rnd_norm, empty, empty
+
+
+def profile_metrics(true_counts, pred_probs, pseudocount=0.001, seed=DEFAULT_SEED,
+                    baseline=None):
     '''
     Get profile metrics
+
+    ``baseline`` is a `ProfileBaseline` already computed for these observed
+    counts and this seed; it is reused when the predictions keep the regions
+    it drew for, and drawn again otherwise.
     '''
     # Vectorized over regions. This was a Python loop calling
     # scipy.spatial.distance.jensenshannon three times per region, which
     # profiled as the largest single cost of `pred_bw`'s finish stage.
     # `jensenshannon(..., axis=1)` is bit-identical to the per-row calls and
-    # the shuffled draws below reproduce the old RNG stream exactly, so every
+    # the shuffled draws reproduce the old RNG stream exactly, so every
     # returned value is unchanged; a test pins both claims.
-    true_counts = np.asarray(true_counts)
-    num_regions = true_counts.shape[0]
-
-    observed_prob, observed_ok = _normalize_rows(true_counts)
-    predicted_prob, predicted_ok = _normalize_rows(pred_probs)
-    valid = observed_ok & predicted_ok
-
-    # The old loop drew one permutation per *surviving* region, in order, and
-    # skipped the draw entirely for regions it discarded. `rng.permutation(x)`
-    # on a 1-D array consumes the same state as `x[rng.permutation(len(x))]`
-    # and returns the same values, so drawing an index permutation per valid
-    # region row reproduces the stream exactly.
-    rng = np.random.default_rng(seed)
-    width = true_counts.shape[1]
-    shuffled = np.zeros_like(observed_prob)
-    for idx in np.flatnonzero(valid):
-        shuffled[idx] = true_counts[idx][rng.permutation(width)]
-    shuffled_prob, _ = _normalize_rows(shuffled)
-
-    jsd_pw = np.full(num_regions, np.nan)
-    jsd_rnd = np.full(num_regions, np.nan)
-    max_jsd = np.full(num_regions, np.nan)
-    if valid.any():
-        jsd_pw[valid] = jensenshannon(observed_prob[valid], predicted_prob[valid],
-                                      axis=1, base=JSD_BASE)
-        jsd_rnd[valid] = jensenshannon(observed_prob[valid], shuffled_prob[valid],
-                                       axis=1, base=JSD_BASE)
-        # jsd_min_max_bounds: (0, jsd(profile, uniform)). The profile it
-        # normalizes is true_counts, i.e. observed_prob again.
-        uniform = np.full((int(valid.sum()), width), 1.0 / width)
-        max_jsd[valid] = jensenshannon(observed_prob[valid], uniform, axis=1, base=JSD_BASE)
-    min_jsd = np.where(valid, 0.0, np.nan)
-
-    jsd_norm = np.full(num_regions, np.nan)
-    jsd_rnd_norm = np.full(num_regions, np.nan)
-    jsd_norm[valid] = _min_max_normalize(jsd_pw[valid], min_jsd[valid], max_jsd[valid])
-    jsd_rnd_norm[valid] = _min_max_normalize(jsd_rnd[valid], min_jsd[valid], max_jsd[valid])
-
-    # The four mNLL arrays have been empty since the dead mNLL chain was
-    # removed; both call sites unpack and discard them.
-    empty = np.array([])
-    return empty, empty, jsd_pw, jsd_norm, jsd_rnd, jsd_rnd_norm, empty, empty
+    metrics = ProfileMetrics(true_counts, seed=seed, baseline=baseline)
+    metrics.add(0, pred_probs)
+    return metrics.result()
 
 def plot_histogram(region_jsd, shuffled_labels_jsd, output_prefix, title):
 
