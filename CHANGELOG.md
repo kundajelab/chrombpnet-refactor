@@ -1,5 +1,21 @@
 # Changelog
 
+## Observed bigWig counts are read ~3.5x faster
+
+- **Performance only; the values are identical.** `data_utils.get_cts`
+  without padding -- every caller except the shifted DNase conventions'
+  reverse-complement windows -- takes the windows from whole columns instead
+  of `iterrows`, and puts each region's values, as pyBigWig's float32 NumPy
+  return (`numpy=True`), straight into one float64 array instead of building
+  a Python float per base. Widening float32 to float64 is exact, as the list
+  return's conversion through a Python float was, and the same `nan_to_num`
+  runs, so every value is the same.
+- `pred_bw -bw`'s observed counts and the training and evaluation data
+  loaders' labels both go through it. 30,000 peaks at widths 1,000, 1,001
+  and 2,114 on a shared CPU: 17-26 s -> 5-7 s, byte-identical (pyBigWig
+  0.3.22 and 0.3.25).
+
+
 ## `pred_bw`'s bigWig zoom levels are built as the rows arrive
 
 - **Performance only; the bigWig bytes are identical.** bigWigs are written
