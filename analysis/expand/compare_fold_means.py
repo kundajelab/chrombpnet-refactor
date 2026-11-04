@@ -144,9 +144,9 @@ def plot(out_dir, frame, panels, out_name, title, subtitle, footnote, ylims):
     import plot_summarize as ps
 
     # The blog's colours: the fold models white (the engine figure's hollow reference bar),
-    # the LOFO student blue and the final student green (plot_summarize.SLOTS).
-    styles = {VS_ALL: ps.RETRAINED_BAR, LOFO: dict(color=ps.SLOTS[0], linewidth=0),
-              FINAL: dict(color=ps.SLOTS[2], linewidth=0)}
+    # the LOFO student green and the final student orange (plot_summarize.SLOT_NAMES).
+    styles = {VS_ALL: ps.RETRAINED_BAR, LOFO: dict(color=ps.SLOT_NAMES["green"], linewidth=0),
+              FINAL: dict(color=ps.SLOT_NAMES["orange"], linewidth=0)}
     datasets = sorted({(r.biosample, r.encid, r.assay) for r in frame.itertuples()},
                       key=lambda d: ps._encid_rank(d[1]))
     fig, axes = plt.subplots(len(panels), 1, squeeze=False, figsize=(9.5, 1.7 * len(panels) + 2.4))

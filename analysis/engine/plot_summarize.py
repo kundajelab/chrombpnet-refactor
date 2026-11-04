@@ -42,7 +42,8 @@ Five figures, each written as .png, .pdf and a .tsv table view:
         runtime: hours, one bar per engine
 
 The runs drawn are run_summarize.py's (its runs.tsv: the engines, or its
---runs labels), in that order, each in the next categorical colour; panels
+--runs labels), in that order, each in the next categorical colour (or
+the slot --colour RUN=blue|orange|green|yellow gives it); panels
 for the original and the retrained original come first, and pairs of runs
 from its --versus follow the runs vs the original in summary_agreement.
 --noun names them in the titles (default "engine").
@@ -89,6 +90,7 @@ SURFACE = "#fcfcfb"
 ENGINES = ("pytorch", "tensorflow", "jax")
 #: Categorical slots, in order (the reference palette's first four).
 SLOTS = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100")
+SLOT_NAMES = dict(zip(("blue", "orange", "green", "yellow"), SLOTS))
 ENGINE_COLOURS = dict(zip(ENGINES, SLOTS))
 ORIGINAL = "original"
 RETRAINED = "original_retrained"   # run_original_retrain.py
@@ -141,13 +143,22 @@ def read_runs(directory):
     return tuple(pd.read_csv(path, sep="\t").sort_values("order")["engine"].astype(str))
 
 
-def set_runs(labels):
-    """Make `labels` the runs every figure draws, each in its slot's colour."""
+def set_runs(labels, colours=()):
+    """Make `labels` the runs every figure draws, each in its slot's colour,
+    or in the slot `colours` ("RUN=green", ...) names for it."""
     global ENGINES, ENGINE_COLOURS
     if len(labels) > len(SLOTS):
         sys.exit(f"{len(labels)} runs, but only {len(SLOTS)} validated colours: plot fewer at a time")
     ENGINES = tuple(labels)
     ENGINE_COLOURS = dict(zip(ENGINES, SLOTS))
+    for item in colours:
+        run, _, slot = item.rpartition("=")
+        if run not in ENGINE_COLOURS or slot not in SLOT_NAMES:
+            sys.exit(f"--colour {item!r}: expected RUN=SLOT, RUN one of {', '.join(ENGINES)} "
+                     f"and SLOT one of {', '.join(SLOT_NAMES)}")
+        ENGINE_COLOURS[run] = SLOT_NAMES[slot]
+    if len(set(ENGINE_COLOURS.values())) < len(ENGINE_COLOURS):
+        sys.exit("--colour: two runs would share a colour")
 
 
 def _encid_rank(encid):
@@ -597,6 +608,8 @@ def main(argv=None):
                          f"or {ORIGINAL} / {RETRAINED})")
     ap.add_argument("--noun", default="engine",
                     help='what the titles call a run (default "engine")')
+    ap.add_argument("--colour", nargs="*", default=[], metavar="RUN=SLOT",
+                    help="draw RUN in another validated slot: blue, orange, green or yellow")
     ap.add_argument("--no-original", dest="with_original", action="store_false",
                     help="leave the old TensorFlow ChromBPNet out of summary_scores")
     args = ap.parse_args(argv)
@@ -618,7 +631,7 @@ def main(argv=None):
 
 def plot_directory(plt, directory, args):
     """Every figure of one run_summarize.py output directory."""
-    set_runs(read_runs(directory))
+    set_runs(read_runs(directory), args.colour)
 
     def read(name, required=True):
         path = directory / name
