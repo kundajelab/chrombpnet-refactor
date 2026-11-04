@@ -338,15 +338,15 @@ changes, `args.json` and checkpoints included.
 - **Sequence windows** are read through a memory map of the FASTA, one
   gather per chromosome, instead of one `pyfaidx` slice per region, and
   one-hot encoded through a 256-entry lookup table instead of a sort.
-- **Profile metrics** (JSD and its bounds) are computed for all regions at
+- **Profile metrics** (JSD and its bounds) are computed over many regions at
   once instead of in a per-region loop, with identical values and the same
   random stream.
 - **Prediction** casts and transposes each batch as it is needed into a
   preallocated output, instead of converting the whole input up front, and
   runs under `torch.inference_mode`.
 - **`pred_bw`** featurizes the regions and reads the observed bigwig once for
-  all its models, writes each model's bigwig and metrics in a worker process
-  while the next model predicts, and builds the bigwig writer's arguments as
+  all its models, writes each model's bigwig and metrics in worker processes
+  while that model predicts, and builds the bigwig writer's arguments as
   numpy arrays.
 - **BigWigs are written as fixed-step sections**: the same values, faster to
   write and smaller, so their bytes differ from the original's.
