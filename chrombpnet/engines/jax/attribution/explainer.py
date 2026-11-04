@@ -15,7 +15,6 @@ layers are swapped for the rescale rule while the model is traced, one jitted fo
 x K references is shared by the requested heads, and the hypothetical projection runs on the device.
 """
 import contextlib
-import time
 import warnings
 
 import jax
@@ -24,76 +23,12 @@ import keras
 import numpy as np
 
 from chrombpnet.engines.jax.attribution import deeplift_jax
+from chrombpnet.engines.jax.attribution.common import (  # noqa: F401  (re-exported: this module's names)
+    ADDITIVITY_THRESHOLD, HEADS, ExplainResult, _ACTIVATION_LAYERS, _LINEAR_LAYERS, activation_name, check_model,
+    iter_layers, report_additivity, timed_iter, update_additivity)
 from chrombpnet.engines.jax.attribution.dinuc_shuffle import NUM_SHUFFLES, make_references
-from chrombpnet.engines.jax.layers import LogSumExp
 
-HEADS = ("counts", "profile")
 PRECISIONS = ("auto", "highest", "high", "default")
-ADDITIVITY_THRESHOLD = 1e-3
-
-_LINEAR_LAYERS = (
-    keras.layers.InputLayer,
-    keras.layers.Cropping1D,
-    keras.layers.Add,
-    keras.layers.Flatten,
-    keras.layers.GlobalAveragePooling1D,
-    keras.layers.Concatenate,
-)
-_ACTIVATION_LAYERS = (keras.layers.Conv1D, keras.layers.Dense)
-
-
-def iter_layers(model):
-    """All layers of a model, recursing into nested models (e.g. the two submodels of a full chrombpnet.h5)."""
-    for layer in model.layers:
-        yield layer
-        if isinstance(layer, keras.Model):
-            yield from iter_layers(layer)
-
-
-def activation_name(layer):
-    act = getattr(layer, "activation", None)
-    if act is None:
-        return "linear"
-    try:
-        name = keras.activations.serialize(act)
-    except Exception:
-        name = getattr(act, "__name__", None)
-    return name if isinstance(name, str) else repr(name)
-
-
-def check_model(model, heads):
-    """Raise NotImplementedError unless every layer has a DeepLIFT rule here (ReLU rescale, or linear)."""
-    if len(model.inputs) != 1:
-        raise NotImplementedError("DeepSHAP supports single-input models only ({} has {} inputs)".format(
-            model.name, len(model.inputs)))
-    n_out = len(model.outputs)
-    for head in heads:
-        if head not in HEADS:
-            raise ValueError("unknown head {!r}; expected one of {}".format(head, HEADS))
-        if head == "counts" and n_out < 2:
-            raise ValueError("counts head requested but the model has a single output")
-    has_logsumexp = False
-    for layer in iter_layers(model):
-        if isinstance(layer, keras.Model):
-            continue
-        if isinstance(layer, LogSumExp):
-            has_logsumexp = True
-        elif isinstance(layer, _ACTIVATION_LAYERS):
-            act = activation_name(layer)
-            if act not in ("relu", "linear"):
-                raise NotImplementedError(
-                    "layer {!r} ({}) uses activation {!r}; DeepSHAP here only has rules for relu and linear".format(
-                        layer.name, type(layer).__name__, act))
-        elif not isinstance(layer, _LINEAR_LAYERS):
-            raise NotImplementedError(
-                "layer {!r} ({}) has no DeepLIFT rule; supported layers: InputLayer, Conv1D and Dense (relu or "
-                "linear), Cropping1D, Add, Concatenate, Flatten, GlobalAveragePooling1D, nested models".format(
-                    layer.name, type(layer).__name__))
-    if has_logsumexp and "counts" in heads:
-        raise NotImplementedError(
-            "counts-head DeepSHAP of a full chrombpnet model (logsumexp of the bias and no-bias counts) is not "
-            "supported: interpret the bias-corrected *_nobias.keras model instead (as the chrombpnet pipeline does). "
-            "The profile head of the full model is supported.")
 
 
 @contextlib.contextmanager
@@ -181,15 +116,6 @@ def precision_context(precision):
 def _is_oom(err):
     msg = str(err)
     return "RESOURCE_EXHAUSTED" in msg or "Out of memory" in msg or "out of memory" in msg
-
-
-class ExplainResult:
-    """hyp[head]: (N, L, 4) float32; mult[head]: (N, K, L, 4) float32 (if requested); refs: (N, K, L, 4) int8
-    (if requested); additivity[head]: summary of the per-pair summation-to-delta check."""
-
-    def __init__(self):
-        self.hyp, self.mult, self.additivity = {}, {}, {}
-        self.refs = None
 
 
 class DeepLiftShap:
@@ -365,24 +291,10 @@ class DeepLiftShap:
 
     @staticmethod
     def _update_additivity(stat, total, delta):
-        total = np.asarray(total, dtype=np.float64)
-        delta = np.asarray(delta, dtype=np.float64)
-        abs_err = np.abs(total - delta)
-        rel_err = abs_err / np.maximum(np.abs(delta), 1.0)
-        stat["n_pairs"] += int(rel_err.size)
-        if rel_err.size:
-            stat["max_rel_err"] = max(stat["max_rel_err"], float(rel_err.max()))
-            stat["max_abs_err"] = max(stat["max_abs_err"], float(abs_err.max()))
-            stat["n_over_threshold"] += int((rel_err > stat["threshold"]).sum())
+        update_additivity(stat, total, delta)
 
     def _report_additivity(self, stats):
-        for head, stat in stats.items():
-            if stat["n_over_threshold"]:
-                warnings.warn(
-                    "DeepSHAP {} head: {} of {} (input, reference) pairs violate summation-to-delta by more than "
-                    "{:g} (max relative error {:.3g}); expected only with precision='default' on GPUs (TF32) or "
-                    "for layers without a DeepLIFT rule".format(head, stat["n_over_threshold"], stat["n_pairs"],
-                                                                 stat["threshold"], stat["max_rel_err"]))
+        report_additivity(stats)
 
     def run(self, seqs, references=None, seed=1234, return_multipliers=False, return_references=False):
         """Explain all sequences at once; returns an ExplainResult."""
@@ -416,16 +328,3 @@ class DeepLiftShap:
     def multipliers(self, seqs, references=None, seed=1234):
         """Raw input-half multipliers {head: (N, K, L, 4) float32} (the TFDeepExplainer `mult`)."""
         return self.run(seqs, references, seed, return_multipliers=True).mult
-
-
-def timed_iter(iterator, total, every=60.0, label="DeepSHAP"):
-    """Pass chunks through, printing progress about every `every` seconds."""
-    t0 = last = time.time()
-    for item in iterator:
-        yield item
-        now = time.time()
-        done = item[1]
-        if now - last >= every or done == total:
-            rate = done / max(now - t0, 1e-9)
-            print("{}: {}/{} sequences ({:.1f} seq/s)".format(label, done, total, rate), flush=True)
-            last = now

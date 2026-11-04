@@ -17,6 +17,7 @@ ChromBPNet 2.0's Keras 3 ``.h5`` files.
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import sys
 
@@ -30,10 +31,12 @@ _ARCHITECTURES = {
 
 # Keras picks its backend when it is first imported, and every module of this
 # package imports keras: choose JAX before any of them can. Importing this
-# package imports no framework, and an explicit KERAS_BACKEND still wins.
+# package imports no framework, and an explicit KERAS_BACKEND still wins. Only
+# where JAX is installed: in a TensorFlow environment the tensorflow
+# engine imports these modules to run them on TensorFlow.
 # GPU memory is allocated on demand instead of reserving 75% of the device at
 # start-up (set XLA_PYTHON_CLIENT_MEM_FRACTION to cap it).
-if "keras" not in sys.modules:
+if "keras" not in sys.modules and importlib.util.find_spec("jax") is not None:
     os.environ.setdefault("KERAS_BACKEND", "jax")
 os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
 

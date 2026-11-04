@@ -14,8 +14,21 @@ from chrombpnet.engines.jax.losses import multinomial_nll
 _NESTED_MODEL_CLASSES = ("Functional", "Model", "Sequential")
 
 
+#: The Keras backends this code runs on: JAX (the JAX engine) and TensorFlow (the tensorflow engine).
+KERAS3_BACKENDS = ("jax", "tensorflow")
+
+
+def require_keras3_backend():
+    """Fail early with a clear message if Keras was initialised with a backend these engines do not use."""
+    backend = keras.backend.backend()
+    if backend not in KERAS3_BACKENDS:
+        raise RuntimeError(
+            "chrombpnet needs the Keras JAX or TensorFlow backend but Keras is using {!r}. Set KERAS_BACKEND=jax "
+            "(the JAX engine) or tensorflow (the tensorflow engine) before anything imports keras.".format(backend))
+
+
 def require_jax_backend():
-    """Fail early with a clear message if Keras was initialised with another backend."""
+    """Fail early with a clear message if Keras was initialised with another backend than JAX."""
     backend = keras.backend.backend()
     if backend != "jax":
         raise RuntimeError(
@@ -129,9 +142,9 @@ def load_model(path, compile=False):
     `chrombpnet.h5` models (nested bias + no-bias models and a logsumexp Lambda count head). Optimizer state
     is never restored.
     """
-    if keras.backend.backend() != "jax":
-        warnings.warn("Loading {} with the Keras {!r} backend; chrombpnet is tested on JAX only.".format(
-            path, keras.backend.backend()))
+    if keras.backend.backend() not in KERAS3_BACKENDS:
+        warnings.warn("Loading {} with the Keras {!r} backend; chrombpnet is tested on JAX and TensorFlow "
+                      "only.".format(path, keras.backend.backend()))
     if _is_legacy_h5_with_nested_models(path):
         return _load_legacy_h5(str(path), compile)
     return keras.saving.load_model(str(path), compile=compile, custom_objects=custom_objects())

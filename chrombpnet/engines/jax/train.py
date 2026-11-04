@@ -71,7 +71,12 @@ def _enable_deterministic_kernels():
     """XLA reads XLA_FLAGS when it creates its GPU client, so set it before.
 
     From the command line ``JaxEngine.prepare`` already has; this covers
-    library callers that reach ``get_model`` directly."""
+    library callers that reach ``get_model`` directly. On TensorFlow
+    (the tensorflow engine), TensorFlow's op determinism, as the tensorflow-old engine."""
+    if keras.backend.backend() == "tensorflow":
+        import tensorflow as tf
+        tf.config.experimental.enable_op_determinism()
+        return
     import jax
 
     flags = os.environ.get("XLA_FLAGS", "")
@@ -87,23 +92,18 @@ def _enable_deterministic_kernels():
 
 
 def _save_precision():
-    import jax
-
-    _SAVED_PRECISION.append(
-        (keras.config.dtype_policy(), jax.config.jax_default_matmul_precision))
+    _SAVED_PRECISION.append((keras.config.dtype_policy(), runtime.matmul_precision()))
 
 
 def _restore_precision():
-    import jax
-
     while _SAVED_PRECISION:
         policy, matmul_precision = _SAVED_PRECISION.pop()
         keras.config.set_dtype_policy(policy)
-        jax.config.update("jax_default_matmul_precision", matmul_precision)
+        runtime.set_matmul_precision(matmul_precision)
 
 
 def get_model(args, parameters):
-    model_io.require_jax_backend()
+    model_io.require_keras3_backend()
     runtime.configure_device(getattr(args, "device", None))
     if benchmark_enables(args, "deterministic_kernels"):
         _enable_deterministic_kernels()
