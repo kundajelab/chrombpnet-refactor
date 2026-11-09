@@ -10,7 +10,11 @@
 #SBATCH --array=0-4
 #
 # Measure what --predict-fk is worth, on the five folds trained by
-# run/run_chrombpnet_refactor_benchmark_260911.sh.
+# run_chrombpnet_refactor_benchmark_260911.sh (not in this folder).
+#
+# A record: this backs nothing in blog 2026-015 and no longer runs on current
+# chrombpnet-refactor (--predict-fk is now --predict-fused-kernel-fast/-exact,
+# --optimize is gone, and the trained folds are deleted); see README.md.
 #
 # Pick the card on the sbatch line (the September sweep ran on H100s: site.env's
 # SBATCH_H100), from this folder:

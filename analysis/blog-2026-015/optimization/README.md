@@ -1,9 +1,10 @@
 # Optimization benchmark
 
-What `--predict-fk` -- the fused Triton forward -- is worth, measured on the
-five folds trained by
-`../run/run_chrombpnet_refactor_benchmark_260911.sh` -- their own `.pt`
-checkpoints and their own peak regions. Real models, real data, nothing
+The `pred_bw` benchmarks behind blog 2026-015's Sections 3-4 and its comparison table
+(from "Re-run for the blog's speedup tables" on), and before them the September benchmark:
+what `--predict-fk` -- the fused Triton forward -- was worth, measured on five folds
+trained for it (by `run_chrombpnet_refactor_benchmark_260911.sh`, not in this folder) --
+their own `.pt` checkpoints and their own peak regions. Real models, real data, nothing
 synthetic.
 
 ## Site configuration
@@ -44,6 +45,14 @@ folder, after `source ../site.env` (or with the options written out);
 `--partition`, node exclusions and the like go in `SBATCH_SITE_ARGS`.
 
 ## The September benchmark
+
+**A record: it backs nothing in the blog post and can no longer be re-run.** It measures
+`--predict-fk` and the `--optimize` phases, since renamed (`--predict-fused-kernel-fast` /
+`-exact`) and removed from chrombpnet-refactor, on five trained folds
+(`${BENCHMARK_RUNS}/chrombpnet-refactor-<level>-cleanup/`) that are gone. Its saved
+results still summarize (`./summarize.sh "${OPTIMIZATION_ANALYSIS}"`). Re-running it would
+take an export of a commit that still has the flag (e.g. `693d162`) as the code, and the
+five ENCSR868FGK folds retrained. As it was run:
 
 ```bash
 sbatch ${SBATCH_SITE_ARGS} --constraint=<A100 feature> run_chrombpnet_optimization_benchmark.sh slurm

@@ -14,6 +14,9 @@
 # subsample, timed the same way -- so "what did the PyTorch port and its
 # optimizations actually buy" has a floor to be measured against.
 #
+# Part of the September benchmark: a record that backs nothing in blog
+# 2026-015 (README.md, "The September benchmark").
+#
 # From this folder, with site.env's cluster options:
 #   ./list_gpu_skus.sh <partitions>     # what the partitions offer
 #   sbatch ${SBATCH_SITE_ARGS} --constraint=<feature> run_chrombpnet_optimization_tensorflow.sh slurm
