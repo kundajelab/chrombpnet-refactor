@@ -10,10 +10,14 @@
 #   on disk   the artifacts a finished run must leave behind
 #   in logs   what Slurm actually recorded, including the failure reason
 #
+# A run is complete (OK) when its checkpoint and metrics JSON are whole
+# (_complete.sh, which run_retrain_full.sh uses too); a missing "Completed run"
+# log line is noted beside it, since later steps may not have run.
+#
 #   ROOT=... LOGS=... IDS_FILE=...   (default: DNASE_RC_ROOT, LOG_DIR, DNASE_RC_IDS)
 #
 # A run can leave a bias model and no ChromBPNet model (it died in the second
-# pipeline), or leave every file and still have failed afterwards. Checking
+# pipeline), or a model and no metrics (it died in its evaluation). Checking
 # only for "the directory exists" would call both of those a success.
 
 set -uo pipefail
@@ -40,15 +44,19 @@ done
 LOGS="${LOGS:-${LOG_DIR:-${BLOG_SCRIPTS}/dnase-rc}}"
 [[ -n "${IDS_FILE:-}" ]] || { require_site DNASE_RC_IDS; IDS_FILE="${DNASE_RC_IDS}"; }
 IDS="${IDS_FILE}"
+# shellcheck source=_complete.sh
+source "${BLOG_SCRIPTS}/dnase-rc/_complete.sh"
 
 ARMS=(standard fr-only rc-only right left both-half both-full)
 DNASE_ONLY=" right left both-half both-full "
 
 # ---------------------------------------------------------------- log index
 # arm|encid|fold -> "state;reason". Built from the job output itself, so it
-# does not depend on knowing which Slurm job id belonged to which arm.
+# does not depend on knowing which Slurm job id belonged to which arm. Both
+# run_train_full.sh's own jobs and run_retrain_full.sh's (which hand off to it)
+# count, and a success sticks: a later failed attempt does not hide it.
 declare -A LOG_STATE
-for out in "${LOGS}"/dnase_rc_train.*.out; do
+for out in "${LOGS}"/dnase_rc_train.*.out "${LOGS}"/dnase_rc_retrain.*.out; do
   [[ -e "$out" ]] || continue
   arm=$(grep -m1 "^DATA_AUG:" "$out" 2>/dev/null | awk '{print $2}')
   encid=$(grep -m1 "^ENCID:" "$out" 2>/dev/null | awk '{print $2}')
@@ -66,6 +74,7 @@ for out in "${LOGS}"/dnase_rc_train.*.out; do
     [[ -n "$reason" ]] || reason=$(grep -hoE "slurmstepd.*(CANCELLED|OUT_OF_MEMORY|TIME LIMIT)[^$]*" "$err" 2>/dev/null | tail -1)
     [[ -n "$reason" ]] || reason="no error recorded (killed? still running?)"
   fi
+  [[ "${LOG_STATE["${arm}|${encid}|${fold}"]:-}" == done* ]] && continue
   LOG_STATE["${arm}|${encid}|${fold}"]="${state};${reason}"
 done
 
@@ -74,7 +83,7 @@ printf "%-11s %-12s %-5s %-6s %-5s %-5s %-5s  %s\n" \
        ARM ENCID FOLD STATUS bias model eval REASON
 printf '%.0s-' {1..110}; echo
 
-total=0; done_n=0; fail_n=0; skip_n=0; missing_n=0
+total=0; done_n=0; fail_n=0; skip_n=0; missing_n=0; unlogged_n=0
 declare -A ARM_DONE ARM_EXP
 
 # _rest takes every column after FOLD_NUM (TENSORFLOW_DIR, ...); without it
@@ -92,17 +101,22 @@ while read -r assay encid _bam _peaks fold _rest; do
     d="${ROOT}/${arm}/${assay}/${encid}/fold_${fold}"
     bias=.; model=.; ev=.
     compgen -G "${d}/bias_model/models/*_bias.pt" >/dev/null 2>&1 && bias=Y
-    [[ -f "${d}/model/models/chrombpnet.pt" ]] && model=Y
-    [[ -f "${d}/model/evaluation/chrombpnet_metrics.json" ]] && ev=Y
+    checkpoint_complete "${d}/model/models/chrombpnet.pt" && model=Y
+    metrics_complete "${d}/model/evaluation/chrombpnet_metrics.json" && ev=Y
 
     entry="${LOG_STATE["${arm}|${encid}|${fold}"]:-}"
     log_state="${entry%%;*}"; reason="${entry#*;}"
     [[ "$entry" == "" ]] && { log_state="nolog"; reason="no Slurm log found for this combination"; }
 
-    if [[ "$model" == "Y" && "$log_state" == "done" ]]; then
+    if [[ "$model" == "Y" && "$ev" == "Y" ]]; then
       status=OK; done_n=$((done_n+1)); ARM_DONE[$arm]=$(( ${ARM_DONE[$arm]:-0} + 1 ))
+      if [[ "$log_state" == "done" ]]; then
+        reason=""
+      else
+        unlogged_n=$((unlogged_n+1))
+        reason="no 'Completed run' logged: later steps may be missing"
+      fi
       [[ "$VERBOSE" -eq 1 ]] || continue
-      reason=""
     elif [[ "$log_state" == "skip" ]]; then
       status=SKIP; skip_n=$((skip_n+1))
       [[ "$VERBOSE" -eq 1 ]] || continue
@@ -131,13 +145,14 @@ echo
 echo "=== totals ==="
 echo "  expected          ${total}"
 echo "  complete          ${done_n}"
+[[ "$unlogged_n" -gt 0 ]] && echo "    of which no 'Completed run' logged: ${unlogged_n} (-v lists them)"
 echo "  failed            ${fail_n}"
 echo "  never launched    ${missing_n}"
 [[ "$skip_n" -gt 0 ]] && echo "  skipped (by design) ${skip_n}"
 
 echo
-echo "=== failure reasons ==="
-for out in "${LOGS}"/dnase_rc_train.*.out; do
+echo "=== failure reasons in the logs (earlier attempts of runs now complete included) ==="
+for out in "${LOGS}"/dnase_rc_train.*.out "${LOGS}"/dnase_rc_retrain.*.out; do
   [[ -e "$out" ]] || continue
   grep -q "^Completed run" "$out" 2>/dev/null && continue
   grep -q "^SKIP:" "$out" 2>/dev/null && continue

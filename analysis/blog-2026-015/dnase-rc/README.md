@@ -311,15 +311,22 @@ reproduce in a harder sample", not as a second independent confirmation.
 sbatch run_retrain_full.sh slurm right       # re-run only what is missing
 ```
 
-`check_runs.sh` cross-checks the artifacts on disk against the Slurm logs,
-because either alone misleads: a run can leave `chrombpnet.pt` and still have
-died in QC with a half-written evaluation directory. It requires the model,
-the metrics JSON, **and** a log line reporting `Completed run`.
+`check_runs.sh` cross-checks the artifacts on disk against the Slurm logs
+(`run_train_full.sh`'s and `run_retrain_full.sh`'s). A run is complete when its
+`models/chrombpnet.pt` was written to the end and its
+`evaluation/chrombpnet_metrics.json` is whole (`_complete.sh`): the pipeline
+writes the metrics after the model and its test-set predictions, and nothing
+after them feeds `summarize.sh`. A run whose log never printed `Completed run`
+is still complete, and is listed (`-v`) as such: later steps (footprints,
+contribution scores, TF-MoDISco, the report) may be missing. In the blog's run
+tree, 15 runs are like that: 14 finished every step but their script was edited
+while they ran, so bash executed a fragment of the new version instead of the
+last line; one hit the time limit during contribution scoring.
 
-`run_retrain_full.sh` applies the same three-way test per array task and exits 0
-when the run is already complete, so the whole array can be resubmitted after
-a partial sweep. Training itself is delegated to `run_train_full.sh`, so the two
-cannot drift apart.
+`run_retrain_full.sh` applies the same test (`_complete.sh`) per array task
+and exits 0 when the run is already complete, so the whole array can be
+resubmitted after a partial sweep without deleting a finished fold. Training
+itself is delegated to `run_train_full.sh`, so the two cannot drift apart.
 
 **The cluster argument is optional.** All three runners share `_args.sh`, and
 each of these works:

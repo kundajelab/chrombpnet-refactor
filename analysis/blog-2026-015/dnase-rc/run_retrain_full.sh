@@ -8,17 +8,13 @@
 # array can be resubmitted after a partial sweep and it will pick up only
 # what is missing. Nothing already finished is recomputed or deleted.
 #
-# "Complete" needs both halves, because either alone is misleading:
-#
-#   the artifacts   a finished run leaves models/chrombpnet.pt and
-#                   evaluation/chrombpnet_metrics.json
-#   the log         the job printed "Completed run"
-#
-# A run that died in QC leaves the model but never printed that line, and its
-# evaluation directory is half-written. Treating it as done would put a
-# partially-scored fold into summarize.sh. Treating a *finished* run as
-# incomplete would throw away a GPU-day, so the check has to be exact rather
-# than conservative in one direction.
+# "Complete" (_complete.sh, shared with check_runs.sh) is a whole
+# models/chrombpnet.pt and a whole evaluation/chrombpnet_metrics.json, which
+# the pipeline writes after the test-set predictions. A run that died before
+# its evaluation has no metrics JSON and is retrained; one that finished its
+# evaluation is kept, whether or not a log printed "Completed run". Treating
+# a *finished* run as incomplete throws away a GPU-day and the results it
+# holds, since run_train_full.sh deletes the fold first.
 #
 # Training itself is delegated to run_train_full.sh -- this script only decides
 # whether to invoke it -- so the two can never drift apart.
@@ -117,37 +113,35 @@ FOLD_DIR="${ROOT}/${DATA_AUG}/${ASSAY}/${ENCID}/fold_${FOLD_NUM}"
 MODEL="${FOLD_DIR}/model/models/chrombpnet.pt"
 METRICS="${FOLD_DIR}/model/evaluation/chrombpnet_metrics.json"
 
-have_model=no; [[ -s "${MODEL}" ]] && have_model=yes
-have_metrics=no; [[ -s "${METRICS}" ]] && have_metrics=yes
-
-# Did any previous job for exactly this arm/dataset/fold report success? The
-# logs carry their own identity, so this does not depend on knowing which
-# Slurm job id belonged to which arm.
+# _complete.sh: a whole checkpoint and a whole metrics JSON. The log line is
+# reported, not required (_complete.sh says why).
+# shellcheck source=_complete.sh
+source "${DNASE_RC_DIR}/_complete.sh"
+have_model=no;   checkpoint_complete "${MODEL}"  && have_model=yes
+have_metrics=no; metrics_complete "${METRICS}"   && have_metrics=yes
 logged_done=no
-for out in "${LOGS}"/dnase_rc_train.*.out "${LOGS}"/dnase_rc_retrain.*.out; do
-  [[ -e "$out" ]] || continue
-  grep -q "^Completed run" "$out" 2>/dev/null || continue
-  [[ "$(grep -m1 '^DATA_AUG:' "$out" | awk '{print $2}')" == "${DATA_AUG}" ]] || continue
-  [[ "$(grep -m1 '^ENCID:'    "$out" | awk '{print $2}')" == "${ENCID}"   ]] || continue
-  [[ "$(grep -m1 '^FOLD_NUM:' "$out" | awk '{print $2}')" == "${FOLD_NUM}" ]] || continue
+if log_name="$(logged_complete "${DATA_AUG}" "${ENCID}" "${FOLD_NUM}" "${LOGS}")"; then
   logged_done=yes
-  echo "  prior success logged in: $(basename "$out")"
-  break
-done
+  echo "  prior success logged in: ${log_name}"
+fi
 
 echo "  model: ${have_model}   metrics: ${have_metrics}   logged 'Completed run': ${logged_done}"
 
-if [[ "${have_model}" == "yes" && "${have_metrics}" == "yes" && "${logged_done}" == "yes" ]]; then
+if [[ "${have_model}" == "yes" && "${have_metrics}" == "yes" ]]; then
+  if [[ "${logged_done}" == "no" ]]; then
+    echo "  note: no log reports 'Completed run'. The model and its evaluation are"
+    echo "        whole; footprints, contribution scores, TF-MoDISco or the report"
+    echo "        may be missing. run_train_full.sh retrains the fold to redo them."
+  fi
   echo "ALREADY COMPLETE -- exiting without retraining."
   exit 0
 fi
 
-# Anything else is a retry. Say which of the three was missing, so a rerun
-# that keeps failing the same way is visible in the logs rather than silent.
+# Anything else is a retry. Say which part was missing, so a rerun that keeps
+# failing the same way is visible in the logs rather than silent.
 echo "INCOMPLETE -- retraining. Missing:"
-[[ "${have_model}"   == "yes" ]] || echo "    models/chrombpnet.pt"
-[[ "${have_metrics}" == "yes" ]] || echo "    evaluation/chrombpnet_metrics.json"
-[[ "${logged_done}"  == "yes" ]] || echo "    a log reporting 'Completed run'"
+[[ "${have_model}"   == "yes" ]] || echo "    models/chrombpnet.pt (absent, empty or not written to the end)"
+[[ "${have_metrics}" == "yes" ]] || echo "    evaluation/chrombpnet_metrics.json (absent or not whole)"
 
 # run_train_full.sh removes the fold directory itself before rebuilding it, so a
 # half-written tree from the failed attempt does not need clearing here --
