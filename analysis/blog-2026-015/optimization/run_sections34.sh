@@ -42,10 +42,11 @@
 #              run_kit_modes.sh): that lever alone in the original package
 #   refactor4  chrombpnet-refactor's default pred_bw (PyTorch, TF32 convolutions) at
 #              the original's HDF5 compression, gzip 4 without shuffle
-#              (refactor_gzip4.py): Section 4
+#              (--h5-gzip-level 4 --no-h5-shuffle): Section 4
 #   refactor4_fast   refactor4 with --predict-fused-kernel-fast (the kit's TF32 kernels)
 #   refactor4_nomalloc  refactor4 with --no-malloc-env: glibc's default allocator
-#   refactor4_prev  refactor4 at d407ca8 (code-d407ca8/, an export of that commit):
+#   refactor4_prev  refactor4 at d407ca8 (code-d407ca8/, an export of that commit,
+#              which predates --h5-gzip-level: the same filters via refactor_gzip4.py):
 #              before within-model streaming, the incremental bigWig writer and the
 #              faster observed read (da8536e..032cf80), so prev -> refactor4 is their
 #              effect in this job
@@ -263,12 +264,18 @@ run_arm () {  # arm regions outdir
         cd "${NEUTRAL}"
         python -c "import chrombpnet, os, sys; p = os.path.realpath(chrombpnet.__file__);
 sys.exit(0 if p.startswith(os.path.realpath('${code}')) else 'wrong chrombpnet: ' + p)" || exit 3
-        cli="python -m chrombpnet.CHROMBPNET"; [[ "${arm}" == refactor4* ]] && cli="python ${HERE}/refactor_gzip4.py"
-        extra=""
+        cli="python -m chrombpnet.CHROMBPNET"; extra=""
+        if [[ "${arm}" == refactor4_prev ]]; then
+          # d407ca8 predates --h5-gzip-level; refactor_gzip4.py sets the same filters.
+          cli="python ${HERE}/refactor_gzip4.py"
+        elif [[ "${arm}" == refactor4* ]]; then
+          # The original's HDF5 compression: gzip 4, no byte-shuffle.
+          extra="--h5-gzip-level 4 --no-h5-shuffle"
+        fi
         case "${arm}" in
-          *_nomalloc) extra="--no-malloc-env" ;;
-          *_fast)     extra="--predict-fused-kernel-fast" ;;
-          *_exact)    extra="--predict-fused-kernel-exact" ;;
+          *_nomalloc) extra="${extra} --no-malloc-env" ;;
+          *_fast)     extra="${extra} --predict-fused-kernel-fast" ;;
+          *_exact)    extra="${extra} --predict-fused-kernel-exact" ;;
         esac
         t0=$(date +%s.%N)
         # shellcheck disable=SC2086
