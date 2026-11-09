@@ -149,12 +149,12 @@ Outputs land in `arm_check/<ENCID>/` (~800 MB, mostly a regenerable
 tagAlign). The script skips any bigwig it has already built, so re-running
 is cheap.
 
-## Scope: the two K562 datasets only
+## Scope: all four datasets, the stomach rows past the bias guard
 
-The sweep is capped at **data rows 1-10** — `ENCSR868FGK` (ATAC, K562) and
-`ENCSR000EOT` (DNase, K562). Rows 11-20 are the two primary **stomach
-tissue** datasets, and their bias models fail ChromBPNet's own guard in every
-arm:
+The sweep runs **data rows 1-20**: `ENCSR868FGK` (ATAC, K562) and
+`ENCSR000EOT` (DNase, K562) in rows 1-10, and the two primary **stomach
+tissue** datasets in rows 11-20. The stomach bias models fail ChromBPNet's
+own guard in every arm:
 
 ```
 Bias model pearsonr performance in peaks is: -0.6
@@ -167,17 +167,20 @@ The split is exactly cell line vs primary tissue:
 |---|---|---|---|---|
 | ENCSR868FGK | ATAC | K562 | 1-5 | trains |
 | ENCSR000EOT | DNase | K562 | 6-10 | trains |
-| ENCSR163PKT | DNase | stomach M54 | 11-15 | bias guard, all arms |
-| ENCSR337UIU | ATAC | stomach F53 | 16-20 | bias guard, all arms |
+| ENCSR163PKT | DNase | stomach M54 | 11-15 | trains past the bias guard (`--ignore-bias-flag`) |
+| ENCSR337UIU | ATAC | stomach F53 | 16-20 | trains past the bias guard (`--ignore-bias-flag`) |
 
 A bias model whose predicted counts *anti*-correlate with observed peak
 counts at r ~ -0.5 is genuinely broken, and it fails before the ChromBPNet
 model trains at all — so this is a data/threshold question, not an
 augmentation one. `-b/--bias-threshold-factor` (0.5 ATAC / 0.8 DNase here) is
-the first thing to try. Raise `MAX_DATA_ROW` past 10 to re-enable those rows.
+the first thing to try. The runs here instead pass `--ignore-bias-flag`
+(`run_train_full.sh`'s default, `IGNORE_BIAS=1`), which turns the guard into a
+warning: every row trains its own bias model, the stomach rows included, and
+the stomach results are best read with that caveat (below).
 
 `SLURM_ARRAY_TASK_ID` is **0-based**: task `t` runs data row `t+1`, so
-`--array=0-9` is rows 1-10. Any task resolving past `MAX_DATA_ROW` exits 0
+`--array=0-9` is rows 1-10. Any task past the ids table's last row exits 0
 with a message rather than running, so a wider array range is harmless.
 
 ### Why the stomach datasets cannot train a bias model
@@ -247,9 +250,11 @@ which stops being a bias model. These two experiments are unsuitable for the
 bias-factorized approach as designed; the reverse-complement question is
 answerable from the K562 DNase dataset with the K562 ATAC control.
 
-### Running the stomach rows anyway, with a borrowed bias model
+### An alternative not used for the results: a borrowed bias model
 
-`run_train_chrombpnet.sh` covers data rows 11-20 (array tasks 10-19) and
+The blog's stomach runs trained their own bias models, as above;
+`submit_all.sh` does not run this script. `run_train_chrombpnet.sh` covers
+data rows 11-20 (array tasks 10-19) and
 skips bias training entirely, taking the fold-0 bias model from the K562
 dataset of the same assay and the same arm:
 
@@ -366,14 +371,17 @@ so a plain `sbatch` writes its logs here; `submit_all.sh` sends them to `LOG_DIR
 
 ```bash
 ./00_prepare_bams.sh                     # ~27.5 GB, once
-sbatch run_train_full.sh   slurm standard     # then each other arm
+./submit_all.sh slurm                    # every arm, all 20 rows
 sbatch run_compare.sh slurm right        # arm model vs standard model
 ./summarize.sh | column -t -s $'\t'
 ```
 
-`run_train_full.sh` and `run_compare.sh` each take the arm as an argument and run
-a 20-way array (4 datasets × 5 folds). `standard` must be trained before any
-comparison, since it is the reference.
+`submit_all.sh` submits `run_retrain_full.sh` once per arm as a 20-way array
+(4 datasets × 5 folds), which trains through `run_train_full.sh` whatever is
+not already complete; `sbatch --array=0-19 run_retrain_full.sh slurm <arm>` does
+one arm. `run_compare.sh` takes the arm as an argument and runs the same
+20-way array. `standard` must be trained before any comparison, since it is
+the reference.
 
 ## Reading the comparisons
 

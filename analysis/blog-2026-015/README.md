@@ -56,7 +56,7 @@ blog shows.
 
 | Blog item | Run (GPU / cluster) | Summarize and plot (CPU, from saved results) |
 |---|---|---|
-| Section 2: `chrombpnet_dnase.png` | `dnase-rc/submit_all.sh` (`run_train_chrombpnet.sh` per convention arm, `run_retrain_full.sh`), then `run_compare.sh` (cross-evaluation) | `dnase-rc/summarize.sh` (writes `<run tree>/analysis/results.tsv`), then `dnase-rc/plot_summarize.sh --results <run tree>/analysis/results.tsv --out <dir>/summary_scores --fill-original ENCSR868FGK:2`: `summary_scores.png` |
+| Section 2: `chrombpnet_dnase.png` | `dnase-rc/submit_all.sh` (`run_retrain_full.sh` per convention arm over all 20 rows, training through `run_train_full.sh`), then `run_compare.sh` (cross-evaluation) | `dnase-rc/summarize.sh` (writes `<run tree>/analysis/results.tsv`), then `dnase-rc/plot_summarize.sh --results <run tree>/analysis/results.tsv --out <dir>/summary_scores --fill-original ENCSR868FGK:2`: `summary_scores.png` |
 | Section 2: `chrombpnet_dnase_cross_original_test.png` | as above | `summary_scores_aug_on_standard_tests_original.png` |
 | Section 2: `chrombpnet_dnase_cross_new_test.png` | as above | `summary_scores_standard_on_aug_tests_original.png` |
 | Section 3 table | `optimization/submit_l40s_kit_fast_k1.sh` (`run_sections34.sh`, arms stock, stages, fast, fast_k1; `kit_hook_l40s_k1fast/` runs the kit's Triton TF32 forward on the L40S, which the kit's own table does not); `malloc_env` row: `ARMS=stock,stockmalloc RUN_KIND=sections34-fast-rerun sbatch ${SBATCH_SITE_ARGS} ${SBATCH_L40S} run_sections34.sh slurm` | `optimization/summarize_sections34.py` (per-stage pairing: `summarize_kit_levers.py`, `stock_stage_timer.py`) |

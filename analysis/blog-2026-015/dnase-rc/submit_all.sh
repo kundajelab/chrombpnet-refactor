@@ -1,17 +1,18 @@
 #!/bin/bash
-# Submit every arm of both sweeps, in the order their dependencies require.
+# Submit every arm of the sweep: all 20 data rows, K562 (rows 1-10) and
+# stomach (rows 11-20), one array per arm.
 #
 #   ./submit_all.sh slurm            # submit
 #   ./submit_all.sh slurm --dry-run  # print the sbatch lines only
 #
-#   run_retrain_full.sh    rows 1-10  (K562)    array 0-9
-#   run_train_chrombpnet.sh rows 11-20 (stomach) array 10-19
-#
-# The stomach runs borrow each arm's K562 fold-0 bias model, which the K562
-# run of that same arm produces (array task 0 for ATAC, task 5 for DNase).
-# So each stomach job waits on its own arm's K562 job -- `afterany`, not
-# `afterok`, because a K562 array legitimately contains tasks that skip
-# (DNase-only arms on ATAC rows) or that were already complete.
+# Each task runs run_retrain_full.sh, which exits 0 when its run is already
+# complete and otherwise hands the row to run_train_full.sh. So resubmitting
+# after a partial sweep picks up only what is missing; run_train_full.sh on
+# its own would delete and retrain a finished fold. Every row trains its own
+# bias model, the stomach rows past the bias-model quality check with
+# --ignore-bias-flag (run_train_full.sh's IGNORE_BIAS=1 default), as the
+# blog's runs did. Borrowing a K562 bias model for them instead is
+# run_train_chrombpnet.sh (README: "An alternative not used for the results").
 
 set -euo pipefail
 
@@ -37,28 +38,13 @@ LOG_ARGS=()
 [[ -n "${LOG_DIR:-}" ]] && LOG_ARGS=(-o "${LOG_DIR}/%x.%A_%a.out" -e "${LOG_DIR}/%x.%A_%a.err")
 SB=(sbatch --parsable ${SITE_ARGS[@]+"${SITE_ARGS[@]}"} ${LOG_ARGS[@]+"${LOG_ARGS[@]}"})
 
-echo "=== K562 (rows 1-10) ==="
-declare -A K562_JOB
+echo "=== all 20 rows (K562 1-10, stomach 11-20), one array per arm ==="
 for arm in "${ARMS[@]}"; do
   if [[ -n "$DRY" ]]; then
-    echo "${SB[*]} ${HERE}/run_retrain_full.sh ${CLUSTER} ${arm}"
-    K562_JOB[$arm]="<jobid>"
+    echo "${SB[*]} --array=0-19 ${HERE}/run_retrain_full.sh ${CLUSTER} ${arm}"
   else
-    K562_JOB[$arm]=$("${SB[@]}" "${HERE}/run_retrain_full.sh" "${CLUSTER}" "${arm}")
-    printf "  %-10s job %s\n" "${arm}" "${K562_JOB[$arm]}"
-  fi
-done
-
-echo
-echo "=== stomach (rows 11-20), each waiting on its own arm's K562 job ==="
-for arm in "${ARMS[@]}"; do
-  dep="afterany:${K562_JOB[$arm]}"
-  if [[ -n "$DRY" ]]; then
-    echo "${SB[*]} --dependency=${dep} ${HERE}/run_train_chrombpnet.sh ${CLUSTER} ${arm}"
-  else
-    jid=$("${SB[@]}" --dependency="${dep}" \
-                 "${HERE}/run_train_chrombpnet.sh" "${CLUSTER}" "${arm}")
-    printf "  %-10s job %s  (after %s)\n" "${arm}" "${jid}" "${K562_JOB[$arm]}"
+    jid=$("${SB[@]}" --array=0-19 "${HERE}/run_retrain_full.sh" "${CLUSTER}" "${arm}")
+    printf "  %-10s job %s\n" "${arm}" "${jid}"
   fi
 done
 
