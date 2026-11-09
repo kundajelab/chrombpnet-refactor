@@ -32,8 +32,11 @@ i.e. it silently compares raw 5' ends against deposit-registered references.
 The deltas come from `conventions.shift_delta_pairs`, so this cannot drift
 away from what preprocessing actually does.
 
-    ./strand_pwm_check.py                    # every ENCID in the ids file
-    ./strand_pwm_check.py ENCSR000EOT        # just one
+    ./strand_pwm_check.py --ids IDS --genome hg38.fa --out PREFIX               # every ENCID
+    ./strand_pwm_check.py --ids IDS --genome hg38.fa --out PREFIX ENCSR000EOT   # just one
+
+IDS is the ids table (DNASE_RC_IDS), and PREFIX the figure's path without its suffix
+(as run: <run tree>/analysis/strand_pwm_check, giving .png and .pdf).
 
 Reads are taken from one chromosome through the BAM index. `sample_reads`
 shuffles its whole input, so handing it an entire 22 GB BAM means a full pass
@@ -44,6 +47,7 @@ comparison between them is unaffected.
 
 from __future__ import annotations
 
+import argparse
 import subprocess
 import sys
 import tempfile
@@ -51,10 +55,6 @@ from pathlib import Path
 
 import numpy as np
 
-IDS = Path("/path/to/workdir/sherlock/ids/chromatlas/"
-           "chrombpnet-refactor/ids_chrombpnet_refactor_benchmark_data_aug.txt")
-GENOME = Path("/path/to/workdir/chromatlas/reference/hg38/hg38.fa")
-OUT = Path("/path/to/workdir/chromatlas/test/chrombpnet-refactor-dnase-rc/analysis") / "strand_pwm_check"
 NUM_SAMPLES = 100_000
 REGION = "chr1"
 
@@ -113,9 +113,9 @@ def lag_profile(a, b, lags=range(-4, 5)):
     return scores
 
 
-def datasets(selected):
+def datasets(ids, selected):
     rows, seen = [], set()
-    for line in IDS.read_text().splitlines()[1:]:
+    for line in ids.read_text().splitlines()[1:]:
         assay, encid, bam, _peaks, _fold = line.split("\t")
         if encid in seen or (selected and encid not in selected):
             continue
@@ -124,7 +124,7 @@ def datasets(selected):
     return rows
 
 
-def plot(results):
+def plot(results, out):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -157,32 +157,33 @@ def plot(results):
                      f"{r['best_lag'] + 1:+d}", fontsize=9)
         ax.grid(alpha=0.3)
     fig.tight_layout()
-    OUT.parent.mkdir(parents=True, exist_ok=True)
+    out.parent.mkdir(parents=True, exist_ok=True)
     for suffix in (".png", ".pdf"):
-        fig.savefig(str(OUT) + suffix, dpi=160)
-    print(f"\nwrote {OUT}.png and {OUT}.pdf")
+        fig.savefig(str(out) + suffix, dpi=160)
+    print(f"\nwrote {out}.png and {out}.pdf")
 
 
-def main(selected):
+def main(selected, ids, genome, out):
     from chrombpnet.helpers.preprocessing.auto_shift_detect import (
         get_pwms, sample_reads)
 
     results = []
     print(f"{'ENCID':<13} {'assay':<6} {'best lag':>9} {'corr':>7} "
           f"{'runner-up':>10} {'label shift':>12}")
-    for assay, encid, bam in datasets(selected):
+    for assay, encid, bam in datasets(ids, selected):
         if not Path(bam).exists():
             print(f"{encid:<13} {assay:<6}   SKIP (no BAM at {bam})")
             continue
-        with tempfile.TemporaryDirectory(dir=OUT.parent) as scratch:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=out.parent) as scratch:
             tagalign = Path(scratch) / f"{encid}.{REGION}.tagAlign.gz"
             print(f"  extracting {REGION} from {Path(bam).name} ...",
                   flush=True)
             extract_region(bam, REGION, tagalign)
             plus_reads, minus_reads = sample_reads(
-                None, None, str(tagalign), NUM_SAMPLES, str(GENOME))
+                None, None, str(tagalign), NUM_SAMPLES, str(genome))
         plus_reads, minus_reads = on_deposit_bases(assay, plus_reads, minus_reads)
-        plus_pwm, minus_pwm = get_pwms(plus_reads, minus_reads, str(GENOME))
+        plus_pwm, minus_pwm = get_pwms(plus_reads, minus_reads, str(genome))
         scores = lag_profile(minus_pwm, rc(plus_pwm))
         best = max(scores, key=scores.get)
         runner = max(v for k, v in scores.items() if k != best)
@@ -204,9 +205,22 @@ def main(selected):
         print(f"  !! DNASE lags are {sorted(dnase)}, not {{0}}")
     if atac and atac != {-1}:
         print(f"  !! ATAC lags are {sorted(atac)}, not {{-1}}")
-    plot(results)
+    plot(results, out)
     return 0
 
 
+def cli(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("encids", nargs="*", help="ENCIDs to check (default: every one in --ids)")
+    ap.add_argument("--ids", type=Path, required=True,
+                    help="the ids table (ASSAY, ENCID, BAM_PATH, ... per row)")
+    ap.add_argument("--genome", type=Path, required=True, help="the hg38 FASTA")
+    ap.add_argument("--out", type=Path, required=True,
+                    help="the figure's path without suffix: writes <out>.png and <out>.pdf")
+    args = ap.parse_args(argv)
+    return main(set(args.encids), args.ids, args.genome, args.out)
+
+
 if __name__ == "__main__":
-    sys.exit(main(set(sys.argv[1:])))
+    sys.exit(cli())

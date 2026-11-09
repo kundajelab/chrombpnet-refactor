@@ -10,11 +10,19 @@
 #   on disk   the artifacts a finished run must leave behind
 #   in logs   what Slurm actually recorded, including the failure reason
 #
+#   ROOT=... LOGS=... IDS_FILE=...   (default: DNASE_RC_ROOT, LOG_DIR, DNASE_RC_IDS)
+#
 # A run can leave a bias model and no ChromBPNet model (it died in the second
 # pipeline), or leave every file and still have failed afterwards. Checking
 # only for "the directory exists" would call both of those a success.
 
 set -uo pipefail
+
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
 
 ARM_FILTER=""
 VERBOSE=0
@@ -26,10 +34,12 @@ while getopts "a:v" opt; do
   esac
 done
 
-OAK="/path/to/workdir"
-ROOT="${ROOT:-${OAK}/chromatlas/test/chrombpnet-refactor-dnase-rc}"
-LOGS="${LOGS:-${OAK}/sherlock/logs}"
-IDS="${OAK}/sherlock/ids/chromatlas/chrombpnet-refactor/ids_chrombpnet_refactor_benchmark_data_aug.txt"
+[[ -n "${ROOT:-}" ]] || { require_site DNASE_RC_ROOT; ROOT="${DNASE_RC_ROOT}"; }
+# The Slurm logs: LOG_DIR (where submit_all.sh sends them), else this folder, where a
+# job submitted from it writes them (the #SBATCH --output paths are relative).
+LOGS="${LOGS:-${LOG_DIR:-${BLOG_SCRIPTS}/dnase-rc}}"
+[[ -n "${IDS_FILE:-}" ]] || { require_site DNASE_RC_IDS; IDS_FILE="${DNASE_RC_IDS}"; }
+IDS="${IDS_FILE}"
 
 ARMS=(standard fr-only rc-only right left both-half both-full)
 DNASE_ONLY=" right left both-half both-full "

@@ -3,8 +3,11 @@
 # 4 final students (after the LOFO students, whose epochs they reuse), and the
 # final students' scoring on each of the 20 folds (after the final students).
 #
-#   ./submit_all.sh sherlock --container            # everything
-#   ./submit_all.sh sherlock --container --dry-run  # print the sbatch lines only
+#   ./submit_all.sh slurm --container            # everything
+#   ./submit_all.sh slurm --container --dry-run  # print the sbatch lines only
+#
+# Every job gets site.env's SBATCH_SITE_ARGS, and its logs go to site.env's
+# LOG_DIR, or to this folder without one (../engines/_common.sh: site_sbatch).
 #
 #   run_train_new.sh          array 0-19, GPU
 #   run_distill.sh lofo       array 0-19, GPU (independent of the new runs: the
@@ -25,20 +28,28 @@
 #                         as in the engines sweep)
 #   DISTILL_GPU_CONSTRAINT=..  for the distill jobs (default none)
 #   SBATCH_EXTRA=".."     more sbatch options for every job, word-split
+#                         (after site.env's SBATCH_SITE_ARGS)
 
 set -euo pipefail
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
 HERE="$(dirname "$(readlink -f "$0")")"
 # shellcheck source=_common.sh
 source "${HERE}/_common.sh"
+cd "${HERE}"
 
 parse_common_flags "$@"
-CLUSTER="sherlock"
+CLUSTER="slurm"
 DRY=""
 for arg in ${ARGS[@]+"${ARGS[@]}"}; do
   case "${arg}" in
     --dry-run) DRY=1 ;;
-    sherlock|local) CLUSTER="${arg}" ;;
-    *) echo "unknown argument '${arg}' (usage: submit_all.sh [sherlock] [--container] [--dry-run])" >&2; exit 2 ;;
+    slurm|local) CLUSTER="${arg}" ;;
+    sherlock) CLUSTER="slurm" ;;
+    *) echo "unknown argument '${arg}' (usage: submit_all.sh [slurm] [--container] [--dry-run])" >&2; exit 2 ;;
   esac
 done
 CONTAINER_ARG=()
@@ -60,14 +71,8 @@ DISTILL_GPU_CONSTRAINT="${DISTILL_GPU_CONSTRAINT:-}"
 DISTILL_OPT=(${SBATCH_EXTRA_OPT[@]+"${SBATCH_EXTRA_OPT[@]}"})
 [[ -n "${DISTILL_GPU_CONSTRAINT}" ]] && DISTILL_OPT+=(--constraint="${DISTILL_GPU_CONSTRAINT}")
 
-submit() {
-  if [[ -n "${DRY}" ]]; then
-    echo "sbatch --parsable $*" >&2
-    echo "<jobid>"
-  else
-    sbatch --parsable "$@"
-  fi
-}
+# site.env's sbatch options and log directory, then these (../engines/_common.sh).
+submit() { site_sbatch "$@"; }
 
 if wants new; then
   job="$(submit "${ARRAY_OPT[@]}" ${TRAIN_OPT[@]+"${TRAIN_OPT[@]}"} "${HERE}/run_train_new.sh" "${CLUSTER}" \
@@ -96,4 +101,4 @@ if wants final-score; then
   echo "=== final students scored per fold: job ${score_job}"
 fi
 echo
-echo "Then:  sbatch ${HERE}/run_summarize.sh"
+echo "Then:  sbatch <SBATCH_SITE_ARGS> run_summarize.sh   # from ${HERE}"

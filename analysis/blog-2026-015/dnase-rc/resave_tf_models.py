@@ -51,11 +51,6 @@ import subprocess
 import sys
 import time
 
-ROOT = "/path/to/workdir/chromatlas/test/chrombpnet-refactor-dnase-rc"
-IDS = ("/path/to/workdir/sherlock/ids/chromatlas/"
-       "chrombpnet-refactor/ids_chrombpnet_refactor_benchmark_data_aug.txt")
-ATLAS_DIR = "/path/to/lab/projects/chromatin-atlas-2022"
-REFERENCE_DIR = "/path/to/workdir/chromatlas/reference"
 SUBDIR = "standard_tensorflow"
 
 # The one Lambda these models have, and what it computes (disassembled from
@@ -286,15 +281,15 @@ def step_verify(args):
         peaks = first_file(*(os.path.join(tf_dir, p) for p in (
             "auxiliary/filtered.peaks.bed", "auxiliary/filtered.peaks.bed.gz",
             "filtered.peaks.bed", "filtered.peaks.bed.gz")))
-        bigwig = os.path.join(ATLAS_DIR, assay, encid, "preprocessing", "bigWigs",
+        bigwig = os.path.join(args.atlas_dir, assay, encid, "preprocessing", "bigWigs",
                               encid + ".bigWig")
         recorded_path = first_file(os.path.join(tf_dir, "evaluation", "chrombpnet_metrics.json"),
                                    os.path.join(tf_dir, "chrombpnet_metrics.json"))
         prefix = os.path.join(d, "own_test")
         subprocess.run([sys.executable, "-m", "chrombpnet.training.predict",
-                        "-m", model, "-g", os.path.join(REFERENCE_DIR, "hg38", "hg38.fa"),
+                        "-m", model, "-g", args.genome,
                         "-b", bigwig, "-p", peaks, "-n", "None",
-                        "-fl", os.path.join(REFERENCE_DIR, "folds", "fold_%s.json" % fold),
+                        "-fl", os.path.join(args.reference_dir, "folds", "fold_%s.json" % fold),
                         "-bs", str(args.batch_size), "-o", prefix], check=True)
         if os.path.exists(prefix + "_predictions.h5"):
             os.remove(prefix + "_predictions.h5")
@@ -320,12 +315,24 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("step", choices=["reference", "resave", "verify"])
-    ap.add_argument("--ids", default=IDS)
-    ap.add_argument("--root", default=ROOT)
+    ap.add_argument("--ids", required=True,
+                    help="the ids table, whose TENSORFLOW_DIR column names the runs")
+    ap.add_argument("--root", required=True,
+                    help="the dnase-rc run tree; the copies go under <root>/" + SUBDIR)
+    ap.add_argument("--atlas-dir",
+                    help="verify: the chromatin atlas, holding "
+                         "<ASSAY>/<ENCID>/preprocessing/bigWigs/<ENCID>.bigWig")
+    ap.add_argument("--genome", help="verify: the hg38 FASTA")
+    ap.add_argument("--reference-dir", help="verify: holds folds/fold_<N>.json")
     ap.add_argument("--batch-size", type=int, default=256,
                     help="verify: prediction batch size (as run_compare.sh)")
     ap.add_argument("--force", action="store_true", help="redo work that exists")
     args = ap.parse_args(argv)
+    if args.step == "verify":
+        missing = [flag for flag, value in (("--atlas-dir", args.atlas_dir), ("--genome", args.genome),
+                                            ("--reference-dir", args.reference_dir)) if not value]
+        if missing:
+            ap.error("verify needs " + ", ".join(missing))
     {"reference": step_reference, "resave": step_resave, "verify": step_verify}[args.step](args)
     return 0
 

@@ -3,17 +3,16 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32GB
-#SBATCH --partition=<partitions>
 #SBATCH --job-name=engines_prep
-#SBATCH --output=/path/to/workdir/sherlock/logs/engines_prep.%A_%a.out
-#SBATCH --error=/path/to/workdir/sherlock/logs/engines_prep.%A_%a.err
+#SBATCH --output=engines_prep.%A_%a.out
+#SBATCH --error=engines_prep.%A_%a.err
 #SBATCH --array=0-19
 
 # GC-matched nonpeaks for one dataset and fold, written once and shared by
 # all three engines, so that every engine trains and is tested on the same
 # regions. CPU only; `chrombpnet prep nonpeaks` touches no model.
 #
-#   sbatch run_prep_nonpeaks.sh sherlock [--container]
+#   sbatch run_prep_nonpeaks.sh slurm [--container]
 #   SLURM_ARRAY_TASK_ID=0 ./run_prep_nonpeaks.sh local
 #
 #   --container runs it inside the Ubuntu 22.04 image (_common.sh), as
@@ -29,18 +28,13 @@
 
 set -euo pipefail
 
-# Not `dirname "$0"`: under sbatch $0 is Slurm's spool copy of this script,
-# whose directory holds nothing else.
-_find_engines_dir() {
-  local candidate
-  for candidate in "${ENGINES_DIR:-}" "${SLURM_SUBMIT_DIR:-}" \
-      "/path/to/workdir/software/chrombpnet-refactor/analysis/blog-2026-015/engines" \
-      "$(dirname "$(readlink -f "$0")")"; do
-    [[ -n "${candidate}" && -f "${candidate}/_common.sh" ]] && { echo "${candidate}"; return 0; }
-  done
-  return 1
-}
-ENGINES_DIR="$(_find_engines_dir)" || { echo "Error: cannot locate _common.sh; set ENGINES_DIR." >&2; exit 1; }
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
+ENGINES_DIR="${ENGINES_DIR:-${BLOG_SCRIPTS}/engines}"
+[[ -f "${ENGINES_DIR}/_common.sh" ]] || { echo "Error: no _common.sh in ${ENGINES_DIR}; set ENGINES_DIR." >&2; exit 1; }
 # shellcheck source=_common.sh
 source "${ENGINES_DIR}/_common.sh"
 

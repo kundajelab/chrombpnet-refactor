@@ -4,16 +4,15 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --gpus=1
 #SBATCH --mem=48GB
-#SBATCH --partition=<partitions>
 #SBATCH --job-name=expand_shared
-#SBATCH --output=/path/to/workdir/sherlock/logs/expand_shared.%A_%a.out
-#SBATCH --error=/path/to/workdir/sherlock/logs/expand_shared.%A_%a.err
+#SBATCH --output=expand_shared.%A_%a.out
+#SBATCH --error=expand_shared.%A_%a.err
 #SBATCH --array=0-43
 
 # Score one bias-free model on its dataset's shared regions: DeepSHAP (both
 # heads) and predictions (analysis/expand/score_shared_regions.py).
 #
-#   TEACHER_SET=updated sbatch run_shared_scores.sh sherlock   # 44 tasks, natively (_common.sh)
+#   TEACHER_SET=updated sbatch run_shared_scores.sh slurm   # 44 tasks, natively (_common.sh)
 #   TEACHER_SET=updated SLURM_ARRAY_TASK_ID=0 ./run_shared_scores.sh local
 #
 # Task i is dataset i / 11 (the ids table's order) and model i % 11:
@@ -35,17 +34,13 @@
 
 set -euo pipefail
 
-_find_here() {
-  local candidate
-  for candidate in "${EXPAND_DIR:-}" "${SLURM_SUBMIT_DIR:-}" \
-      "/path/to/workdir/software/chrombpnet-refactor/analysis/blog-2026-015/expand" \
-      "$(dirname "$(readlink -f "$0")")"; do
-    [[ -n "${candidate}" && -f "${candidate}/_common.sh" && -f "${candidate}/run_shared_scores.sh" ]] \
-      && { echo "${candidate}"; return 0; }
-  done
-  return 1
-}
-EXPAND_DIR="$(_find_here)" || { echo "Error: cannot locate expand/_common.sh; set EXPAND_DIR." >&2; exit 1; }
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
+EXPAND_DIR="${EXPAND_DIR:-${BLOG_SCRIPTS}/expand}"
+[[ -f "${EXPAND_DIR}/_common.sh" ]] || { echo "Error: no _common.sh in ${EXPAND_DIR}; set EXPAND_DIR." >&2; exit 1; }
 # shellcheck source=_common.sh
 source "${EXPAND_DIR}/_common.sh"
 

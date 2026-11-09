@@ -4,10 +4,9 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --gpus=1
 #SBATCH --mem=64GB
-#SBATCH --partition=<partitions>
 #SBATCH --job-name=engines_original_retrain
-#SBATCH --output=/path/to/workdir/sherlock/logs/engines_original_retrain.%A_%a.out
-#SBATCH --error=/path/to/workdir/sherlock/logs/engines_original_retrain.%A_%a.err
+#SBATCH --output=engines_original_retrain.%A_%a.out
+#SBATCH --error=engines_original_retrain.%A_%a.err
 #SBATCH --array=0-19
 
 # The original chrombpnet, retrained on one row's sweep inputs, then scored by
@@ -15,8 +14,8 @@
 # "original (new model)" comparison. How close do two models trained by the
 # same original code come to the stored scores, against the engines?
 #
-#   ./submit_all.sh sherlock --original-retrain      # every row
-#   sbatch --gpu_cmode=shared run_original_retrain.sh sherlock
+#   ./submit_all.sh slurm --original-retrain      # every row
+#   sbatch <SBATCH_SHARED_GPU_ARGS> run_original_retrain.sh slurm
 #   SLURM_ARRAY_TASK_ID=1 ./run_original_retrain.sh local
 #
 # Rows as for run_train_full.sh, and the same inputs as every engine's run of
@@ -54,9 +53,10 @@
 # Natively only, not --container. The original's `bias train` and `train` end
 # by writing their report PDF with weasyprint, which loads pango and cairo
 # from the system (the original's Dockerfile installs them with apt); the env
-# does not bring them. On sherlock they are modules, loaded here as in the
-# chrombpnet runs (module load system; pango; system cairo); the lab GPU host and the lab CPU host
-# have them in the OS; the container image has neither.
+# does not bring them. Under Slurm this runs site.env's hook report_libraries
+# for them (on Sherlock: module load system; pango; system cairo, as in the
+# chrombpnet runs); the lab's GPU hosts have them in the OS; the container
+# image has neither.
 #
 # Environment:
 #   SEEDS="1"          DeepSHAP seeds (default: 1, the seed run_deepshap_seeds.sh
@@ -70,8 +70,8 @@
 #   FORCE=1            start the row again from scratch
 #   DRY_RUN=1          resolve and print, run nothing
 #   ALLOW_CPU=1        skip the GPU preflight check
-#   ORIGINAL_REPO=..   the original package (default: ${OAK_DIR}/software/chrombpnet,
-#                      kundajelab/chrombpnet at 09938fd)
+#   ORIGINAL_REPO=..   the original package, kundajelab/chrombpnet at 09938fd
+#                      (default: site.env's)
 #   ORIGINAL_ENV=..    the conda env that imports it (default: chrombpnet)
 #   RETRAIN_ROOT=..    output tree (default: ${ROOT}/original_retrained)
 #
@@ -83,16 +83,13 @@
 
 set -euo pipefail
 
-_find_engines_dir() {
-  local candidate
-  for candidate in "${ENGINES_DIR:-}" "${SLURM_SUBMIT_DIR:-}" \
-      "/path/to/workdir/software/chrombpnet-refactor/analysis/blog-2026-015/engines" \
-      "$(dirname "$(readlink -f "$0")")"; do
-    [[ -n "${candidate}" && -f "${candidate}/run_original_retrain.py" ]] && { echo "${candidate}"; return 0; }
-  done
-  return 1
-}
-ENGINES_DIR="$(_find_engines_dir)" || { echo "Error: cannot locate run_original_retrain.py; set ENGINES_DIR." >&2; exit 1; }
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
+ENGINES_DIR="${ENGINES_DIR:-${BLOG_SCRIPTS}/engines}"
+[[ -f "${ENGINES_DIR}/run_original_retrain.py" ]] || { echo "Error: no run_original_retrain.py in ${ENGINES_DIR}; set ENGINES_DIR." >&2; exit 1; }
 # shellcheck source=_common.sh
 source "${ENGINES_DIR}/_common.sh"
 
@@ -104,7 +101,7 @@ select_row
 # The original's own env, set up for TensorFlow 2.8 as the TensorFlow
 # engine's is (CUDA 11.2, cuDNN 8.1).
 ENGINE="tensorflow"
-ORIGINAL_REPO="${ORIGINAL_REPO:-${OAK_DIR}/software/chrombpnet}"
+require_site ORIGINAL_REPO
 ORIGINAL_ENV="${ORIGINAL_ENV:-chrombpnet}"
 RETRAIN_ROOT="${RETRAIN_ROOT:-${ROOT}/original_retrained}"
 FOLD_DIR="${RETRAIN_ROOT}/${ASSAY}/${ENCID}/fold_${FOLD_NUM}"
@@ -183,14 +180,14 @@ fi
 
 if needs_container || in_container; then
   echo "Error: run_original_retrain.sh runs natively, not in the container: the original's report" \
-       "PDF needs the system's pango, which the image does not have (on sherlock, a module)." >&2
+       "PDF needs the system's pango, which the image does not have (site.env: report_libraries)." >&2
   exit 2
 fi
 
 activate_engine "${ENGINE}" "${CLUSTER}" "${ORIGINAL_ENV}" "${ORIGINAL_REPO}"
-if [[ "${CLUSTER}" == "sherlock" ]]; then
-  module load system && module load pango && module load system cairo || exit 1
-  echo "modules: system pango cairo (for weasyprint)"
+if [[ "${CLUSTER}" == "slurm" ]] && declare -F site_report_libraries > /dev/null; then
+  site_hook report_libraries || exit 1
+  echo "site.env: report_libraries (pango and cairo, for weasyprint)"
 fi
 gpu_preflight "${ENGINE}"
 runtime_check "${ENGINE}"

@@ -18,21 +18,26 @@ copies, so the jobs always run the current analysis code.
 
 ## Running them
 
-They were written for Stanford's Sherlock cluster and run there and on two lab GPU hosts:
+Every path, environment and cluster setting comes from one file, `site.env`:
 
-- **Paths.** Data, models and outputs sit under `OAK_DIR=/path/to/workdir`
-  (genome `chromatlas/reference/hg38/`, models and run trees `chromatlas/test/...`), set at
-  the top of each script or in its `_common.sh`. The scripts themselves are looked up in this
-  checkout (`${OAK_DIR}/software/chrombpnet-refactor/analysis/blog-2026-015`). To run
-  elsewhere, change those, and the `#SBATCH --output/--error` log paths.
-- **Slurm.** `--partition`, `--constraint="GPU_SKU:..."` and `--exclude` lines are
-  Sherlock's; jobs are submitted from their own folder (they find their helpers through
-  `SLURM_SUBMIT_DIR` or the path above).
+```bash
+cp site.env.example site.env   # then fill in what the scripts you run need
+```
+
+- **Settings.** `site.env.example` lists each value and the folders that read it; a script
+  stops and names any value it needs that is left empty. A value set in the environment wins
+  over the file's (`OUT_ROOT=<dir> ./run_section4.sh local`), and `BLOG_SITE_ENV=<file>`
+  points at a site.env kept elsewhere. Python scripts take their paths as arguments.
+- **Slurm.** Job scripts take `slurm` or `local` first and are submitted from their own
+  folder. Their `#SBATCH` lines hold only resources: the partition, excluded nodes and GPU
+  model come from `SBATCH_SITE_ARGS` and `SBATCH_L40S` / `SBATCH_H200`, which the submit
+  scripts add (with a bare sbatch, pass them: `sbatch ${SBATCH_SITE_ARGS} ${SBATCH_L40S}
+  run_sections34.sh slurm`). Module loads and library paths go in site.env's optional hooks.
 - **Environments.** chrombpnet-refactor's `envs/` (`chrombpnet-pytorch`, and the glibc 2.17
-  builds `chrombpnet-pytorch-glibc` / `-tensorflow-glibc`, named `*-sherlock` when these ran);
-  the original package in a `chrombpnet` env (TensorFlow 2.8; CUDA 11.2 / cuDNN 8.1 modules);
-  the optimization kit in `chrombpnet-kit` (`optimization/setup_kit_env.sh`); cherimoya 0.3.1
-  in an Ubuntu 22.04 container (`optimization/run_cherimoya.sh`).
+  builds `chrombpnet-pytorch-glibc` / `-tensorflow-glibc` for older cluster nodes); the
+  original package in a `chrombpnet` env (TensorFlow 2.8; CUDA 11.2 / cuDNN 8.1); the
+  optimization kit in `chrombpnet-kit` (`optimization/setup_kit_env.sh`); cherimoya 0.3.1
+  in an Ubuntu 22.04 container (`CONTAINER_IMAGE`; `optimization/run_cherimoya.sh`).
 - **Code snapshots.** Two benchmark arms run an older chrombpnet-refactor from an export of
   one commit; create them first:
   ```bash
@@ -40,7 +45,9 @@ They were written for Stanford's Sherlock cluster and run there and on two lab G
   git archive d407ca8 | tar -x -C optimization/code-d407ca8   # run_sections34.sh refactor4_prev (before streaming)
   ```
 - **The "updated" arm** (Section 6) was trained with `--model-selection pearsonr-jsd`, removed
-  in 21fef5b; run `expand/` against a checkout of `3ddb713` (`CHROMBPNET_DIR=...`).
+  in 21fef5b; `expand/` runs the checkout of `3ddb713` that `CHROMBPNET_EXPAND_REPO` names.
+
+The blog's runs used a Slurm cluster's L40S and H200 nodes and two lab GPU hosts.
 
 ## Figure and table map
 
@@ -52,7 +59,7 @@ blog shows.
 | Section 2: `chrombpnet_dnase.png` | `dnase-rc/submit_all.sh` (`run_train_chrombpnet.sh` per convention arm, `run_retrain_full.sh`), then `run_compare.sh` (cross-evaluation) | `dnase-rc/summarize.sh` (writes `<run tree>/analysis/results.tsv`), then `dnase-rc/plot_summarize.sh --results <run tree>/analysis/results.tsv --out <dir>/summary_scores --fill-original ENCSR868FGK:2`: `summary_scores.png` |
 | Section 2: `chrombpnet_dnase_cross_original_test.png` | as above | `summary_scores_aug_on_standard_tests_original.png` |
 | Section 2: `chrombpnet_dnase_cross_new_test.png` | as above | `summary_scores_standard_on_aug_tests_original.png` |
-| Section 3 table | `optimization/submit_l40s_kit_fast_k1.sh` (`run_sections34.sh`, arms stock, stages, fast, fast_k1; `kit_hook_l40s_k1fast/` runs the kit's Triton TF32 forward on the L40S, which the kit's own table does not); `malloc_env` row: `ARMS=stock,stockmalloc RUN_KIND=sections34-fast-rerun sbatch --constraint=GPU_SKU:L40S run_sections34.sh sherlock` | `optimization/summarize_sections34.py` (per-stage pairing: `summarize_kit_levers.py`, `stock_stage_timer.py`) |
+| Section 3 table | `optimization/submit_l40s_kit_fast_k1.sh` (`run_sections34.sh`, arms stock, stages, fast, fast_k1; `kit_hook_l40s_k1fast/` runs the kit's Triton TF32 forward on the L40S, which the kit's own table does not); `malloc_env` row: `ARMS=stock,stockmalloc RUN_KIND=sections34-fast-rerun sbatch ${SBATCH_SITE_ARGS} ${SBATCH_L40S} run_sections34.sh slurm` | `optimization/summarize_sections34.py` (per-stage pairing: `summarize_kit_levers.py`, `stock_stage_timer.py`) |
 | Section 4 table, rows 1-3, 5, 7, 8 | `optimization/run_section4.sh` (`benchmark_section4.py`) | `optimization/summarize_section4.py` |
 | Section 4 table, rows 4, 6, Total | `run_sections34.sh` with its default arms (`RUN_KIND=sections34-fast`), and `ARMS=stock,stockmalloc,fast,refactor4,refactor4_fast RUN_KIND=sections34-fast-rerun` | `optimization/summarize_sections34.py` |
 | Comparison table: `pred_bw` row | the Section 4 Total runs | `optimization/summarize_sections34.py` |
@@ -68,10 +75,12 @@ Not produced here: the schematics (`atac.png`, `dnase.png`), Anthropic's release
 
 ## What has been checked
 
-From the saved results on the cluster (2026-11-08): `summarize_sections34.py`,
-`summarize_rerun.py`, `summarize_section4.py` and `summarize_kit_levers.py` run from this
-folder and print exactly what the original copies print (the tables' numbers);
-`blog-figures/make_blog_figures.sh`, `bias-counts/make_figure.py` and
-`dnase-rc/plot_summarize.py` rebuild the blog's figures byte for byte on the same host
-(matplotlib output depends on the host's fonts). Every shell script passes `bash -n` and
-every Python file parses. The GPU and training jobs were not re-run for this check.
+From the saved results, with a site.env holding the original runs' values (2026-11-09):
+`summarize_sections34.py`, `summarize_rerun.py`, `summarize_section4.py` and
+`summarize_kit_levers.py` print exactly what the original copies print (the tables'
+numbers); `blog-figures/make_blog_figures.sh`, `bias-counts/make_figure.py` and
+`dnase-rc/plot_summarize.sh` rebuild the blog's figures byte for byte on the same host
+(matplotlib output depends on the host's fonts). Every shell script passes `bash -n`, every
+Python file parses, each job script stops naming the settings an empty site.env leaves out,
+and dry runs resolve the same paths and commands as the original scripts. The GPU and
+training jobs were not re-run for this check.

@@ -7,9 +7,10 @@
 #   DNASE ENCSR163PKT   one file
 #   ATAC  ENCSR337UIU   one file
 #   ATAC  ENCSR868FGK   already downloaded elsewhere -> symlink, not a copy
+#                       (${RAW_BAM_DIR}/ENCSR868FGK/merged.bam)
 #
 # Every ENCID ends with `alignments_merged.bam` + `.bai` in
-#   /path/to/lab/.../chromatin-atlas-2022/{DNASE,ATAC}/<ENCID>/preprocessing/downloads/
+#   ${ATLAS_DIR}/{DNASE,ATAC}/<ENCID>/preprocessing/downloads/
 #
 # Idempotent: an ENCID whose final BAM already passes `samtools quickcheck` is
 # skipped, so a re-run after an interrupted download costs nothing. Partial
@@ -24,21 +25,27 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16GB
-#SBATCH --partition=<partitions>
 #SBATCH --job-name=dnase_rc_bams
-#SBATCH --output=/path/to/workdir/sherlock/logs/dnase_rc_bams.%A_%a.out
-#SBATCH --error=/path/to/workdir/sherlock/logs/dnase_rc_bams.%A_%a.err
+#SBATCH --output=dnase_rc_bams.%A_%a.out
+#SBATCH --error=dnase_rc_bams.%A_%a.err
 #SBATCH --array=1-4
 
 set -euo pipefail
 
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
+
 # samtools ships inside the conda env, not on PATH.
-CONDA_ENV="${CONDA_ENV:-/path/to/workdir/software/miniconda3/envs/chrombpnet-pytorch}"
+[[ -n "${CONDA_ENV:-}" ]] || { require_site CONDA_ROOT; CONDA_ENV="${CONDA_ROOT}/envs/chrombpnet-pytorch"; }
 export PATH="${CONDA_ENV}/bin:${PATH}"
 command -v samtools >/dev/null || { echo "samtools not found in ${CONDA_ENV}/bin"; exit 1; }
 
-ATLAS="/path/to/lab/projects/chromatin-atlas-2022"
-SCRATCH="/path/to/workdir/chromatlas/test/raw"
+require_site ATLAS_DIR RAW_BAM_DIR
+ATLAS="${ATLAS_DIR}"
+SCRATCH="${RAW_BAM_DIR}"
 THREADS="${SLURM_CPUS_PER_TASK:-4}"
 
 # ENCID | ASSAY | source: either a comma-separated URL list, or local:<path>

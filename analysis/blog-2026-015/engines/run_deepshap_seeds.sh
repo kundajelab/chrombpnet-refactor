@@ -4,18 +4,17 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --gpus=1
 #SBATCH --mem=32GB
-#SBATCH --partition=<partitions>
 #SBATCH --job-name=engines_deepshap_seeds
-#SBATCH --output=/path/to/workdir/sherlock/logs/engines_deepshap_seeds.%A_%a.out
-#SBATCH --error=/path/to/workdir/sherlock/logs/engines_deepshap_seeds.%A_%a.err
+#SBATCH --output=engines_deepshap_seeds.%A_%a.out
+#SBATCH --error=engines_deepshap_seeds.%A_%a.err
 #SBATCH --array=0-19
 
 # The original chrombpnet's DeepSHAP on one row's original model, once per
 # seed: how far DeepSHAP on the same model moves with its shuffled references
 # alone (run_deepshap_seeds.py says how, and why).
 #
-#   ./submit_all.sh sherlock --deepshap-seeds        # every row, one array per seed
-#   sbatch --gpu_cmode=shared run_deepshap_seeds.sh sherlock
+#   ./submit_all.sh slurm --deepshap-seeds        # every row, one array per seed
+#   sbatch <SBATCH_SHARED_GPU_ARGS> run_deepshap_seeds.sh slurm
 #   SLURM_ARRAY_TASK_ID=1 ./run_deepshap_seeds.sh local
 #
 # Rows as for run_train_full.sh. It runs in the chrombpnet-tensorflow env
@@ -33,30 +32,27 @@
 #   FORCE=1            rescore COMPLETED seeds
 #   DRY_RUN=1          resolve and print, run nothing
 #   ALLOW_CPU=1        skip the GPU preflight check
-#   ORIGINAL_REPO=..   the original package (default: ${OAK_DIR}/software/chrombpnet,
-#                      kundajelab/chrombpnet at 09938fd)
-#   ORIGINAL_MODEL_DIR=..  where the original models are (default:
-#                      ${OAK_DIR}/chromatlas; the model is
+#   SEEDS_ROOT=..      output tree (default: ${ROOT}/original)
+#
+# From site.env (each can be overridden from the environment too):
+#   ORIGINAL_REPO      the original package, kundajelab/chrombpnet at 09938fd
+#   ENCODE_MODELS      where the original models are: the model is
 #                      <dir>/<ASSAY>/<ENCID>/models/fold_N/model.chrombpnet_nobias.fold_N.<ENCID>.h5,
 #                      the ENCODE release, whose genome-wide scores are the
-#                      originals run_summarize.py compares against)
-#   SEEDS_ROOT=..      output tree (default: ${ROOT}/original)
+#                      originals run_summarize.py compares against
 #
 # Output: ${SEEDS_ROOT}/<ASSAY>/<ENCID>/fold_N/regions.bed and
 #   .../seed_<s>/scores.{counts,profile}_scores.h5 (+ run.json, COMPLETED)
 
 set -euo pipefail
 
-_find_engines_dir() {
-  local candidate
-  for candidate in "${ENGINES_DIR:-}" "${SLURM_SUBMIT_DIR:-}" \
-      "/path/to/workdir/software/chrombpnet-refactor/analysis/blog-2026-015/engines" \
-      "$(dirname "$(readlink -f "$0")")"; do
-    [[ -n "${candidate}" && -f "${candidate}/run_deepshap_seeds.py" ]] && { echo "${candidate}"; return 0; }
-  done
-  return 1
-}
-ENGINES_DIR="$(_find_engines_dir)" || { echo "Error: cannot locate run_deepshap_seeds.py; set ENGINES_DIR." >&2; exit 1; }
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
+ENGINES_DIR="${ENGINES_DIR:-${BLOG_SCRIPTS}/engines}"
+[[ -f "${ENGINES_DIR}/run_deepshap_seeds.py" ]] || { echo "Error: no run_deepshap_seeds.py in ${ENGINES_DIR}; set ENGINES_DIR." >&2; exit 1; }
 # shellcheck source=_common.sh
 source "${ENGINES_DIR}/_common.sh"
 
@@ -67,8 +63,8 @@ select_row
 
 # The original runs in the TensorFlow engine's env.
 ENGINE="tensorflow"
-ORIGINAL_REPO="${ORIGINAL_REPO:-${OAK_DIR}/software/chrombpnet}"
-ORIGINAL_MODEL="${ORIGINAL_MODEL_DIR:-${OAK_DIR}/chromatlas}/${ASSAY}/${ENCID}/models/fold_${FOLD_NUM}/model.chrombpnet_nobias.fold_${FOLD_NUM}.${ENCID}.h5"
+require_site ORIGINAL_REPO ENCODE_MODELS
+ORIGINAL_MODEL="${ENCODE_MODELS}/${ASSAY}/${ENCID}/models/fold_${FOLD_NUM}/model.chrombpnet_nobias.fold_${FOLD_NUM}.${ENCID}.h5"
 SUBSAMPLE="${ROOT}/pytorch/${ASSAY}/${ENCID}/fold_${FOLD_NUM}/model/auxiliary/interpret_subsample/chrombpnet_nobias.interpreted_regions.bed"
 SEEDS_ROOT="${SEEDS_ROOT:-${ROOT}/original}"
 OUT_DIR="${SEEDS_ROOT}/${ASSAY}/${ENCID}/fold_${FOLD_NUM}"

@@ -1,20 +1,20 @@
-# Shared argument resolution for run_train.sh / run_retrain.sh / run_compare.sh.
+# Shared argument resolution for run_train_full.sh / run_retrain_full.sh / run_compare.sh.
 # Sourced, not executed.
 #
 # The cluster argument is easy to forget, and forgetting it used to fail in a
-# way that named the wrong argument: `sbatch run_retrain.sh right` put "right"
+# way that named the wrong argument: `sbatch run_retrain_full.sh right` put "right"
 # into $1, left $2 unset, and the error read "line 39: 2: usage ...", pointing
 # at the arm when the cluster was what went missing. Sixty array tasks died
 # before printing anything.
 #
 # So the cluster is now optional and inferred, and all of these work:
 #
-#     run_X.sh sherlock right
+#     run_X.sh slurm right
 #     run_X.sh right                     cluster inferred
 #     DATA_AUG=right sbatch run_X.sh     arm exported instead of passed
 #
 # Inference is safe because the two settings the cluster selects -- which
-# conda env, and whether to `module load` -- follow from whether we are inside
+# conda env, and whether to run site.env's hooks -- follow from whether we are inside
 # a Slurm allocation, which $SLURM_JOB_ID answers exactly.
 #
 # The caller must set VALID_ARMS before sourcing this, because run_compare.sh
@@ -38,7 +38,7 @@ _usage() {
     echo
     echo "  received : cluster=${1:-<unset>}  data-aug=${2:-<unset>}"
     echo "  valid arms: ${VALID_ARMS[*]}"
-    echo "  cluster   : sherlock | local  (inferred from \$SLURM_JOB_ID if omitted)"
+    echo "  cluster   : slurm | local  (inferred from \$SLURM_JOB_ID if omitted)"
   } >&2
   exit 2
 }
@@ -65,10 +65,10 @@ resolve_args() {
   fi
 
   if [[ -z "${CLUSTER}" ]]; then
-    if [[ -n "${SLURM_JOB_ID:-}" ]]; then CLUSTER="sherlock"; else CLUSTER="local"; fi
+    if [[ -n "${SLURM_JOB_ID:-}" ]]; then CLUSTER="slurm"; else CLUSTER="local"; fi
     echo "note: no cluster given; inferred '${CLUSTER}'"
   fi
-  if [[ "${CLUSTER}" != "sherlock" && "${CLUSTER}" != "local" ]]; then
+  if [[ "${CLUSTER}" != "slurm" && "${CLUSTER}" != "local" ]]; then
     echo "unknown cluster '${CLUSTER}'" >&2
     _usage "${first}" "${second}"
   fi
@@ -112,7 +112,7 @@ data_row_count() {
 #                       --dnase-convention <arm>   (DNASE only)
 #
 # Read ARM_FLAGS as ${ARM_FLAGS[@]+"${ARM_FLAGS[@]}"}: it is empty for
-# standard on ATAC, and bash 4.2 (sherlock's) calls an empty "${a[@]}" unbound.
+# standard on ATAC, and bash 4.2 (still on some clusters) calls an empty "${a[@]}" unbound.
 #
 #   arm_flags <arm> <assay>
 arm_flags() {

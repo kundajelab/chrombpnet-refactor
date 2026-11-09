@@ -4,11 +4,9 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --gpus=1
 #SBATCH --mem=96GB
-#SBATCH --partition=<partitions>
-#SBATCH --exclude=<node>,<node>,<node>
 #SBATCH --job-name=chrombpnet_sections34
-#SBATCH --output=/path/to/workdir/sherlock/logs/chrombpnet_sections34.%x.%j.out
-#SBATCH --error=/path/to/workdir/sherlock/logs/chrombpnet_sections34.%x.%j.err
+#SBATCH --output=%x.%j.out
+#SBATCH --error=%x.%j.err
 #
 # Blog 2026-015, Sections 3 and 4 head to head: chrombpnet 1.x, 1.x with the
 # optimization kit, and chrombpnet-refactor, on one dataset and fold
@@ -17,9 +15,11 @@
 # untimed warm-up run, then ROUNDS rounds in a different order each, only the
 # pred_bw command timed (and its peak memory recorded, peak_rss.py).
 #
-#   sbatch --constraint="GPU_SKU:L40S" run_sections34.sh sherlock
-#   sbatch -p owners --constraint="GPU_SKU:H200_SXM5" run_sections34.sh sherlock
-#   python summarize_sections34.py      # the blog cells, per GPU
+# From this folder, with site.env's cluster options and GPU constraints:
+#   sbatch ${SBATCH_SITE_ARGS} ${SBATCH_L40S} run_sections34.sh slurm
+#   sbatch ${SBATCH_SITE_ARGS} ${SBATCH_H200} run_sections34.sh slurm
+#   bash run_sections34.sh local                       # on a GPU host
+#   python summarize_sections34.py <OPTIMIZATION_OUT>  # the blog cells, per GPU
 #
 # The default arms are the blog tables' (Section 3 against the kit's `fast`
 # mode; Section 4 at the original's compression, gzip 4, with the inference
@@ -69,16 +69,24 @@
 # with the same architecture (512 filters, 8 dilated layers, 2,114 bp in).
 #
 # Usage: run_sections34.sh [CLUSTER] [FOLD] [N_REGIONS]
-#   CLUSTER    sherlock | local; inferred from the Slurm job if omitted
+#   CLUSTER    slurm | local; inferred from the Slurm job if omitted
 #   FOLD       0 (default)
 #   env: ROUNDS (5), ARMS (the default arms above), BATCH_SIZE (256),
-#        RUN_KIND (sections34-fast: the run tag's suffix), OUT_ROOT, PT_ENV, TF_ENV, KIT_ENV,
-#        KIT_HOME, DEVICE (cuda; cpu for a smoke test), ALLOW_BUSY_GPU
+#        RUN_KIND (sections34-fast: the run tag's suffix), OUT_ROOT (site.env's
+#        OPTIMIZATION_OUT), PT_ENV, TF_ENV, KIT_ENV, KIT_HOME, CHROMBPNET_PREV_REPO,
+#        DEVICE (cuda; cpu for a smoke test), ALLOW_BUSY_GPU
+#   site.env: ORIGINAL_REPO, KIT_ROOT, KIT_HOME, GENOME, CHROM_SIZES, REFACTOR_MODELS,
+#        ORIGINAL_MODELS, OPTIMIZATION_OUT (unless OUT_ROOT is set); optional PT_ENV_GLIBC217
+#        and the hooks kit_compiler, tf28_libraries, pytorch_compiler (under Slurm)
 
 set -eo pipefail
 
-OAK_DIR="/path/to/workdir"
-HERE="${OAK_DIR}/software/chrombpnet-refactor/analysis/blog-2026-015/optimization"
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
+HERE="${BLOG_SCRIPTS}/optimization"
 # shellcheck source=_common.sh
 source "${HERE}/_common.sh"
 
@@ -96,24 +104,20 @@ for arm in ${ARMS_ARG//,/ }; do
   esac
 done
 
-CODE_MAIN="${CHROMBPNET_REPO:-${OAK_DIR}/software/chrombpnet-refactor}"
+SITE_NEEDS=(ORIGINAL_REPO KIT_ROOT KIT_HOME GENOME CHROM_SIZES REFACTOR_MODELS ORIGINAL_MODELS)
+[[ -n "${OUT_ROOT:-}" ]] || SITE_NEEDS+=(OPTIMIZATION_OUT)
+require_site "${SITE_NEEDS[@]}"
+CODE_MAIN="${CHROMBPNET_REPO}"
 CODE_PREV="${CHROMBPNET_PREV_REPO:-${HERE}/code-d407ca8}"
-TF_REPO="${OAK_DIR}/software/chrombpnet"
-KIT="${KIT_ROOT:-${OAK_DIR}/software/uplifting-biomolecular-modeling}/chrombpnet"
+TF_REPO="${ORIGINAL_REPO}"
+KIT="${KIT_ROOT}/chrombpnet"
 KIT_ENV="${KIT_ENV:-chrombpnet-kit}"
-KIT_HOME="${KIT_HOME:-${OAK_DIR}/chromatlas/test/chrombpnet-kit}"
-GENOME="${OAK_DIR}/chromatlas/reference/hg38/hg38.fa"
-CHROM_SIZES="${OAK_DIR}/chromatlas/reference/hg38/hg38.chrom.sizes"
-PT_MODEL="${OAK_DIR}/chromatlas/test/chrombpnet-refactor/ATAC/ENCSR868FGK/fold_${FOLD_NUM}/model"
-TF_MODEL="${OAK_DIR}/chromatlas/test/chrombpnet-tf/ATAC/ENCSR868FGK/fold_${FOLD_NUM}/model"
+PT_MODEL="${REFACTOR_MODELS}/ATAC/ENCSR868FGK/fold_${FOLD_NUM}/model"
+TF_MODEL="${ORIGINAL_MODELS}/ATAC/ENCSR868FGK/fold_${FOLD_NUM}/model"
 OBSERVED_BW="${PT_MODEL}/auxiliary/data_unstranded.bw"
 PEAKS="${PT_MODEL}/auxiliary/filtered.peaks.bed"
-OUT_ROOT="${OUT_ROOT:-${OAK_DIR}/chromatlas/test/chrombpnet-refactor-optimization/analysis-rerun}"
-if [[ "${CLUSTER}" == "sherlock" ]]; then
-  PT_ENV="${PT_ENV:-chrombpnet-pytorch-sherlock}"   # torch 2.5.1, built for glibc 2.17
-else
-  PT_ENV="${PT_ENV:-chrombpnet-pytorch}"
-fi
+OUT_ROOT="${OUT_ROOT:-${OPTIMIZATION_OUT}}"
+PT_ENV="$(default_pt_env)"   # under Slurm, PT_ENV_GLIBC217 (built for glibc 2.17 nodes) if site.env names one
 TF_ENV="${TF_ENV:-chrombpnet}"
 
 for required in "${KIT}/run.sh" "${CODE_MAIN}/chrombpnet/CHROMBPNET.py" "${TF_REPO}/chrombpnet/CHROMBPNET.py" \
@@ -126,11 +130,11 @@ for required in "${KIT}/run.sh" "${CODE_MAIN}/chrombpnet/CHROMBPNET.py" "${TF_RE
   [[ -e "${required}" ]] || { echo "missing input: ${required}" >&2; exit 1; }
 done
 
-eval "$("${CONDA_EXE:-conda}" shell.bash hook)"
+eval "$("$(conda_exe)" shell.bash hook)"
 
-# The kit's compiled Triton helpers are built against the host glibc, and
-# Sherlock's GPU nodes run different ones: one cache root per glibc (as
-# run_kit_modes.sh); on a lab host, one per host.
+# The kit's compiled Triton helpers are built against the host glibc, and a
+# cluster's GPU nodes may run different ones: one cache root per glibc (as
+# run_kit_modes.sh); on a GPU host, one per host.
 GLIBC_VERSION="$(ldd --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+$' || true)"
 CACHE_KEY="glibc-${GLIBC_VERSION:-unknown}"
 [[ "${CLUSTER}" == local ]] && CACHE_KEY="$(hostname -s)-${CACHE_KEY}"
@@ -182,13 +186,12 @@ echo "=================================================================="
 # --- environments, each entered in its arm's subshell --------------------------
 setup_kit () {
   # TensorFlow 2.8 loads CUDA 11.2 and cuDNN 8.1 from the system; the Triton
-  # forward's torch brings its own CUDA 12.4 wheels. The modules' copies only,
+  # forward's torch brings its own CUDA 12.4 wheels. The site hooks' copies only,
   # not the submitting shell's; a C11 compiler for the launchers Triton builds.
-  if [[ "${CLUSTER}" == "sherlock" ]]; then
+  if [[ "${CLUSTER}" == slurm ]]; then
     export LD_LIBRARY_PATH="$(ld_path_without_cuda)"
-    module load gcc/14.2.0
-    module load cuda/11.2.0
-    module load cudnn/8.1.1.33
+    site_hook kit_compiler
+    site_hook tf28_libraries
   else
     tf_local_libraries
   fi
@@ -201,17 +204,16 @@ setup_kit () {
 setup_pt () {
   # PyTorch's own CUDA and cuDNN wheels only.
   export LD_LIBRARY_PATH="$(ld_path_without_cuda)"
-  if [[ "${CLUSTER}" == "sherlock" && "${PT_ENV}" == "chrombpnet-pytorch-sherlock" ]]; then
-    module load gcc/14.2.0
+  if [[ "${CLUSTER}" == slurm ]] && is_glibc217_env "${PT_ENV}"; then
+    site_hook pytorch_compiler
   fi
   conda activate "${PT_ENV}"
   export PYTHONPATH="${CODE_MAIN}" PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
 }
 setup_tf () {
-  if [[ "${CLUSTER}" == "sherlock" ]]; then
+  if [[ "${CLUSTER}" == slurm ]]; then
     export LD_LIBRARY_PATH="$(ld_path_without_cuda)"
-    module load cuda/11.2.0
-    module load cudnn/8.1.1.33
+    site_hook tf28_libraries
   else
     tf_local_libraries
   fi
@@ -220,7 +222,7 @@ setup_tf () {
 }
 
 # Runs one arm in a fresh process; prints "status seconds". Only the pred_bw
-# command is timed, not the module loads or the conda activation. `time` holds
+# command is timed, not the site hooks or the conda activation. `time` holds
 # "t0 t1" (stock_stage_timer's teardown is t1 minus when main() returned).
 run_arm () {  # arm regions outdir
   local arm="$1" regions="$2" out="$3" rc

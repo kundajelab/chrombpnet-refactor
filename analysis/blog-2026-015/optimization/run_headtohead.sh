@@ -4,10 +4,9 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --gpus=1
 #SBATCH --mem=96GB
-#SBATCH --partition=<partitions>
 #SBATCH --job-name=chrombpnet_headtohead
-#SBATCH --output=/path/to/workdir/sherlock/logs/chrombpnet_headtohead.%x.%A_%a.out
-#SBATCH --error=/path/to/workdir/sherlock/logs/chrombpnet_headtohead.%x.%A_%a.err
+#SBATCH --output=%x.%A_%a.out
+#SBATCH --error=%x.%A_%a.err
 #SBATCH --array=0-4
 #
 # The blog's comparison table, split so cherimoya is compared only on work it
@@ -17,8 +16,9 @@
 # run_pred_bw_kit_fused.sh (untimed warm-up of each arm, ROUNDS rounds in a
 # rotating order, only the command timed); cherimoya's side is run_cherimoya.sh.
 #
-#   sbatch --constraint="GPU_SKU:L40S" run_headtohead.sh sherlock
-#   python summarize_rerun.py      # run tag <gpu>_<arch>_headtohead
+# From this folder, with site.env's cluster options and L40S constraint:
+#   sbatch ${SBATCH_SITE_ARGS} ${SBATCH_L40S} run_headtohead.sh slurm
+#   python summarize_rerun.py <OPTIMIZATION_OUT>   # run tag <gpu>_<arch>_headtohead
 #
 # Arms:
 #   orig_predict   original pred_bw, the fold's full model (-cm) only, the
@@ -39,14 +39,21 @@
 #
 # Usage: run_headtohead.sh [CLUSTER] [FOLDS]
 #   env: ROUNDS (3), ARMS (all six), PT_ENV, TF_ENV, RUN_TAG, RUN_KIND (headtohead:
-#        the run tag's suffix), OUT_ROOT,
+#        the run tag's suffix), OUT_ROOT (site.env's OPTIMIZATION_OUT),
 #        DEVICE (cuda; cpu for a smoke test), N_REGIONS (20000), N_CONTRIB (2000),
 #        TF_CUDA_DIRS, ALLOW_BUSY_GPU
+#   site.env: ORIGINAL_REPO, GENOME, CHROM_SIZES, REFACTOR_MODELS, ORIGINAL_MODELS,
+#        OPTIMIZATION_OUT (unless OUT_ROOT is set); optional PT_ENV_GLIBC217 and the hooks
+#        pytorch_compiler, tf28_libraries, report_libraries (under Slurm)
 
 set -eo pipefail
 
-OAK_DIR="/path/to/workdir"
-HERE="${OAK_DIR}/software/chrombpnet-refactor/analysis/blog-2026-015/optimization"
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
+HERE="${BLOG_SCRIPTS}/optimization"
 # shellcheck source=_common.sh
 source "${HERE}/_common.sh"
 
@@ -76,20 +83,17 @@ if [[ "${FOLDS}" == *,* ]]; then
 fi
 FOLD_NUM="${FOLDS}"
 
-CODE_MAIN="${CHROMBPNET_REPO:-${OAK_DIR}/software/chrombpnet-refactor}"
-TF_REPO="${OAK_DIR}/software/chrombpnet"
-GENOME="${OAK_DIR}/chromatlas/reference/hg38/hg38.fa"
-CHROM_SIZES="${OAK_DIR}/chromatlas/reference/hg38/hg38.chrom.sizes"
-PT_MODEL="${OAK_DIR}/chromatlas/test/chrombpnet-refactor/ATAC/ENCSR868FGK/fold_${FOLD_NUM}/model"
-TF_MODEL="${OAK_DIR}/chromatlas/test/chrombpnet-tf/ATAC/ENCSR868FGK/fold_${FOLD_NUM}/model"
+SITE_NEEDS=(ORIGINAL_REPO GENOME CHROM_SIZES REFACTOR_MODELS ORIGINAL_MODELS)
+[[ -n "${OUT_ROOT:-}" ]] || SITE_NEEDS+=(OPTIMIZATION_OUT)
+require_site "${SITE_NEEDS[@]}"
+CODE_MAIN="${CHROMBPNET_REPO}"
+TF_REPO="${ORIGINAL_REPO}"
+PT_MODEL="${REFACTOR_MODELS}/ATAC/ENCSR868FGK/fold_${FOLD_NUM}/model"
+TF_MODEL="${ORIGINAL_MODELS}/ATAC/ENCSR868FGK/fold_${FOLD_NUM}/model"
 OBSERVED_BW="${PT_MODEL}/auxiliary/data_unstranded.bw"
 PEAKS="${PT_MODEL}/auxiliary/filtered.peaks.bed"
-OUT_ROOT="${OUT_ROOT:-${OAK_DIR}/chromatlas/test/chrombpnet-refactor-optimization/analysis-rerun}"
-if [[ "${CLUSTER}" == "sherlock" ]]; then
-  PT_ENV="${PT_ENV:-chrombpnet-pytorch-sherlock}"
-else
-  PT_ENV="${PT_ENV:-chrombpnet-pytorch}"
-fi
+OUT_ROOT="${OUT_ROOT:-${OPTIMIZATION_OUT}}"
+PT_ENV="$(default_pt_env)"
 TF_ENV="${TF_ENV:-chrombpnet}"
 for required in "${CODE_MAIN}/chrombpnet/CHROMBPNET.py" "${TF_REPO}/chrombpnet/CHROMBPNET.py" "${GENOME}" \
     "${OBSERVED_BW}" "${PEAKS}" "${PT_MODEL}/models/chrombpnet.pt" "${PT_MODEL}/models/chrombpnet_nobias.pt" \
@@ -98,7 +102,7 @@ for required in "${CODE_MAIN}/chrombpnet/CHROMBPNET.py" "${TF_REPO}/chrombpnet/C
 done
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
 
-eval "$("${CONDA_EXE:-conda}" shell.bash hook)"
+eval "$("$(conda_exe)" shell.bash hook)"
 select_gpu
 ARCH="cuda-${GPU_CC//./}"
 GPU_SLUG="$(echo "${GPU_NAME}" | tr -cs '[:alnum:]' '-' | sed 's/^-*//; s/-*$//')"
@@ -131,19 +135,16 @@ echo "=================================================================="
 
 setup_pt () {
   export LD_LIBRARY_PATH="$(ld_path_without_cuda)"
-  if [[ "${CLUSTER}" == "sherlock" && "${PT_ENV}" == "chrombpnet-pytorch-sherlock" ]]; then
-    module load gcc/14.2.0
+  if [[ "${CLUSTER}" == slurm ]] && is_glibc217_env "${PT_ENV}"; then
+    site_hook pytorch_compiler
   fi
   conda activate "${PT_ENV}"
 }
 setup_tf () {
-  if [[ "${CLUSTER}" == "sherlock" ]]; then
+  if [[ "${CLUSTER}" == slurm ]]; then
     export LD_LIBRARY_PATH="$(ld_path_without_cuda)"
-    module load cuda/11.2.0
-    module load cudnn/8.1.1.33
-    module load system
-    module load pango
-    module load system cairo
+    site_hook tf28_libraries
+    site_hook report_libraries
   else
     tf_local_libraries
   fi

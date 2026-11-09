@@ -19,19 +19,31 @@
 #
 #   bash submit_malloc_env.sh            # both GPUs
 #   bash submit_malloc_env.sh l40s       # L40S only
-#   bash submit_malloc_env.sh h200       # H200 only (owners: may wait, may be preempted)
+#   bash submit_malloc_env.sh h200       # H200 only (on a shared partition: may wait, may be preempted)
 #   bash submit_malloc_env.sh h200 refactor   # only the refactor job (original | refactor | both)
 #
-# The refactor jobs import the main checkout (software/chrombpnet-refactor)
-# when they run, so don't change it while they are queued or running.
+# The refactor jobs import the main checkout (CHROMBPNET_REPO) when they run,
+# so don't change it while they are queued or running. site.env: SBATCH_L40S
+# and/or SBATCH_H200 (the sbatch options that select that GPU), SBATCH_SITE_ARGS
+# (e.g. nodes to exclude), LOG_DIR.
 # When they finish:
-#   python summarize_rerun.py   # sections *_kit-malloc (stockmalloc vs stock) and
-#                               # *_kit-fused-malloc (main vs nomalloc), with peak GB
+#   python summarize_rerun.py <OPTIMIZATION_OUT>   # sections *_kit-malloc (stockmalloc vs stock) and
+#                                                  # *_kit-fused-malloc (main vs nomalloc), with peak GB
 
 set -eo pipefail
-cd /path/to/workdir/software/chrombpnet-refactor/analysis/blog-2026-015/optimization
+cd "$(dirname "$(readlink -f "$0")")"   # sbatch from this folder: the jobs find ../_site.sh through it
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
+# Slurm logs into site.env's LOG_DIR when it names one (else in this folder).
+log_args () {  # %j | %A_%a -> LOGS
+  LOGS=()
+  [[ -n "${LOG_DIR:-}" ]] && LOGS=(-o "${LOG_DIR}/%x.$1.out" -e "${LOG_DIR}/%x.$1.err")
+  return 0
+}
 
-EXCLUDE="--exclude=<node>,<node>,<node>"   # nodes that hung or failed blog jobs
 which="${1:-both}"
 part="${2:-both}"
 case "${which}" in
@@ -43,22 +55,29 @@ case "${part}" in
   *) echo "usage: $0 [both|l40s|h200] [both|original|refactor]" >&2; exit 2 ;;
 esac
 
-submit () {  # label constraint [partition]
-  local label="$1" constraint="$2" partition=()
-  [[ -n "${3:-}" ]] && partition=(-p "$3")
+SITE_NEEDS=()
+[[ "${which}" == h200 ]] || SITE_NEEDS+=(SBATCH_L40S)
+[[ "${which}" == l40s ]] || SITE_NEEDS+=(SBATCH_H200)
+require_site "${SITE_NEEDS[@]}"
+
+# shellcheck disable=SC2086  # the site's options are word-split on purpose
+submit () {  # label gpu-options
+  local label="$1" gpu="$2"
   if [[ "${part}" != refactor ]]; then
     echo -n "original +/- malloc_env, ${label}: "
+    log_args %j
     ARMS=stock,stockmalloc RUN_KIND=kit-malloc \
-      sbatch "${partition[@]}" ${EXCLUDE} --constraint="${constraint}" --time=02:00:00 \
-      --job-name=chrombpnet_kit_malloc run_kit_modes.sh sherlock
+      sbatch ${SBATCH_SITE_ARGS} ${gpu} "${LOGS[@]}" --time=02:00:00 \
+      --job-name=chrombpnet_kit_malloc run_kit_modes.sh slurm
   fi
   if [[ "${part}" != original ]]; then
     echo -n "refactor +/- malloc_env, ${label}: "
+    log_args %A_%a
     ARMS=nomalloc,main RUN_KIND=kit-fused-malloc \
-      sbatch "${partition[@]}" ${EXCLUDE} --constraint="${constraint}" --time=02:00:00 \
-      --job-name=chrombpnet_predbw_malloc run_pred_bw_kit_fused.sh sherlock
+      sbatch ${SBATCH_SITE_ARGS} ${gpu} "${LOGS[@]}" --time=02:00:00 \
+      --job-name=chrombpnet_predbw_malloc run_pred_bw_kit_fused.sh slurm
   fi
 }
 
-[[ "${which}" == h200 ]] || submit L40S "GPU_SKU:L40S"
-[[ "${which}" == l40s ]] || submit H200 "GPU_SKU:H200_SXM5" owners
+[[ "${which}" == h200 ]] || submit L40S "${SBATCH_L40S}"
+[[ "${which}" == l40s ]] || submit H200 "${SBATCH_H200}"

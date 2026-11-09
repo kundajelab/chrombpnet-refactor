@@ -1,8 +1,22 @@
 # expand: profile-only bias, Pearson/JSD selection, distillation
 
-Slurm wrappers for `software/chrombpnet-refactor-expand` (branch `expand`),
-compared with the engines sweep's PyTorch runs. What is compared, and how to
-read it: that checkout's `analysis/expand/README.md`.
+Slurm wrappers for a chrombpnet-refactor checkout of branch `expand` at
+3ddb713 (the last commit with `--model-selection pearsonr-jsd`), compared with
+the engines sweep's PyTorch runs. What is compared, and how to read it: that
+checkout's `analysis/expand/README.md`.
+
+Paths come from `../site.env` (`../site.env.example`; `BLOG_SITE_ENV=<file>`
+points elsewhere): `CHROMBPNET_EXPAND_REPO` (that checkout), `EXPAND_ROOT`
+(this comparison's run tree), `ENGINES_ROOT` and `ENGINES_IDS` (the engines
+sweep's tree and ids table), and as in `../engines/` `REFERENCE_DIR`, `GENOME`,
+`CHROM_SIZES`, `CONDA_ROOT`, `CONTAINER_IMAGE`, `CONTAINER_BINDS`. Each script
+stops and names a setting it needs that is empty; an environment variable
+wins over site.env's (`CHROMBPNET_DIR=`, `ROOT=` and `IDS_FILE=` replace the
+checkout, the run tree and the ids table for one run). The submit scripts
+give every job site.env's `SBATCH_SITE_ARGS` and send its logs to `LOG_DIR`
+(without one, to this folder); submit from this folder. The cluster argument
+is `slurm` or `local` (`sherlock`, which these runs were submitted with,
+means `slurm`); `<NAME>` below stands for site.env's value.
 
 | script | does |
 |---|---|
@@ -22,16 +36,17 @@ sweep's fold models, students in `${ROOT}/distill`, the original runs above)
 or `updated` (`${ROOT}/new`, students in `${ROOT}/distill-updated`).
 
 ```bash
-./submit_shared.sh sherlock                                       # updated: distill, score, compare
-TEACHER_SET=default ONLY="scores compare" ./submit_shared.sh sherlock   # the control
+./submit_shared.sh slurm                                       # updated: distill, score, compare
+TEACHER_SET=default ONLY="scores compare" ./submit_shared.sh slurm   # the control
 ```
 
-On sherlock the GPU scripts run natively, in `chrombpnet-pytorch-sherlock`
-(`SHERLOCK_ENV`): PyTorch 2.5.1, the engines sweep's, since
-`chrombpnet-pytorch`'s 2.14 needs glibc 2.28 and sherlock has 2.17; its
-tangermeme, modisco and memelite are `chrombpnet-pytorch`'s
-(`envs/chrombpnet-pytorch-sherlock.yml` in the checkout; its glibc-2.17
-wheels are in `../engines/envs/wheels-glibc217/`). `--container`
+Under Slurm the GPU scripts run natively, in site.env's `PT_ENV_GLIBC217`
+when it is set -- these ran in `chrombpnet-pytorch-sherlock`: PyTorch 2.5.1,
+the engines sweep's, since `chrombpnet-pytorch`'s 2.14 needs glibc 2.28 and
+Sherlock's nodes have 2.17; its tangermeme, modisco and memelite are
+`chrombpnet-pytorch`'s (`envs/chrombpnet-pytorch-sherlock.yml` in the
+checkout; its glibc-2.17 wheels are in `../engines/envs/wheels-glibc217/`) --
+else in `chrombpnet-pytorch`. `--container`
 runs them in the Ubuntu image with `chrombpnet-pytorch` instead, as the
 `new/` and `distill/` runs below were. The CPU scripts (`run_summarize.sh`,
 `run_compare_shared.sh`) import no torch and run natively in
@@ -40,13 +55,14 @@ runs them in the Ubuntu image with `chrombpnet-pytorch` instead, as the
 The runs in `new/` and `distill/`:
 
 ```bash
-./submit_all.sh sherlock --container --dry-run   # check
-./submit_all.sh sherlock --container
-sbatch run_summarize.sh                          # when they finish
+./submit_all.sh slurm --container --dry-run   # check
+./submit_all.sh slurm --container
+sbatch <SBATCH_SITE_ARGS> run_summarize.sh    # when they finish
 ```
 
-`ROOT` defaults to `chromatlas/test/chrombpnet-refactor-expand`, whose
-`preprocess/` links to the engines sweep's nonpeaks. A quick check on any GPU
+`ROOT` defaults to site.env's `EXPAND_ROOT`, whose `preprocess/` links to the
+engines sweep's nonpeaks (`ln -s <ENGINES_ROOT>/preprocess <EXPAND_ROOT>/preprocess`;
+`submit_all.sh` says so if it is missing). A quick check on any GPU
 host: `ROOT=<that>/smoke_test EXTRA_ARGS="--epochs 1 --interpret-subsample
 2000" SLURM_ARRAY_TASK_ID=15 ./run_train_new.sh local --container`, and
 likewise `run_distill.sh local lofo` (`EXTRA_ARGS="--epochs 1"`) and

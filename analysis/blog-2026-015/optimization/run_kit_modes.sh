@@ -4,10 +4,9 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --gpus=1
 #SBATCH --mem=96GB
-#SBATCH --partition=<partitions>
 #SBATCH --job-name=chrombpnet_kit_modes
-#SBATCH --output=/path/to/workdir/sherlock/logs/chrombpnet_kit_modes.%x.%j.out
-#SBATCH --error=/path/to/workdir/sherlock/logs/chrombpnet_kit_modes.%x.%j.err
+#SBATCH --output=%x.%j.out
+#SBATCH --error=%x.%j.err
 #
 # The optimization kit's own modes on stock chrombpnet 1.0.1: what the kit's
 # changes are worth in the original package, for the blog's "in original
@@ -16,14 +15,15 @@
 # arm, ROUNDS rounds in a different order each, only the pred_bw command timed.
 #
 #   bash setup_kit_env.sh                                    # once
-#   sbatch --constraint="GPU_SKU:L40S" run_kit_modes.sh sherlock
-#   sbatch --constraint="GPU_SKU:<H200 name>" run_kit_modes.sh sherlock
-#   python summarize_rerun.py
+# From this folder, with site.env's cluster options and GPU constraints:
+#   sbatch ${SBATCH_SITE_ARGS} ${SBATCH_L40S} run_kit_modes.sh slurm
+#   sbatch ${SBATCH_SITE_ARGS} ${SBATCH_H200} run_kit_modes.sh slurm
+#   python summarize_rerun.py <OPTIMIZATION_OUT>
 #
-# Or as a plain bash script on a lab GPU host (run tag *_kit-modes_<host>):
+# Or as a plain bash script on a GPU host (run tag *_kit-modes_<host>):
 #
 #   CUDA_VISIBLE_DEVICES=<idle GPU> nohup bash run_kit_modes.sh \
-#     > /path/to/workdir/sherlock/logs/kit_modes.$(hostname -s).log 2>&1 &
+#     > <log dir>/kit_modes.$(hostname -s).log 2>&1 &
 #
 # Arms (the kit's run.sh pred_bw, one model -cm as the kit runs it):
 #   stock     --mode off          stock chrombpnet 1.0.1 as shipped
@@ -47,31 +47,45 @@
 # its largest process).
 #
 # malloc_env alone (its own run tag, so the kit-modes results stay as they are):
-#   ARMS=stock,stockmalloc RUN_KIND=kit-malloc sbatch --constraint="GPU_SKU:L40S" run_kit_modes.sh sherlock
+#   ARMS=stock,stockmalloc RUN_KIND=kit-malloc sbatch ${SBATCH_SITE_ARGS} ${SBATCH_L40S} run_kit_modes.sh slurm
 #
 # The model is the kit's (ENCODE ENCFF142IOR, GM12878 ATAC-seq fold 0: its
 # install step checks the digests); the regions are the 20,000 peaks the
 # refactor runs predict, so the region count matches.
 #
 # Usage: run_kit_modes.sh [CLUSTER] [REGIONS_BED]
-#   CLUSTER  sherlock | local; inferred from the Slurm job if omitted.
-#            local: no module loads; the GPU is the first of CUDA_VISIBLE_DEVICES
+#   CLUSTER  slurm | local; inferred from the Slurm job if omitted.
+#            slurm: site.env's hooks kit_compiler and tf28_libraries provide a C11
+#            compiler and TensorFlow 2.8's CUDA 11.2 / cuDNN 8.1.
+#            local: no site hooks; the GPU is the first of CUDA_VISIBLE_DEVICES
 #            and must be idle; TensorFlow 2.8 gets /usr/local's CUDA 11.2 and
 #            cuDNN 8.1 (or TF_CUDA_DIRS)
+#   REGIONS_BED  the regions (default: the L40S Sections 3-4 run's 20,000 peaks,
+#            ${OPTIMIZATION_OUT}/NVIDIA-L40S_cuda-89/fold_0/regions.bed)
 #   env: ROUNDS (5), ARMS (stock,stockdet,exact,fast,stages; also stockmalloc), RUN_KIND
 #        (kit-modes: the run tag's suffix), BATCH_SIZE (256, as the
-#        refactor runs; the kit itself uses 1024), RUN_TAG, OUT_ROOT, KIT_ENV,
-#        KIT_HOME, DEVICE (cuda; cpu for a smoke test), TF_CUDA_DIRS, ALLOW_BUSY_GPU
+#        refactor runs; the kit itself uses 1024), RUN_TAG, OUT_ROOT (site.env's
+#        OPTIMIZATION_OUT), KIT_ENV, KIT_HOME, MODEL_OPT_JIT_ROOT, DEVICE (cuda; cpu for
+#        a smoke test), TF_CUDA_DIRS, ALLOW_BUSY_GPU
+#   site.env: KIT_ROOT, KIT_HOME, GENOME, CHROM_SIZES, OPTIMIZATION_OUT (unless OUT_ROOT
+#        and REGIONS_BED are given)
 
 set -eo pipefail
 
-OAK_DIR="/path/to/workdir"
-HERE="${OAK_DIR}/software/chrombpnet-refactor/analysis/blog-2026-015/optimization"
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
+HERE="${BLOG_SCRIPTS}/optimization"
 # shellcheck source=_common.sh
 source "${HERE}/_common.sh"
 resolve_cluster "${1:-}"
+SITE_NEEDS=(KIT_ROOT KIT_HOME GENOME CHROM_SIZES)
+[[ -n "${2:-}" && -n "${OUT_ROOT:-}" ]] || SITE_NEEDS+=(OPTIMIZATION_OUT)
+require_site "${SITE_NEEDS[@]}"
 DEVICE="${DEVICE:-cuda}"
-REGIONS_SRC="${2:-${OAK_DIR}/chromatlas/test/chrombpnet-refactor-optimization/analysis-rerun/NVIDIA-L40S_cuda-89/fold_0/regions.bed}"
+REGIONS_SRC="${2:-${OPTIMIZATION_OUT}/NVIDIA-L40S_cuda-89/fold_0/regions.bed}"
 ROUNDS="${ROUNDS:-5}"
 ARMS_ARG="${ARMS:-stock,stockdet,exact,fast,stages}"
 # An unknown arm would reach run.sh without --mode, i.e. as the kit's default mode.
@@ -82,45 +96,41 @@ for arm in ${ARMS_ARG//,/ }; do
   esac
 done
 BATCH_SIZE="${BATCH_SIZE:-256}"
-KIT="${KIT_ROOT:-${OAK_DIR}/software/uplifting-biomolecular-modeling}/chrombpnet"
+KIT="${KIT_ROOT}/chrombpnet"
 KIT_ENV="${KIT_ENV:-chrombpnet-kit}"
-KIT_HOME="${KIT_HOME:-${OAK_DIR}/chromatlas/test/chrombpnet-kit}"
-GENOME="${OAK_DIR}/chromatlas/reference/hg38/hg38.fa"
-CHROM_SIZES="${OAK_DIR}/chromatlas/reference/hg38/hg38.chrom.sizes"
 WEIGHTS="${KIT_HOME}/weights"
 MODEL="${WEIGHTS}/GM12878_ATAC/fold_0/chrombpnet_recompiled.h5"
 BIGWIG="${KIT_HOME}/data/ENCFF180XQC.bigWig"
-OUT_ROOT="${OUT_ROOT:-${OAK_DIR}/chromatlas/test/chrombpnet-refactor-optimization/analysis-rerun}"
+OUT_ROOT="${OUT_ROOT:-${OPTIMIZATION_OUT}}"
 
 for required in "${KIT}/run.sh" "${MODEL}" "${GENOME}" "${GENOME}.fai" "${CHROM_SIZES}" \
                 "${BIGWIG}" "${REGIONS_SRC}"; do
   [[ -e "${required}" ]] || { echo "missing input: ${required} (run setup_kit_env.sh first?)" >&2; exit 1; }
 done
 
-eval "$("${CONDA_EXE:-conda}" shell.bash hook)"
+eval "$("$(conda_exe)" shell.bash hook)"
 conda activate "${KIT_ENV}"
 # TensorFlow 2.8 loads CUDA 11.2 and cuDNN 8.1 from the system; the Triton
 # forward's torch brings its own CUDA 12.4 wheels (so locally no other CUDA
-# directory stays on LD_LIBRARY_PATH: ~/.bashrc's CUDA 12 would shadow them).
-if [[ "${CLUSTER}" == "sherlock" ]]; then
-  # The modules' CUDA 11.2 / cuDNN 8.1 only, not the submitting shell's CUDA or
-  # cuDNN (2026-10-21: torch here reported cuDNN 9.4, not the env's 9.1, and
+# directory stays on LD_LIBRARY_PATH: a login shell's CUDA 12 would shadow them).
+if [[ "${CLUSTER}" == slurm ]]; then
+  # The site hooks' CUDA 11.2 / cuDNN 8.1 only, not the submitting shell's CUDA
+  # or cuDNN (2026-10-21: torch here reported cuDNN 9.4, not the env's 9.1, and
   # exact mode died loading cuDNN). And a C11 compiler: Triton builds a
   # launcher for every kernel the kit's shipped cache lacks (exact mode's), and
-  # the nodes' gcc 4.8 has no stdatomic.h.
+  # a node's gcc 4.8 has no stdatomic.h.
   export LD_LIBRARY_PATH="$(ld_path_without_cuda)"
-  module load gcc/14.2.0
-  module load cuda/11.2.0
-  module load cudnn/8.1.1.33
+  site_hook kit_compiler
+  site_hook tf28_libraries
 else
   tf_local_libraries
 fi
 export CHROMBPNET_OPT_WEIGHTS="${WEIGHTS}" CHROMBPNET_OPT_DATA="${KIT_HOME}/data"
 export PYTHONHASHSEED=0 CFLAGS=-g0 PYTHONNOUSERSITE=1
 unset PYTHONPATH
-# Triton's compiled helpers are built against the host glibc, and Sherlock's
-# GPU nodes run different ones (see run_pred_bw_rerun.sh): one root per glibc;
-# on a lab host, one per host.
+# Triton's compiled helpers are built against the host glibc, and a cluster's
+# GPU nodes may run different ones (see run_pred_bw_rerun.sh): one root per
+# glibc; on a GPU host, one per host.
 GLIBC_VERSION="$(ldd --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+$' || true)"
 CACHE_KEY="glibc-${GLIBC_VERSION:-unknown}"
 [[ "${CLUSTER}" == local ]] && CACHE_KEY="$(hostname -s)-${CACHE_KEY}"

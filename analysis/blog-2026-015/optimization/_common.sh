@@ -1,23 +1,22 @@
-# Sourced by run_pred_bw_kit_fused.sh and run_kit_modes.sh: what differs between
-# a Slurm job on Sherlock and a plain `bash` run on one of the lab's GPU hosts
-# (the lab GPU host, another lab host, ...).
+# Sourced by the run_*.sh jobs (after ../_site.sh): what differs between a Slurm
+# job on a cluster and a plain `bash` run on a GPU host.
 
 COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# CLUSTER: sherlock or local; inferred from the Slurm job when not given.
+# CLUSTER: slurm or local; inferred from the Slurm job when not given.
 resolve_cluster () {
   CLUSTER="${1:-}"
   if [[ -z "${CLUSTER}" ]]; then
-    if [[ -n "${SLURM_JOB_ID:-}" ]]; then CLUSTER=sherlock; else CLUSTER=local; fi
+    if [[ -n "${SLURM_JOB_ID:-}" ]]; then CLUSTER=slurm; else CLUSTER=local; fi
   fi
   case "${CLUSTER}" in
-    sherlock|local) ;;
-    *) echo "unknown cluster '${CLUSTER}' (expected sherlock or local)" >&2; exit 2 ;;
+    slurm|local) ;;
+    *) echo "unknown cluster '${CLUSTER}' (expected slurm or local)" >&2; exit 2 ;;
   esac
 }
 
-# Host part of a local run's tag, so a run on a lab host never replaces a
-# Sherlock job's results for the same GPU model (or another host's).
+# Host part of a local run's tag, so a run on a GPU host never replaces a
+# Slurm job's results for the same GPU model (or another host's).
 host_suffix () {
   [[ "${CLUSTER}" == local ]] && echo "_$(hostname -s)"
   return 0
@@ -61,18 +60,19 @@ select_gpu () {
   fi
 }
 
-# LD_LIBRARY_PATH without its CUDA and cuDNN directories. On the lab hosts
-# ~/.bashrc puts a system CUDA 12 / cuDNN 9 there, and a Sherlock job inherits
-# the submitting shell's; either outranks the RUNPATH by which PyTorch's cuDNN
-# 9 finds its own sub-libraries (on Sherlock the kit env's torch reported cuDNN
-# 9.4, not its own 9.1, and the kit's exact mode died loading cuDNN).
+# LD_LIBRARY_PATH without its CUDA and cuDNN directories. A login shell may put
+# a system CUDA 12 / cuDNN 9 there, and a Slurm job inherits the submitting
+# shell's; either outranks the RUNPATH by which PyTorch's cuDNN 9 finds its own
+# sub-libraries (on a cluster node the kit env's torch reported cuDNN 9.4, not
+# its own 9.1, and the kit's exact mode died loading cuDNN).
 ld_path_without_cuda () {
   printf '%s' "${LD_LIBRARY_PATH:-}" \
     | awk -v RS=: -v ORS=: 'NF && tolower($0) !~ /cuda|cudnn/' | sed 's/:$//'
 }
 
-# TensorFlow 2.8's CUDA 11.2 and cuDNN 8.1 on a lab host (Sherlock loads them
-# as modules), colon-separated: TF_CUDA_DIRS if set, else the /usr/local copies.
+# TensorFlow 2.8's CUDA 11.2 and cuDNN 8.1 on a GPU host (under Slurm the
+# site.env hook tf28_libraries provides them), colon-separated: TF_CUDA_DIRS if
+# set, else the /usr/local copies.
 local_tf_cuda_dirs () {
   if [[ -n "${TF_CUDA_DIRS:-}" ]]; then echo "${TF_CUDA_DIRS}"; return 0; fi
   local d found=()
@@ -82,7 +82,7 @@ local_tf_cuda_dirs () {
   ( IFS=:; echo "${found[*]}" )
 }
 
-# The library path for a TensorFlow 2.8 process on a lab host: CUDA 11.2 and
+# The library path for a TensorFlow 2.8 process on a GPU host: CUDA 11.2 and
 # cuDNN 8.1, and none of the other CUDA directories.
 tf_local_libraries () {
   local dirs rest
@@ -96,6 +96,27 @@ tf_local_libraries () {
 # that does not all stay, and every run would compile again; at the maximum,
 # the untimed warm-up run fills the cache for the timed ones.
 export CUDA_CACHE_MAXSIZE="${CUDA_CACHE_MAXSIZE:-4294967296}"
+
+# The conda executable: CONDA_EXE (set by an activated conda), else site.env's
+# CONDA_ROOT, else conda on PATH.
+conda_exe () {
+  if [[ -n "${CONDA_EXE:-}" ]]; then echo "${CONDA_EXE}"
+  elif [[ -n "${CONDA_ROOT:-}" ]]; then echo "${CONDA_ROOT}/bin/conda"
+  else echo conda; fi
+}
+
+# The PyTorch env for a run: PT_ENV if set; under Slurm, site.env's
+# PT_ENV_GLIBC217 (a build for glibc 2.17 nodes) if set; else chrombpnet-pytorch.
+default_pt_env () {
+  if [[ -n "${PT_ENV:-}" ]]; then echo "${PT_ENV}"
+  elif [[ "${CLUSTER}" == slurm && -n "${PT_ENV_GLIBC217:-}" ]]; then echo "${PT_ENV_GLIBC217}"
+  else echo chrombpnet-pytorch; fi
+}
+
+# True when the env named is site.env's glibc 2.17 build of the PyTorch env.
+is_glibc217_env () {
+  [[ -n "${PT_ENV_GLIBC217:-}" && "$1" == "${PT_ENV_GLIBC217}" ]]
+}
 
 # Exits unless the active env's framework reaches the GPU (gpu_check.py:
 # TensorFlow 2.8 without its CUDA libraries runs on the CPU without an error;
@@ -116,8 +137,8 @@ check_framework_gpu () {  # tensorflow|torch log
 
 # A run's results go to a hidden partial directory beside the final one and
 # replace the previous run's only when this run finishes, so a preempted or
-# failed run never deletes the last complete one (owners preemption cost the
-# first H200 kit-modes results that way). Sets WORK; call finish_results last.
+# failed run never deletes the last complete one (a preemption cost the first
+# H200 kit-modes results that way). Sets WORK; call finish_results last.
 start_results () {  # final directory
   WORK_FINAL="$1"
   WORK="$(dirname "$1")/.partial_$(basename "$1")"

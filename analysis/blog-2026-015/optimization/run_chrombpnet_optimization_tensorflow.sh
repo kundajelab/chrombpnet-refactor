@@ -4,10 +4,9 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --gpus=1
 #SBATCH --mem=96GB
-#SBATCH --partition=<partitions>
 #SBATCH --job-name=chrombpnet_optimization_tf
-#SBATCH --output=/path/to/workdir/sherlock/logs/chrombpnet_optimization_tf.%x.%A_%a.out
-#SBATCH --error=/path/to/workdir/sherlock/logs/chrombpnet_optimization_tf.%x.%A_%a.err
+#SBATCH --output=%x.%A_%a.out
+#SBATCH --error=%x.%A_%a.err
 #SBATCH --array=0-4
 #
 # The stock TensorFlow ChromBPNet baseline for run_chrombpnet_optimization_
@@ -15,8 +14,9 @@
 # subsample, timed the same way -- so "what did the PyTorch port and its
 # optimizations actually buy" has a floor to be measured against.
 #
-#   ./list_gpu_skus.sh                  # what the partitions offer
-#   sbatch --constraint="GPU_SKU:<name>" run_chrombpnet_optimization_tensorflow.sh sherlock
+# From this folder, with site.env's cluster options:
+#   ./list_gpu_skus.sh <partitions>     # what the partitions offer
+#   sbatch ${SBATCH_SITE_ARGS} --constraint=<feature> run_chrombpnet_optimization_tensorflow.sh slurm
 #   ./summarize.sh                      # reads this alongside the PyTorch runs
 #
 # Deliberately NOT matched to the PyTorch runs:
@@ -36,40 +36,53 @@
 #     never used here (the PyTorch runs do not use it either).
 #
 # Usage: run_chrombpnet_optimization_tensorflow.sh CLUSTER [FOLD_NUM] [N_REGIONS]
+#   CLUSTER    slurm (default; site.env's hooks tf28_libraries and report_libraries) | local
+#   env: CONDA_ENV (chrombpnet), BENCHMARK_TF_REPO (ORIGINAL_REPO), TF_MODELS_ROOT,
+#        ASSAY (ATAC), ENCID (ENCSR868FGK), N_CONTRIB (2000), OUT_ROOT (site.env's
+#        OPTIMIZATION_ANALYSIS)
+#   site.env: ORIGINAL_REPO (unless BENCHMARK_TF_REPO is set), GENOME, CHROM_SIZES,
+#        REFERENCE_DIR, ORIGINAL_MODELS (unless TF_MODELS_ROOT is set),
+#        OPTIMIZATION_ANALYSIS (unless OUT_ROOT is set)
 
 set -euo pipefail
 
-CLUSTER="${1:-sherlock}"
+CLUSTER="${1:-slurm}"
 FOLD_NUM="${2:-${SLURM_ARRAY_TASK_ID:-0}}"
 N_REGIONS="${3:-20000}"
 # DeepLIFT costs far more per region than a forward; matches the PyTorch job.
 N_CONTRIB="${N_CONTRIB:-2000}"
 
-OAK_DIR="/path/to/workdir"
-TF_REPO="${BENCHMARK_TF_REPO:-${OAK_DIR}/software/chrombpnet}"
-REFERENCE_DIR="${OAK_DIR}/chromatlas/reference"
-GENOME_PATH="${REFERENCE_DIR}/hg38/hg38.fa"
-CHROM_PATH="${REFERENCE_DIR}/hg38/hg38.chrom.sizes"
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
+SITE_NEEDS=(GENOME CHROM_SIZES REFERENCE_DIR)
+[[ -n "${BENCHMARK_TF_REPO:-}" ]] || SITE_NEEDS+=(ORIGINAL_REPO)
+[[ -n "${TF_MODELS_ROOT:-}" ]] || SITE_NEEDS+=(ORIGINAL_MODELS)
+[[ -n "${OUT_ROOT:-}" ]] || SITE_NEEDS+=(OPTIMIZATION_ANALYSIS)
+require_site "${SITE_NEEDS[@]}"
+TF_REPO="${BENCHMARK_TF_REPO:-${ORIGINAL_REPO}}"
+GENOME_PATH="${GENOME}"
+CHROM_PATH="${CHROM_SIZES}"
 FOLD_JSON="${REFERENCE_DIR}/folds/fold_${FOLD_NUM}.json"
 
 # The TensorFlow-trained folds, laid out exactly like the PyTorch ones.
 ASSAY="${ASSAY:-ATAC}"
 ENCID="${ENCID:-ENCSR868FGK}"
-MODELS_ROOT="${TF_MODELS_ROOT:-${OAK_DIR}/chromatlas/test/chrombpnet-tf/${ASSAY}/${ENCID}}"
+MODELS_ROOT="${TF_MODELS_ROOT:-${ORIGINAL_MODELS}/${ASSAY}/${ENCID}}"
 MODEL_DIR="${MODELS_ROOT}/fold_${FOLD_NUM}/model"
 
-OUT_ROOT="${OAK_DIR}/chromatlas/test/chrombpnet-refactor-optimization/analysis"
+OUT_ROOT="${OUT_ROOT:-${OPTIMIZATION_ANALYSIS}}"
 
 CONDA_ENV="${CONDA_ENV:-chrombpnet}"
-eval "$(conda shell.bash hook)"
+eval "$("${CONDA_EXE:-${CONDA_ROOT:+${CONDA_ROOT}/bin/}conda}" shell.bash hook)"
 conda activate "${CONDA_ENV}"
-if [[ "${CLUSTER}" == "sherlock" ]]; then
-  # Mirrors run/run_chrombpnet_benchmark_tensorflow.sh; TF 2.8 needs this pair.
-  module load cuda/11.2.0
-  module load cudnn/8.1.1.33
-  module load system
-  module load pango
-  module load system cairo
+if [[ "${CLUSTER}" == slurm ]]; then
+  # Mirrors run/run_chrombpnet_benchmark_tensorflow.sh; TF 2.8 needs CUDA 11.2 and
+  # cuDNN 8.1 (and the report its PDF libraries), from site.env's hooks.
+  site_hook tf28_libraries
+  site_hook report_libraries
 fi
 
 # Stock must be first on sys.path, and the PyTorch refactor must not be
@@ -118,10 +131,10 @@ if [[ ${tf_gpu_rc} -ne 0 ]]; then
   hint=""
   if [[ "${missing}" == *libcudnn.so.8* ]]; then
     hint="
-  TensorFlow 2.8 needs cuDNN 8, not 9. On Sherlock that is
-  'module load cudnn/8.1.1.33' (this script does that for CLUSTER=sherlock).
-  On a workstation, point LD_LIBRARY_PATH at a cuDNN 8 install; a cuDNN 9
-  path will not satisfy it."
+  TensorFlow 2.8 needs cuDNN 8, not 9. Under Slurm, site.env's hook
+  site_tf28_libraries provides it (e.g. a module load; this script runs it
+  for CLUSTER=slurm). On a workstation, point LD_LIBRARY_PATH at a cuDNN 8
+  install; a cuDNN 9 path will not satisfy it."
   fi
   preflight_fail "TensorFlow sees no GPU, so this would time a CPU forward.
   Libraries it could not load: ${missing:-none reported}${hint}

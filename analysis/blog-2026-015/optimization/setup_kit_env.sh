@@ -5,21 +5,31 @@
 # fresh Python 3.8 environment, except that the torch stack goes into the env
 # itself rather than /opt/torch (the kit imports torch from the default path
 # first; /opt/torch needs root). Built with CONDA_OVERRIDE_GLIBC=2.17 and only
-# manylinux2014-era wheels, so the env also runs on Sherlock's glibc 2.17 nodes.
+# manylinux2014-era wheels, so the env also runs on a cluster's glibc 2.17 nodes.
 #
 #   bash setup_kit_env.sh        # idempotent: skips what is already there
 #
 # Needs network access (conda, PyPI, download.pytorch.org, encodeproject.org).
+#   env: CONDA (CONDA_ROOT/bin/conda), KIT_ENV (chrombpnet-kit), KIT_STOCK_SRC (where stock
+#        chrombpnet 1.0.1's source is unpacked; default: KIT_ROOT-stock beside the kit)
+#   site.env: KIT_ROOT (cloned there if missing), KIT_HOME, CONDA_ROOT (unless CONDA is set)
 
 set -euo pipefail
 
-OAK_DIR="/path/to/workdir"
-CONDA="${CONDA:-${OAK_DIR}/software/miniconda3/bin/conda}"
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
+SITE_NEEDS=(KIT_ROOT KIT_HOME)
+[[ -n "${CONDA:-}" ]] || SITE_NEEDS+=(CONDA_ROOT)
+require_site "${SITE_NEEDS[@]}"
+CONDA="${CONDA:-${CONDA_ROOT}/bin/conda}"
 ENV_NAME="${KIT_ENV:-chrombpnet-kit}"
 ENV_DIR="$(dirname "$(dirname "${CONDA}")")/envs/${ENV_NAME}"
-KIT="${KIT_ROOT:-${OAK_DIR}/software/uplifting-biomolecular-modeling}/chrombpnet"
-STOCK_SRC="${KIT_STOCK_SRC:-${OAK_DIR}/software/uplifting-biomolecular-modeling-stock}"
-KIT_HOME="${KIT_HOME:-${OAK_DIR}/chromatlas/test/chrombpnet-kit}"   # weights/ and data/
+KIT="${KIT_ROOT}/chrombpnet"
+STOCK_SRC="${KIT_STOCK_SRC:-${KIT_ROOT%/}-stock}"
+# KIT_HOME: the kit's weights/ and data/
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
 
@@ -52,7 +62,7 @@ if ! "${PY}" -c "import tensorflow, chrombpnet, torch, triton, chrombpnet_opt" 2
   "${PIP[@]}" --no-deps -r "${WORK}/torch.txt"
   # pip takes wheels for the building host's glibc: Pillow's (matplotlib's PNG
   # writer, which pred_bw's metrics use) then needs glibc 2.27. Take the same
-  # version's manylinux2014 build, which runs on Sherlock's 2.17.
+  # version's manylinux2014 build, which runs on glibc 2.17.
   PILLOW="$("${PY}" -c 'import PIL; print(PIL.__version__)')"
   env -u PYTHONPATH "${PY}" -m pip download --no-deps --only-binary=:all: --platform manylinux2014_x86_64 \
       --python-version 3.8 --implementation cp -d "${WORK}/pillow" "pillow==${PILLOW}"

@@ -4,21 +4,21 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --gpus=1
 #SBATCH --mem=96GB
-#SBATCH --partition=<partitions>
 #SBATCH --job-name=chrombpnet_cherimoya
-#SBATCH --output=/path/to/workdir/sherlock/logs/chrombpnet_cherimoya.%x.%A_%a.out
-#SBATCH --error=/path/to/workdir/sherlock/logs/chrombpnet_cherimoya.%x.%A_%a.err
+#SBATCH --output=%x.%A_%a.out
+#SBATCH --error=%x.%A_%a.err
 #SBATCH --array=0-4
 #
-# Cherimoya (software/cherimoya: Jacob Schreiber's PyTorch successor to
+# Cherimoya (Jacob Schreiber's PyTorch successor to
 # ChromBPNet) on the blog's "Against the original ChromBPNet" rows, for its
 # cherimoya column: the same folds, peaks, non-peaks and motifs as those rows,
 # timed with the method of run_pred_bw_kit_fused.sh (an untimed warm-up of each
 # command, ROUNDS rounds in a rotating order, only the command timed).
 #
-#   sbatch --constraint="GPU_SKU:L40S" run_cherimoya.sh sherlock
-#   sbatch -p owners --constraint="GPU_SKU:H200_SXM5" run_cherimoya.sh sherlock
-#   python summarize_rerun.py      # run tag <gpu>_<arch>_cherimoya
+# From this folder, with site.env's cluster options and GPU constraints:
+#   sbatch ${SBATCH_SITE_ARGS} ${SBATCH_L40S} run_cherimoya.sh slurm
+#   sbatch ${SBATCH_SITE_ARGS} ${SBATCH_H200} run_cherimoya.sh slurm
+#   python summarize_rerun.py <OPTIMIZATION_OUT>   # run tag <gpu>_<arch>_cherimoya
 #
 # Arms (cherimoya's own commands, `cherimoya <command> -p <json>`):
 #   evaluate     the 20,000 peaks of pred_bw's row, predicted and scored
@@ -35,15 +35,16 @@
 #
 # Models: CATv1 (huggingface.co/programmable-genomics/CATv1), ENCSR868FGK
 # fold_k, the same chromosome folds as ChromBPNet's ENCODE models, under
-# chromatlas/test/cherimoya/ATAC/ENCSR868FGK/. Inputs come from the fold's
+# ${CHERIMOYA_MODELS}/ATAC/ENCSR868FGK/. Inputs come from the fold's
 # chrombpnet-refactor files (cherimoya_inputs.py, run on the host).
 #
 # Environment: conda env `cherimoya` (cherimoya 0.3.1's uv.lock: torch 2.13.0,
 # installed from the CUDA 12.6 index, triton 3.7.1, tangermeme 1.6.0, plus
 # conda-forge gcc for Triton's launchers). torch >= 2.9 and triton >= 3.5 are
-# built for glibc >= 2.28 only (PyPI and conda-forge alike), so on Sherlock
-# (glibc 2.17) each command runs in the Ubuntu 22.04 container the expand and
-# engines jobs use; on a lab host, natively (CONTAINER=1 forces the container).
+# built for glibc >= 2.28 only (PyPI and conda-forge alike), so on a cluster
+# with glibc 2.17 nodes (site.env CONTAINER_UNDER_SLURM=1) each command runs in
+# the Ubuntu 22.04 container (CONTAINER_IMAGE) the expand and engines jobs use;
+# elsewhere, natively (CONTAINER=1 forces the container, CONTAINER=0 forbids it).
 #
 # Usage: run_cherimoya.sh [CLUSTER] [FOLDS]
 #   env: ROUNDS (3), ARMS (evaluate,attribute,marginalize), BATCH_SIZE (256, as
@@ -51,13 +52,21 @@
 #        (unset = cherimoya's defaults: evaluate and marginalize compiled,
 #        attribute not; 0 or 1 for all), N_REGIONS (20000), N_CONTRIB (2000),
 #        N_NONPEAKS (all; a cap for smoke tests),
-#        RUN_TAG, OUT_ROOT, DEVICE (cuda; cpu for a smoke test), CONTAINER,
-#        ALLOW_BUSY_GPU
+#        RUN_TAG, OUT_ROOT (site.env's OPTIMIZATION_OUT), DEVICE (cuda; cpu for a smoke
+#        test), CONTAINER, CHERIMOYA_ENV (CONDA_ROOT/envs/cherimoya), INPUT_PY (the
+#        PyTorch env's python), TRITON_CACHE_DIR, TORCHINDUCTOR_CACHE_DIR, ALLOW_BUSY_GPU
+#   site.env: GENOME, REFERENCE_DIR, REFACTOR_MODELS, CHERIMOYA_MODELS, CONDA_ROOT (unless
+#        CHERIMOYA_ENV and INPUT_PY are set), OPTIMIZATION_OUT (unless OUT_ROOT is set);
+#        in the container, CONTAINER_IMAGE and CONTAINER_BINDS; optional PT_ENV_GLIBC217
 
 set -eo pipefail
 
-OAK_DIR="/path/to/workdir"
-HERE="${OAK_DIR}/software/chrombpnet-refactor/analysis/blog-2026-015/optimization"
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
+HERE="${BLOG_SCRIPTS}/optimization"
 # shellcheck source=_common.sh
 source "${HERE}/_common.sh"
 
@@ -88,31 +97,40 @@ if [[ "${FOLDS}" == *,* ]]; then
 fi
 FOLD_NUM="${FOLDS}"
 
-CHERIMOYA_ENV="${CHERIMOYA_ENV:-${OAK_DIR}/software/miniconda3/envs/cherimoya}"
-INPUT_PY="${INPUT_PY:-${OAK_DIR}/software/miniconda3/envs/chrombpnet-pytorch-sherlock/bin/python}"
-IMAGE="${CONTAINER_IMAGE:-${OAK_DIR}/software/containers/ubuntu-22.04.sif}"
-GENOME="${OAK_DIR}/chromatlas/reference/hg38/hg38.fa"
-FOLD_JSON="${OAK_DIR}/chromatlas/reference/folds/fold_${FOLD_NUM}.json"
-AUX="${OAK_DIR}/chromatlas/test/chrombpnet-refactor/ATAC/ENCSR868FGK/fold_${FOLD_NUM}/model/auxiliary"
-MODEL="${OAK_DIR}/chromatlas/test/cherimoya/ATAC/ENCSR868FGK/fold_${FOLD_NUM}/cherimoya.torch"
-OUT_ROOT="${OUT_ROOT:-${OAK_DIR}/chromatlas/test/chrombpnet-refactor-optimization/analysis-rerun}"
+SITE_NEEDS=(GENOME REFERENCE_DIR REFACTOR_MODELS CHERIMOYA_MODELS)
+[[ -n "${CHERIMOYA_ENV:-}" && -n "${INPUT_PY:-}" ]] || SITE_NEEDS+=(CONDA_ROOT)
+[[ -n "${OUT_ROOT:-}" ]] || SITE_NEEDS+=(OPTIMIZATION_OUT)
+require_site "${SITE_NEEDS[@]}"
+CHERIMOYA_ENV="${CHERIMOYA_ENV:-${CONDA_ROOT}/envs/cherimoya}"
+# The inputs are written with the PyTorch env's python: its glibc 2.17 build
+# (site.env PT_ENV_GLIBC217) where there is one, which runs on every host.
+INPUT_PY="${INPUT_PY:-${CONDA_ROOT}/envs/${PT_ENV_GLIBC217:-chrombpnet-pytorch}/bin/python}"
+IMAGE="${CONTAINER_IMAGE:-}"
+FOLD_JSON="${REFERENCE_DIR}/folds/fold_${FOLD_NUM}.json"
+AUX="${REFACTOR_MODELS}/ATAC/ENCSR868FGK/fold_${FOLD_NUM}/model/auxiliary"
+MODEL="${CHERIMOYA_MODELS}/ATAC/ENCSR868FGK/fold_${FOLD_NUM}/cherimoya.torch"
+OUT_ROOT="${OUT_ROOT:-${OPTIMIZATION_OUT}}"
 for required in "${CHERIMOYA_ENV}/bin/cherimoya" "${INPUT_PY}" "${GENOME}" "${FOLD_JSON}" "${MODEL}" \
                 "${AUX}/filtered.peaks.bed" "${AUX}/filtered.nonpeaks.bed" "${AUX}/data_unstranded.bw" \
                 "${AUX}/motif_to_pwm.tsv"; do
   [[ -e "${required}" ]] || { echo "missing input: ${required}" >&2; exit 1; }
 done
 
-# The container on Sherlock (glibc 2.17: the env's torch needs 2.28), natively elsewhere.
+# The container under Slurm where site.env says the nodes need it (glibc 2.17:
+# the env's torch needs 2.28), natively elsewhere.
 if [[ -z "${CONTAINER:-}" ]]; then
-  [[ "${CLUSTER}" == sherlock ]] && CONTAINER=1 || CONTAINER=0
+  [[ "${CLUSTER}" == slurm && "${CONTAINER_UNDER_SLURM:-0}" == 1 ]] && CONTAINER=1 || CONTAINER=0
 fi
 if [[ "${CONTAINER}" == 1 ]]; then
+  require_site CONTAINER_IMAGE CONTAINER_BINDS
   RUNTIME="$(command -v apptainer || command -v singularity || true)"
   [[ -n "${RUNTIME}" ]] || { echo "Error: neither apptainer nor singularity is on PATH" >&2; exit 1; }
   [[ -f "${IMAGE}" ]] || { echo "Error: no container image at ${IMAGE}" >&2; exit 1; }
-  BINDS=(--bind /oak)
-  [[ -d /scratch ]] && BINDS+=(--bind /scratch)
-  if [[ -n "${TMPDIR:-}" && -d "${TMPDIR}" && "${TMPDIR}" != /tmp* ]]; then BINDS+=(--bind "${TMPDIR}"); fi
+  BINDS=()
+  add_bind () { local b; for b in "${BINDS[@]}"; do [[ "${b}" == "$1" ]] && return 0; done; BINDS+=(--bind "$1"); }
+  for d in ${CONTAINER_BINDS}; do add_bind "${d}"; done
+  [[ -d /scratch ]] && add_bind /scratch
+  if [[ -n "${TMPDIR:-}" && -d "${TMPDIR}" && "${TMPDIR}" != /tmp* ]]; then add_bind "${TMPDIR}"; fi
   CACHE_KEY="container-ubuntu-22.04"
 else
   CACHE_KEY="$(hostname -s)"
@@ -131,7 +149,7 @@ start_results "${OUT_ROOT}/${RUN_TAG}/fold_${FOLD_NUM}"
 # and marginalize by default) persist across this task's runs, in a cache of
 # its own. With one cache shared by the array's tasks (2026-10-27, L40S), 5 of
 # 45 timed runs took 10-15x longer while other tasks were compiling into it.
-CACHE_ROOT="${OAK_DIR}/chromatlas/test/cherimoya/.cache/${CACHE_KEY}/${RUN_TAG}/fold_${FOLD_NUM}"
+CACHE_ROOT="${CHERIMOYA_MODELS}/.cache/${CACHE_KEY}/${RUN_TAG}/fold_${FOLD_NUM}"
 export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-${CACHE_ROOT}/triton}"
 export TORCHINDUCTOR_CACHE_DIR="${TORCHINDUCTOR_CACHE_DIR:-${CACHE_ROOT}/inductor}"
 mkdir -p "${TRITON_CACHE_DIR}" "${TORCHINDUCTOR_CACHE_DIR}"
@@ -158,7 +176,7 @@ echo " model     : ${MODEL}"
 echo " output    : ${WORK}"
 echo "=================================================================="
 
-# Runs "$@" with the cherimoya env (in the container on Sherlock), timing the
+# Runs "$@" with the cherimoya env (in the container if CONTAINER=1), timing the
 # command alone; writes "rc t0 t1" to $1.
 in_env () {  # timefile command...
   local timefile="$1"; shift

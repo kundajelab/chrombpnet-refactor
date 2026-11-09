@@ -3,10 +3,9 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=48GB
-#SBATCH --partition=<partitions>
 #SBATCH --job-name=expand_summarize
-#SBATCH --output=/path/to/workdir/sherlock/logs/expand_summarize.%j.out
-#SBATCH --error=/path/to/workdir/sherlock/logs/expand_summarize.%j.err
+#SBATCH --output=expand_summarize.%j.out
+#SBATCH --error=expand_summarize.%j.err
 
 # Collate and plot old vs new vs the students, with the engines sweep's
 # scripts from this checkout (analysis/engine/run_summarize.py,
@@ -27,29 +26,26 @@
 #   ./run_summarize.sh --no-contributions   # here, quickly
 #
 #   OUT_DIR=...   (default: ${ROOT}/analysis/profile-stopgrad-off)
-#   CONDA_ENV=... (default: chrombpnet-pytorch)
+#   CONDA_ENV=... (default: site.env's CONDA_ROOT/envs/chrombpnet-pytorch)
 #   WORKERS=N     (default: the job's CPUs, at most 4)
 # Extra arguments go to run_summarize.py.
 
 set -euo pipefail
 
-_find_here() {
-  local candidate
-  for candidate in "${EXPAND_DIR:-}" "${SLURM_SUBMIT_DIR:-}" \
-      "/path/to/workdir/software/chrombpnet-refactor/analysis/blog-2026-015/expand" \
-      "$(dirname "$(readlink -f "$0")")"; do
-    [[ -n "${candidate}" && -f "${candidate}/_common.sh" && -f "${candidate}/run_summarize.sh" ]] \
-      && { echo "${candidate}"; return 0; }
-  done
-  return 1
-}
-EXPAND_DIR="$(_find_here)" || { echo "Error: cannot locate expand/_common.sh; set EXPAND_DIR." >&2; exit 1; }
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
+EXPAND_DIR="${EXPAND_DIR:-${BLOG_SCRIPTS}/expand}"
+[[ -f "${EXPAND_DIR}/_common.sh" ]] || { echo "Error: no _common.sh in ${EXPAND_DIR}; set EXPAND_DIR." >&2; exit 1; }
 # shellcheck source=_common.sh
 source "${EXPAND_DIR}/_common.sh"
+[[ -n "${CONDA_ENV:-}" ]] || require_site CONDA_ROOT
 
 OUT_DIR="${OUT_DIR:-${ROOT}/analysis/profile-stopgrad-off}"
 mkdir -p "${OUT_DIR}"
-CONDA_ENV="${CONDA_ENV:-/path/to/workdir/software/miniconda3/envs/chrombpnet-pytorch}"
+CONDA_ENV="${CONDA_ENV:-${CONDA_ROOT}/envs/chrombpnet-pytorch}"
 export PATH="${CONDA_ENV}/bin:${PATH}"
 WORKERS="${WORKERS:-${SLURM_CPUS_PER_TASK:-4}}"
 (( WORKERS > 4 )) && WORKERS=4

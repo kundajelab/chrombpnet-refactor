@@ -2,13 +2,15 @@
 # Ensemble vs distillation for one teacher set: distill its students, score
 # them and its five fold models on shared regions, and compare them.
 #
-#   ./submit_shared.sh sherlock             # TEACHER_SET=updated (the default here)
-#   ./submit_shared.sh sherlock --dry-run   # print the sbatch lines only
-#   TEACHER_SET=default ONLY="scores compare" ./submit_shared.sh sherlock
-#                                           # the control: the existing students
+#   ./submit_shared.sh slurm             # TEACHER_SET=updated (the default here)
+#   ./submit_shared.sh slurm --dry-run   # print the sbatch lines only
+#   TEACHER_SET=default ONLY="scores compare" ./submit_shared.sh slurm
+#                                        # the control: the existing students
 #
-# The jobs run natively, in SHERLOCK_ENV (_common.sh); --container runs them
-# in the Ubuntu image with chrombpnet-pytorch instead.
+# The jobs run natively, in site.env's PT_ENV_GLIBC217 if set, else
+# chrombpnet-pytorch (_common.sh); --container runs them in the Ubuntu image
+# with chrombpnet-pytorch instead. Every job gets site.env's SBATCH_SITE_ARGS,
+# and its logs go to site.env's LOG_DIR, or to this folder without one.
 #
 #   lofo      run_distill.sh lofo    array 0-19, SCORE=0 (students only, no per-fold scoring)
 #   final     run_distill.sh final   array 0-3,  SCORE=0, after the whole lofo array
@@ -25,22 +27,30 @@
 #   N_REGIONS=10000               shared peaks per dataset
 #   GPU_CONSTRAINT=..             --constraint for every GPU job (default none)
 #   SBATCH_EXTRA=".."             more sbatch options for every job
+#                                 (after site.env's SBATCH_SITE_ARGS)
 
 set -euo pipefail
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
 HERE="$(dirname "$(readlink -f "$0")")"
 TEACHER_SET="${TEACHER_SET:-updated}"
 export TEACHER_SET
 # shellcheck source=_common.sh
 source "${HERE}/_common.sh"
+cd "${HERE}"
 
 parse_common_flags "$@"
-CLUSTER="sherlock"
+CLUSTER="slurm"
 DRY=""
 for arg in ${ARGS[@]+"${ARGS[@]}"}; do
   case "${arg}" in
     --dry-run) DRY=1 ;;
-    sherlock|local) CLUSTER="${arg}" ;;
-    *) echo "unknown argument '${arg}' (usage: submit_shared.sh [sherlock] [--container] [--dry-run])" >&2; exit 2 ;;
+    slurm|local) CLUSTER="${arg}" ;;
+    sherlock) CLUSTER="slurm" ;;
+    *) echo "unknown argument '${arg}' (usage: submit_shared.sh [slurm] [--container] [--dry-run])" >&2; exit 2 ;;
   esac
 done
 teacher_tree > /dev/null || exit 2
@@ -57,14 +67,8 @@ EXPORT="--export=ALL,TEACHER_SET=${TEACHER_SET},SCORE=0,N_REGIONS=${N_REGIONS}"
 n_rows="$(data_row_count "${IDS_FILE}")"
 n_datasets="$(dataset_list | wc -l)"
 
-submit() {
-  if [[ -n "${DRY}" ]]; then
-    echo "sbatch --parsable $*" >&2
-    echo "<jobid>"
-  else
-    sbatch --parsable "$@"
-  fi
-}
+# site.env's sbatch options and log directory, then these (../engines/_common.sh).
+submit() { site_sbatch "$@"; }
 DEPENDENCY=()
 after() { DEPENDENCY=(--dependency="afterok:$1" --kill-on-invalid-dep=yes); }
 

@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Which pretrained bias model each ENCODE ChromBPNet model (and fold) uses.
 
-    python identify_bias_models.py OUT.tsv [encode_paths.tsv]
+    python identify_bias_models.py OUT.tsv ENCODE_PATHS.tsv
+
+ENCODE_PATHS.tsv lists each ENCODE ChromBPNet model's run directory, one row per model and fold.
 
 The training logs name the bias model's directory inconsistently across
 batches, so models are grouped by weights instead: a scaled bias model differs
@@ -17,7 +19,6 @@ from concurrent.futures import ThreadPoolExecutor
 
 import h5py
 
-PATHS = "/path/to/workdir/sherlock/ids/encode/path/to/lab/encode_paths.tsv"
 COUNTS_HEAD = "logcount_predictions"
 
 
@@ -34,8 +35,9 @@ def weight_hashes(path):
 
 
 def main():
-    out = sys.argv[1]
-    paths = sys.argv[2] if len(sys.argv) > 2 else PATHS
+    if len(sys.argv) != 3:
+        sys.exit(__doc__)
+    out, paths = sys.argv[1], sys.argv[2]
     with open(paths) as handle:
         models = [row for row in csv.DictReader(handle, delimiter="\t") if row["model"] == "chrombpnet"]
     jobs = [(row["experiment"], row["assay"], fold, row["bias_fold%d" % fold]) for row in models for fold in range(5)]

@@ -4,17 +4,16 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --gpus=1
 #SBATCH --mem=64GB
-#SBATCH --partition=<partitions>
 #SBATCH --job-name=expand_distill
-#SBATCH --output=/path/to/workdir/sherlock/logs/expand_distill.%A_%a.out
-#SBATCH --error=/path/to/workdir/sherlock/logs/expand_distill.%A_%a.err
+#SBATCH --output=expand_distill.%A_%a.out
+#SBATCH --error=expand_distill.%A_%a.err
 
 # Distill a dataset's five engines-sweep PyTorch fold models (the teachers)
 # into one bias-free student, then score the student as the teachers were.
 #
-#   sbatch --array=0-19 run_distill.sh sherlock lofo --container         # one per dataset and fold
-#   sbatch --array=0-3  run_distill.sh sherlock final --container        # one per dataset, after lofo
-#   sbatch --array=0-19 run_distill.sh sherlock final-score --container  # after final
+#   sbatch --array=0-19 run_distill.sh slurm lofo --container         # one per dataset and fold
+#   sbatch --array=0-3  run_distill.sh slurm final --container        # one per dataset, after lofo
+#   sbatch --array=0-19 run_distill.sh slurm final-score --container  # after final
 #   SLURM_ARRAY_TASK_ID=0 ./run_distill.sh local lofo
 #
 # lofo   (array over the ids table's rows) student k: trained on fold k's
@@ -60,17 +59,13 @@
 
 set -euo pipefail
 
-_find_here() {
-  local candidate
-  for candidate in "${EXPAND_DIR:-}" "${SLURM_SUBMIT_DIR:-}" \
-      "/path/to/workdir/software/chrombpnet-refactor/analysis/blog-2026-015/expand" \
-      "$(dirname "$(readlink -f "$0")")"; do
-    [[ -n "${candidate}" && -f "${candidate}/_common.sh" && -f "${candidate}/run_distill.sh" ]] \
-      && { echo "${candidate}"; return 0; }
-  done
-  return 1
-}
-EXPAND_DIR="$(_find_here)" || { echo "Error: cannot locate expand/_common.sh; set EXPAND_DIR." >&2; exit 1; }
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
+EXPAND_DIR="${EXPAND_DIR:-${BLOG_SCRIPTS}/expand}"
+[[ -f "${EXPAND_DIR}/_common.sh" ]] || { echo "Error: no _common.sh in ${EXPAND_DIR}; set EXPAND_DIR." >&2; exit 1; }
 # shellcheck source=_common.sh
 source "${EXPAND_DIR}/_common.sh"
 
@@ -78,12 +73,12 @@ parse_common_flags "$@"
 CLUSTER_ARG=""; MODE=""
 for a in ${ARGS[@]+"${ARGS[@]}"}; do
   case "${a}" in
-    sherlock|local) CLUSTER_ARG="${a}" ;;
+    slurm|sherlock|local) CLUSTER_ARG="${a}" ;;
     lofo|final|final-score) MODE="${a}" ;;
-    *) echo "unknown argument '${a}' (usage: run_distill.sh [sherlock|local] lofo|final|final-score [--container])" >&2; exit 2 ;;
+    *) echo "unknown argument '${a}' (usage: run_distill.sh [slurm|local] lofo|final|final-score [--container])" >&2; exit 2 ;;
   esac
 done
-[[ -n "${MODE}" ]] || { echo "usage: run_distill.sh [sherlock|local] lofo|final|final-score [--container]" >&2; exit 2; }
+[[ -n "${MODE}" ]] || { echo "usage: run_distill.sh [slurm|local] lofo|final|final-score [--container]" >&2; exit 2; }
 resolve_cluster "${CLUSTER_ARG}"
 DISTILL_ROOT="$(distill_root)" || exit 2
 SCORE="${SCORE:-1}"

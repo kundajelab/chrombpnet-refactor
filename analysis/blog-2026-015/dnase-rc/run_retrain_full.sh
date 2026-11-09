@@ -1,7 +1,7 @@
 #!/bin/bash
 # Re-run only the array tasks that did not finish.
 #
-#   sbatch run_retrain_full.sh sherlock right
+#   sbatch run_retrain_full.sh slurm right
 #   ./run_retrain_full.sh local right          # one row, set SLURM_ARRAY_TASK_ID
 #
 # A task exits 0 immediately when its run is already complete, so the whole
@@ -27,13 +27,18 @@
 #SBATCH --ntasks=1
 #SBATCH --gpus=1
 #SBATCH --mem=64GB
-#SBATCH --partition=<partitions>
 #SBATCH --job-name=dnase_rc_retrain
-#SBATCH --output=/path/to/workdir/sherlock/logs/dnase_rc_retrain.%A_%a.out
-#SBATCH --error=/path/to/workdir/sherlock/logs/dnase_rc_retrain.%A_%a.err
+#SBATCH --output=dnase_rc_retrain.%A_%a.out
+#SBATCH --error=dnase_rc_retrain.%A_%a.err
 #SBATCH --array=0-9
 
 set -euo pipefail
+
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
 
 VALID_ARMS=(standard fr-only rc-only right left both-half both-full)
 DNASE_ONLY_ARMS=(right left both-half both-full)
@@ -45,13 +50,13 @@ contains() { local n="$1"; shift; for x in "$@"; do [[ "$x" == "$n" ]] && return
 # /var/spool/slurmd/job<N>/slurm_script and runs it from there, so under
 # sbatch $0 is that copy and its directory holds nothing else -- sourcing a
 # sibling file through it fails on the cluster while working perfectly when
-# run by hand, which is exactly how it got shipped. Resolve explicitly, most
-# specific first, and verify the directory really is the right one.
+# run by hand, which is exactly how it got shipped. So it is DNASE_RC_DIR, or
+# ${BLOG_SCRIPTS}/dnase-rc -- which the lines above find through
+# SLURM_SUBMIT_DIR under sbatch, so submit from this folder -- and the
+# directory is verified before it is used.
 _find_dnase_rc_dir() {
   local candidate
-  for candidate in "${DNASE_RC_DIR:-}" "${SLURM_SUBMIT_DIR:-}" \
-      "/path/to/workdir/software/chrombpnet-refactor/analysis/blog-2026-015/dnase-rc" \
-      "$(dirname "$(readlink -f "$0")")"; do
+  for candidate in "${DNASE_RC_DIR:-}" "${BLOG_SCRIPTS}/dnase-rc"; do
     [[ -n "${candidate}" && -f "${candidate}/_args.sh" ]] && { echo "${candidate}"; return 0; }
   done
   return 1
@@ -65,10 +70,12 @@ source "${DNASE_RC_DIR}/_args.sh"
 resolve_args "${1:-}" "${2:-}"
 
 HERE="${DNASE_RC_DIR}"
-OAK_DIR="/path/to/workdir"
-IDS_FILE="${IDS_FILE:-/path/to/workdir/sherlock/ids/chromatlas/chrombpnet-refactor/ids_chrombpnet_refactor_benchmark_data_aug.txt}"
-ROOT="${OAK_DIR}/chromatlas/test/chrombpnet-refactor-dnase-rc"
-LOGS="${LOGS:-${OAK_DIR}/sherlock/logs}"
+[[ -n "${IDS_FILE:-}" ]] || { require_site DNASE_RC_IDS; IDS_FILE="${DNASE_RC_IDS}"; }
+require_site DNASE_RC_ROOT
+ROOT="${DNASE_RC_ROOT}"
+# The Slurm logs: LOG_DIR (where submit_all.sh sends them), else this folder, where a
+# job submitted from it writes them (the #SBATCH --output paths are relative).
+LOGS="${LOGS:-${LOG_DIR:-${DNASE_RC_DIR}}}"
 
 VALID_ARMS=(standard fr-only rc-only right left both-half both-full)
 DNASE_ONLY_ARMS=(right left both-half both-full)

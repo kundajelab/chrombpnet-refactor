@@ -1,6 +1,6 @@
 #!/bin/bash
 # Rebuilds blog 2026-015's summary figures from the analyses' saved tables
-# (no rescoring), with the main checkout's plotting scripts:
+# (no rescoring), with this repository's plotting scripts:
 #   chrombpnet_engine_performance.png    engines sweep: test scores by engine
 #   chrombpnet_engine_contribution.png   engines sweep: DeepLIFT/DeepSHAP vs the original
 #   chrombpnet_refactor_default_updated.png
@@ -12,19 +12,32 @@
 # with the mean of its other four folds (NOTE.txt in each inputs directory says so).
 #
 #   bash make_blog_figures.sh
-#   env: CHROMBPNET_DIR (main checkout), BLOG_DIR, WORK (inputs and plots), CONDA_ENV
+#
+# From site.env (../site.env.example): BLOG_DIR (where the figures go), BLOG_FIGURES_WORK
+# (inputs and intermediate plots), ENGINES_SUMMARY (engines/run_summarize.sh's output,
+# profile-stopgrad-off; default from ENGINES_ROOT), EXPAND_ANALYSIS (expand's analysis
+# directory; default from EXPAND_ROOT), CONDA_ROOT. Overrides: WORK, CONDA_ENV.
 
 set -euo pipefail
-OAK=/path/to/workdir
-HERE="${OAK}/software/chrombpnet-refactor/analysis/blog-2026-015/blog-figures"
-CHROMBPNET_DIR="${CHROMBPNET_DIR:-${OAK}/software/chrombpnet-refactor}"
-BLOG_DIR="${BLOG_DIR:-${OAK}/blogs/genomicsxai.github.io/content/blogs/2026-015}"
-WORK="${WORK:-${OAK}/chromatlas/test/blog-figures}"
-CONDA_ENV="${CONDA_ENV:-${OAK}/software/miniconda3/envs/chrombpnet-pytorch}"
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
+HERE="${BLOG_SCRIPTS}/blog-figures"
+BLOG_FIGURES_WORK="${WORK:-${BLOG_FIGURES_WORK:-}}"
+ENGINES_SUMMARY="${ENGINES_SUMMARY:-${ENGINES_ROOT:+${ENGINES_ROOT}/analysis/profile-stopgrad-off}}"
+EXPAND_ANALYSIS="${EXPAND_ANALYSIS:-${EXPAND_ROOT:+${EXPAND_ROOT}/analysis}}"
+require_site BLOG_DIR BLOG_FIGURES_WORK ENGINES_SUMMARY EXPAND_ANALYSIS
+WORK="${BLOG_FIGURES_WORK}"
+if [[ -z "${CONDA_ENV:-}" ]]; then
+  require_site CONDA_ROOT
+  CONDA_ENV="${CONDA_ROOT}/envs/chrombpnet-pytorch"
+fi
 PY="${CONDA_ENV}/bin/python"
-ENGINES="${OAK}/chromatlas/test/chrombpnet-refactor-engines/analysis/profile-stopgrad-off"
-EXPAND="${OAK}/chromatlas/test/chrombpnet-refactor-expand/analysis"
-PLOT="${CHROMBPNET_DIR}/analysis/engine/plot_summarize.py"
+ENGINES="${ENGINES_SUMMARY}"
+EXPAND="${EXPAND_ANALYSIS}"
+PLOT="${CHROMBPNET_REPO}/analysis/engine/plot_summarize.py"
 
 # The engines sweep's metrics predate base-2 JSD (eff8b48); the expand summary converted its own.
 "${PY}" "${HERE}/prepare_inputs.py" "${ENGINES}" "${WORK}/engines" --fill-original ENCSR868FGK:2 \

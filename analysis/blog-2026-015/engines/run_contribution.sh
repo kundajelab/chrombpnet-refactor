@@ -4,24 +4,23 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --gpus=1
 #SBATCH --mem=64GB
-#SBATCH --partition=<partitions>
 #SBATCH --job-name=engines_contribution
-#SBATCH --output=/path/to/workdir/sherlock/logs/engines_contribution.%A_%a.out
-#SBATCH --error=/path/to/workdir/sherlock/logs/engines_contribution.%A_%a.err
+#SBATCH --output=engines_contribution.%A_%a.out
+#SBATCH --error=engines_contribution.%A_%a.err
 #SBATCH --array=0-19
 
 # Score one finished run's 30K peak subsample again with DeepSHAP and keep the
 # scores (run_contribution.py says how, and why).
 #
-#   ./submit_all.sh sherlock --container --contribution   # every engine, every row
-#   sbatch run_contribution.sh sherlock <engine> [--container]
+#   ./submit_all.sh slurm --container --contribution   # every engine, every row
+#   sbatch run_contribution.sh slurm <engine> [--container]
 #   SLURM_ARRAY_TASK_ID=5 ./run_contribution.sh local jax
 #
 # Arguments as for run_train_full.sh. Runs that have not finished are
 # skipped; heads already scored are skipped (FORCE=1 rescores them).
-# submit_all.sh --contribution adds what sbatch needs per engine: the
-# compute-capability constraint for JAX, --gpu_cmode=shared for TensorFlow
-# (its DeepSHAP runs in a second process on the GPU).
+# submit_all.sh --contribution adds what sbatch needs per engine: site.env's
+# JAX_GPU_CONSTRAINT for JAX; TF_GPU_CONSTRAINT and SBATCH_SHARED_GPU_ARGS for
+# TensorFlow (its DeepSHAP runs in a second process on the GPU).
 #
 # Environment:
 #   HEADS="counts"   heads to score (default: counts profile; existing ones skipped)
@@ -48,16 +47,13 @@
 
 set -euo pipefail
 
-_find_engines_dir() {
-  local candidate
-  for candidate in "${ENGINES_DIR:-}" "${SLURM_SUBMIT_DIR:-}" \
-      "/path/to/workdir/software/chrombpnet-refactor/analysis/blog-2026-015/engines" \
-      "$(dirname "$(readlink -f "$0")")"; do
-    [[ -n "${candidate}" && -f "${candidate}/run_contribution.py" ]] && { echo "${candidate}"; return 0; }
-  done
-  return 1
-}
-ENGINES_DIR="$(_find_engines_dir)" || { echo "Error: cannot locate run_contribution.py; set ENGINES_DIR." >&2; exit 1; }
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
+ENGINES_DIR="${ENGINES_DIR:-${BLOG_SCRIPTS}/engines}"
+[[ -f "${ENGINES_DIR}/run_contribution.py" ]] || { echo "Error: no run_contribution.py in ${ENGINES_DIR}; set ENGINES_DIR." >&2; exit 1; }
 # shellcheck source=_common.sh
 source "${ENGINES_DIR}/_common.sh"
 

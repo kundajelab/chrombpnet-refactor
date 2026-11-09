@@ -8,16 +8,22 @@
 # Writes <root>/standard_tensorflow/<ASSAY>/<ENCID>/fold_<N>/; the originals
 # are only read. Why, and what each step checks: resave_tf_models.py.
 #
-# Runs where the GPU libraries are: on sherlock (inside a GPU job) it loads
-# the CUDA 11.2 / cuDNN 8.1 modules, elsewhere it uses the system copies.
+# The verify step needs a GPU with TensorFlow 2.8's CUDA 11.2 / cuDNN 8.1, which
+# site.env's site_tf28_libraries hook provides (module loads, or LD_LIBRARY_PATH).
+# Paths: DNASE_RC_ROOT, DNASE_RC_IDS (IDS_FILE overrides), ATLAS_DIR, GENOME,
+# REFERENCE_DIR, and ORIGINAL_REPO (TF_CHROMBPNET_DIR overrides).
 
 set -euo pipefail
 
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
+
 _find_dnase_rc_dir() {
   local candidate
-  for candidate in "${DNASE_RC_DIR:-}" "${SLURM_SUBMIT_DIR:-}" \
-      "/path/to/workdir/software/chrombpnet-refactor/analysis/blog-2026-015/dnase-rc" \
-      "$(dirname "$(readlink -f "$0")")"; do
+  for candidate in "${DNASE_RC_DIR:-}" "${BLOG_SCRIPTS}/dnase-rc"; do
     [[ -n "${candidate}" && -f "${candidate}/resave_tf_models.py" ]] && { echo "${candidate}"; return 0; }
   done
   return 1
@@ -25,27 +31,25 @@ _find_dnase_rc_dir() {
 DNASE_RC_DIR="$(_find_dnase_rc_dir)" || {
   echo "Error: cannot locate resave_tf_models.py. Set DNASE_RC_DIR." >&2; exit 1; }
 SCRIPT="${DNASE_RC_DIR}/resave_tf_models.py"
-TF_CHROMBPNET_DIR="${TF_CHROMBPNET_DIR:-/path/to/workdir/software/chrombpnet}"
+[[ -n "${TF_CHROMBPNET_DIR:-}" ]] || { require_site ORIGINAL_REPO; TF_CHROMBPNET_DIR="${ORIGINAL_REPO}"; }
+[[ -n "${IDS_FILE:-}" ]] || { require_site DNASE_RC_IDS; IDS_FILE="${DNASE_RC_IDS}"; }
+require_site DNASE_RC_ROOT ATLAS_DIR GENOME REFERENCE_DIR
+PATHS=(--ids "${IDS_FILE}" --root "${DNASE_RC_ROOT}")
 
-eval "$(conda shell.bash hook)"
+eval "$("${CONDA_ROOT:+${CONDA_ROOT}/bin/}conda" shell.bash hook)"
 
 echo "=== reference: the originals, under Python 3.7 (env bpnet, CPU)"
-( conda activate bpnet && CUDA_VISIBLE_DEVICES="" python "${SCRIPT}" reference "$@" )
+( conda activate bpnet && CUDA_VISIBLE_DEVICES="" python "${SCRIPT}" reference "${PATHS[@]}" "$@" )
 
 echo "=== resave: rebuild and check, under Python 3.8 (env chrombpnet, CPU)"
-( conda activate chrombpnet && CUDA_VISIBLE_DEVICES="" python "${SCRIPT}" resave "$@" )
+( conda activate chrombpnet && CUDA_VISIBLE_DEVICES="" python "${SCRIPT}" resave "${PATHS[@]}" "$@" )
 
 echo "=== verify: score each copy on its run's own test set (env chrombpnet, GPU)"
 (
   conda activate chrombpnet
   export PYTHONPATH="${TF_CHROMBPNET_DIR}${PYTHONPATH:+:${PYTHONPATH}}"
   export TF_FORCE_GPU_ALLOW_GROWTH=true
-  if [[ -n "${SLURM_JOB_ID:-}" ]]; then
-    module load cuda/11.2.0 cudnn/8.1.1.33
-  else
-    for d in /usr/local/cuda-11.2/lib64 /usr/local/cudnn-linux-x86_64-8.1.1_cuda11-archive/lib64; do
-      [[ -d "${d}" ]] && export LD_LIBRARY_PATH="${d}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
-    done
-  fi
-  python "${SCRIPT}" verify "$@"
+  site_hook tf28_libraries
+  python "${SCRIPT}" verify "${PATHS[@]}" --atlas-dir "${ATLAS_DIR}" --genome "${GENOME}" \
+    --reference-dir "${REFERENCE_DIR}" "$@"
 )

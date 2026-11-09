@@ -5,7 +5,7 @@ stock_stage_timer.py) against the kit's time for the same stage (its run
 record, in each kit arm's opt_manifest.json). Prints one line per lever, ready
 for the blog's "Measured effect (in original chrombpnet)" column.
 
-    python summarize_kit_levers.py [ANALYSIS_DIR]
+    python summarize_kit_levers.py ANALYSIS_DIR      # the jobs' OUT_ROOT (site.env's OPTIMIZATION_OUT)
 
 The kit runs several stages beside the GPU forward, so its time is what stays
 on the critical path (e.g. waiting for the bigWig writer at close, not the
@@ -22,8 +22,9 @@ import statistics
 import sys
 from collections import defaultdict
 
-ROOT = sys.argv[1] if len(sys.argv) > 1 else \
-    "/path/to/workdir/chromatlas/test/chrombpnet-refactor-optimization/analysis-rerun"
+if len(sys.argv) < 2:
+    sys.exit("usage: python summarize_kit_levers.py ANALYSIS_DIR  (the jobs' OUT_ROOT: site.env's OPTIMIZATION_OUT)")
+ROOT = sys.argv[1]
 
 
 def find(tree, key):

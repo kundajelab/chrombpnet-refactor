@@ -3,10 +3,9 @@
 #SBATCH --ntasks=1
 #SBATCH --gpus=1
 #SBATCH --mem=64GB
-#SBATCH --partition=<partitions>
 #SBATCH --job-name=dnase_rc_chrombpnet
-#SBATCH --output=/path/to/workdir/sherlock/logs/dnase_rc_chrombpnet.%A_%a.out
-#SBATCH --error=/path/to/workdir/sherlock/logs/dnase_rc_chrombpnet.%A_%a.err
+#SBATCH --output=dnase_rc_chrombpnet.%A_%a.out
+#SBATCH --error=dnase_rc_chrombpnet.%A_%a.err
 #SBATCH --array=10-19
 
 # Train the ChromBPNet model for the two primary stomach-tissue datasets
@@ -15,7 +14,7 @@
 # The bias model paths are given on the command line -- this script does not
 # derive them from the ids table and does not train one:
 #
-#   sbatch run_train_chrombpnet.sh sherlock right \
+#   sbatch run_train_chrombpnet.sh slurm right \
 #          --bias-model-dnase /path/to/dnase_bias.pt \
 #          --bias-model-atac  /path/to/atac_bias.pt
 #
@@ -79,6 +78,12 @@
 
 set -euo pipefail
 
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
+
 VALID_ARMS=(standard fr-only rc-only right left both-half both-full)
 DNASE_ONLY_ARMS=(right left both-half both-full)
 contains() { local n="$1"; shift; for x in "$@"; do [[ "$x" == "$n" ]] && return 0; done; return 1; }
@@ -89,13 +94,13 @@ contains() { local n="$1"; shift; for x in "$@"; do [[ "$x" == "$n" ]] && return
 # /var/spool/slurmd/job<N>/slurm_script and runs it from there, so under
 # sbatch $0 is that copy and its directory holds nothing else -- sourcing a
 # sibling file through it fails on the cluster while working perfectly when
-# run by hand, which is exactly how it got shipped. Resolve explicitly, most
-# specific first, and verify the directory really is the right one.
+# run by hand, which is exactly how it got shipped. So it is DNASE_RC_DIR, or
+# ${BLOG_SCRIPTS}/dnase-rc -- which the lines above find through
+# SLURM_SUBMIT_DIR under sbatch, so submit from this folder -- and the
+# directory is verified before it is used.
 _find_dnase_rc_dir() {
   local candidate
-  for candidate in "${DNASE_RC_DIR:-}" "${SLURM_SUBMIT_DIR:-}" \
-      "/path/to/workdir/software/chrombpnet-refactor/analysis/blog-2026-015/dnase-rc" \
-      "$(dirname "$(readlink -f "$0")")"; do
+  for candidate in "${DNASE_RC_DIR:-}" "${BLOG_SCRIPTS}/dnase-rc"; do
     [[ -n "${candidate}" && -f "${candidate}/_args.sh" ]] && { echo "${candidate}"; return 0; }
   done
   return 1
@@ -112,7 +117,7 @@ source "${DNASE_RC_DIR}/_args.sh"
 #
 #   run_train_chrombpnet.sh right --bias-model-dnase /path/dnase_bias.pt \
 #                                 --bias-model-atac  /path/atac_bias.pt
-#   run_train_chrombpnet.sh sherlock right --bias-model /path/one_bias.pt
+#   run_train_chrombpnet.sh slurm right --bias-model /path/one_bias.pt
 #
 # Equivalent environment variables are accepted too -- BIAS_MODEL_DNASE,
 # BIAS_MODEL_ATAC, BIAS_MODEL -- because sbatch argument passing has been a
@@ -138,12 +143,15 @@ set -- ${POSITIONAL[@]+"${POSITIONAL[@]}"}
 resolve_args "${1:-}" "${2:-}"
 
 
-if [[ "$CLUSTER" == "sherlock" ]]; then
-	# chrombpnet-pytorch by default; CONDA_ENV=chrombpnet-pytorch-sherlock (torch
-	# 2.5.1, built on sherlock for glibc 2.17) reproduces earlier runs.
+# The glibc 2.17 build of the environment (envs/chrombpnet-pytorch-glibc.yml), by
+# name; site.env's site_pytorch_compiler hook runs before it is activated on a Slurm node.
+PT_ENV_GLIBC217="${PT_ENV_GLIBC217:-chrombpnet-pytorch-glibc}"
+if [[ "$CLUSTER" == "slurm" ]]; then
+	# chrombpnet-pytorch by default; CONDA_ENV=${PT_ENV_GLIBC217} (torch
+	# 2.5.1, built for glibc 2.17) reproduces earlier runs.
 	CONDA_ENV="${CONDA_ENV:-chrombpnet-pytorch}"
-	if [[ "${CONDA_ENV}" == "chrombpnet-pytorch-sherlock" ]]; then
-		module load gcc/14.2.0
+	if [[ "${CONDA_ENV}" == "${PT_ENV_GLIBC217}" ]]; then
+		site_hook pytorch_compiler
 	fi
 else
 	: "${SLURM_ARRAY_TASK_ID:=0}"  # Manually set row when running by hand
@@ -152,24 +160,23 @@ fi
 
 echo "conda environment: ${CONDA_ENV}"
 # chrombpnet-pytorch (PyTorch 2.14) needs glibc >= 2.28 (engines/envs/glibc_scan.py:
-# torch and igraph); some of sherlock's GPU nodes (the L40S ones) run 2.17. Stop
+# torch and igraph); some clusters' GPU nodes still run glibc 2.17. Stop
 # here on such a node rather than failing at the first import.
 GLIBC_FLOOR="${GLIBC_FLOOR:-2.28}"
-if [[ "${CONDA_ENV}" != "chrombpnet-pytorch-sherlock" ]]; then
+if [[ "${CONDA_ENV}" != "${PT_ENV_GLIBC217}" ]]; then
 	NODE_GLIBC="$(ldd --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+$' || true)"
 	if [[ -n "${NODE_GLIBC}" && "$(printf '%s\n%s\n' "${GLIBC_FLOOR}" "${NODE_GLIBC}" | sort -V | head -1)" != "${GLIBC_FLOOR}" ]]; then
 		echo "Error: ${CONDA_ENV} needs glibc >= ${GLIBC_FLOOR}; this node ($(hostname)) has ${NODE_GLIBC}." >&2
-		echo "       Resubmit with --exclude=$(hostname), or set CONDA_ENV=chrombpnet-pytorch-sherlock." >&2
+		echo "       Resubmit with --exclude=$(hostname), or set CONDA_ENV=${PT_ENV_GLIBC217}." >&2
 		exit 1
 	fi
 fi
-eval "$(conda shell.bash hook)"
+eval "$("${CONDA_ROOT:+${CONDA_ROOT}/bin/}conda" shell.bash hook)"
 conda activate "${CONDA_ENV}"
 
-IDS_FILE="${IDS_FILE:-/path/to/workdir/sherlock/ids/chromatlas/chrombpnet-refactor/ids_chrombpnet_refactor_benchmark_data_aug.txt}"
+[[ -n "${IDS_FILE:-}" ]] || { require_site DNASE_RC_IDS; IDS_FILE="${DNASE_RC_IDS}"; }
 
-OAK_DIR="/path/to/workdir"
-REFERENCE_DIR="${OAK_DIR}/chromatlas/reference"
+require_site GENOME CHROM_SIZES REFERENCE_DIR DNASE_RC_ROOT
 
 # SLURM_ARRAY_TASK_ID is 0-based; data row 1 is the first line after the header.
 DATA_ROW=$((SLURM_ARRAY_TASK_ID + 1))
@@ -209,14 +216,14 @@ fi
 # The chrombpnet flags this arm stands for (_args.sh).
 arm_flags "${DATA_AUG}" "${ASSAY}" || exit 2
 
-GENOME_PATH=${REFERENCE_DIR}/hg38/hg38.fa
-CHROM_PATH=${REFERENCE_DIR}/hg38/hg38.chrom.sizes
+GENOME_PATH=${GENOME}
+CHROM_PATH=${CHROM_SIZES}
 BLACKLIST_PATH=${REFERENCE_DIR}/blacklist.bed.gz
 FOLD_JSON_PATH=${REFERENCE_DIR}/folds/fold_${FOLD_NUM}.json
 
 # Each arm gets its own tree, so arms never overwrite one another and
 # run_compare.sh can find the standard model alongside.
-ARM_DIR=${OAK_DIR}/chromatlas/test/chrombpnet-refactor-dnase-rc/${DATA_AUG}
+ARM_DIR=${DNASE_RC_ROOT}/${DATA_AUG}
 ENCID_DIR=${ARM_DIR}/${ASSAY}/${ENCID}
 FOLD_DIR=${ENCID_DIR}/fold_${FOLD_NUM}
 DATA_DIR=${FOLD_DIR}/data/output/${ENCID}

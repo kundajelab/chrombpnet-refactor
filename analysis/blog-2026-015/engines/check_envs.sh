@@ -4,24 +4,29 @@
 # checkout, has the CLI, runs a convolution on the GPU, and loads and
 # exercises everything else the pipeline uses (runtime_check in _common.sh).
 #
-#   srun -p <partitions> --gpus=1 --time=0:30:00 --gpu_cmode=shared \
-#        -C "GPU_CC:7.5|GPU_CC:8.0|GPU_CC:8.6|GPU_CC:8.9|GPU_CC:9.0" ./check_envs.sh sherlock --container
+#   srun <SBATCH_SITE_ARGS> --gpus=1 --time=0:30:00 <SBATCH_SHARED_GPU_ARGS> \
+#        --constraint="<JAX_GPU_CONSTRAINT>" ./check_envs.sh slurm --container
 #   ./check_envs.sh local
-#   ./check_envs.sh sherlock jax --container    # one engine
+#   ./check_envs.sh slurm jax --container    # one engine
 #
-# --container runs each check inside the container (see _common.sh), as the
-# jobs will with submit_all.sh --container; the image is pulled here the
-# first time. On sherlock JAX fails without it. The -C constraint asks for a GPU the
-# JAX env's cuDNN has kernels for (compute capability 7.5+); PyTorch and
-# TensorFlow also run on older ones. --gpu_cmode=shared: the TensorFlow
-# check refuses a GPU in sherlock's default Exclusive_Process mode, which
-# the TF engine's DeepSHAP process cannot use (submit_all.sh asks for shared
-# mode for the TensorFlow jobs).
+# (<...>: site.env's values.) --container runs each check inside the container
+# (see _common.sh), as the jobs will with submit_all.sh --container; the image
+# is pulled here the first time. On a glibc older than 2.27 JAX fails without
+# it. The constraint asks for a GPU the JAX env's cuDNN has kernels for
+# (compute capability 7.5+); PyTorch and TensorFlow also run on older ones.
+# SBATCH_SHARED_GPU_ARGS: the TensorFlow check refuses a GPU in Exclusive_Process
+# mode (some clusters' default), which the TF engine's DeepSHAP process cannot
+# use (submit_all.sh asks for shared mode for the TensorFlow jobs).
 #
 # Exits non-zero if any engine fails; each failure says why.
 
 set -uo pipefail
 
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
 HERE="$(dirname "$(readlink -f "$0")")"
 # shellcheck source=_common.sh
 source "${HERE}/_common.sh"

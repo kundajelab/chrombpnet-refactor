@@ -1,8 +1,8 @@
 #!/bin/bash
 # Submit every arm of both sweeps, in the order their dependencies require.
 #
-#   ./submit_all.sh sherlock            # submit
-#   ./submit_all.sh sherlock --dry-run  # print the sbatch lines only
+#   ./submit_all.sh slurm            # submit
+#   ./submit_all.sh slurm --dry-run  # print the sbatch lines only
 #
 #   run_retrain_full.sh    rows 1-10  (K562)    array 0-9
 #   run_train_chrombpnet.sh rows 11-20 (stomach) array 10-19
@@ -15,21 +15,36 @@
 
 set -euo pipefail
 
-CLUSTER="${1:-sherlock}"
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
+
+CLUSTER="${1:-slurm}"
 DRY=""
 [[ "${2:-}" == "--dry-run" ]] && DRY="echo"
 
-HERE="$(dirname "$(readlink -f "$0")")"
+HERE="${BLOG_SCRIPTS}/dnase-rc"
 ARMS=(standard fr-only rc-only right left both-half both-full)
+
+# Each job finds this folder through SLURM_SUBMIT_DIR, so submit from it. SBATCH_SITE_ARGS
+# (site.env) carries the cluster's own options; with LOG_DIR set the logs go there, named
+# as the #SBATCH lines name them (job name, array job, task).
+cd "${HERE}"
+read -ra SITE_ARGS <<< "${SBATCH_SITE_ARGS:-}"
+LOG_ARGS=()
+[[ -n "${LOG_DIR:-}" ]] && LOG_ARGS=(-o "${LOG_DIR}/%x.%A_%a.out" -e "${LOG_DIR}/%x.%A_%a.err")
+SB=(sbatch --parsable ${SITE_ARGS[@]+"${SITE_ARGS[@]}"} ${LOG_ARGS[@]+"${LOG_ARGS[@]}"})
 
 echo "=== K562 (rows 1-10) ==="
 declare -A K562_JOB
 for arm in "${ARMS[@]}"; do
   if [[ -n "$DRY" ]]; then
-    echo "sbatch --parsable ${HERE}/run_retrain_full.sh ${CLUSTER} ${arm}"
+    echo "${SB[*]} ${HERE}/run_retrain_full.sh ${CLUSTER} ${arm}"
     K562_JOB[$arm]="<jobid>"
   else
-    K562_JOB[$arm]=$(sbatch --parsable "${HERE}/run_retrain_full.sh" "${CLUSTER}" "${arm}")
+    K562_JOB[$arm]=$("${SB[@]}" "${HERE}/run_retrain_full.sh" "${CLUSTER}" "${arm}")
     printf "  %-10s job %s\n" "${arm}" "${K562_JOB[$arm]}"
   fi
 done
@@ -39,13 +54,13 @@ echo "=== stomach (rows 11-20), each waiting on its own arm's K562 job ==="
 for arm in "${ARMS[@]}"; do
   dep="afterany:${K562_JOB[$arm]}"
   if [[ -n "$DRY" ]]; then
-    echo "sbatch --parsable --dependency=${dep} ${HERE}/run_train_chrombpnet.sh ${CLUSTER} ${arm}"
+    echo "${SB[*]} --dependency=${dep} ${HERE}/run_train_chrombpnet.sh ${CLUSTER} ${arm}"
   else
-    jid=$(sbatch --parsable --dependency="${dep}" \
+    jid=$("${SB[@]}" --dependency="${dep}" \
                  "${HERE}/run_train_chrombpnet.sh" "${CLUSTER}" "${arm}")
     printf "  %-10s job %s  (after %s)\n" "${arm}" "${jid}" "${K562_JOB[$arm]}"
   fi
 done
 
 echo
-echo "Progress:  ./check_runs.sh          Plot:  ./plot_summarize.sh --refresh"
+echo "Progress:  ./check_runs.sh          Then:  ./summarize.sh, ./plot_summarize.sh --results ... --out ..."

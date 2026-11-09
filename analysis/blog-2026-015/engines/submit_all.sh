@@ -2,16 +2,20 @@
 # Submit the whole sweep: the shared nonpeaks, then one training array per
 # engine. Or, with --contribution, one run_contribution.sh array per engine.
 #
-#   ./submit_all.sh sherlock --container                   # submit the sweep
-#   ./submit_all.sh sherlock --container --dry-run         # print the sbatch lines only
-#   ./submit_all.sh sherlock --container --contribution   # rescore finished runs' subsamples
-#   ./submit_all.sh sherlock --original-retrain           # the original, retrained per row
+#   ./submit_all.sh slurm --container                   # submit the sweep
+#   ./submit_all.sh slurm --container --dry-run         # print the sbatch lines only
+#   ./submit_all.sh slurm --container --contribution   # rescore finished runs' subsamples
+#   ./submit_all.sh slurm --original-retrain           # the original, retrained per row
+#
+# (slurm is the default; sherlock, the name these were submitted with, means
+# the same.) Every job gets site.env's SBATCH_SITE_ARGS, and its logs go to
+# site.env's LOG_DIR, or to this folder without one (_common.sh: site_sbatch).
 #
 #   --container      run every step inside the Ubuntu 22.04 image (_common.sh):
-#                    required for JAX on sherlock, and it gives every engine
-#                    the same system tools, so their runtimes compare.
-#                    Without it, a submission that includes JAX on sherlock
-#                    is refused.
+#                    required for JAX on a glibc older than 2.27, and it gives
+#                    every engine the same system tools, so their runtimes
+#                    compare. Without it, a submission that includes JAX from
+#                    such a host is refused.
 #   --contribution  submit only run_contribution.sh, one array per engine,
 #                    with the same per-engine sbatch options as training
 #   --deepshap-seeds submit only run_deepshap_seeds.sh: the original chrombpnet's
@@ -42,35 +46,45 @@
 #   ARRAY=0-4          only these rows (default: every row; 0-based)
 #   SKIP_PREP=1        do not submit the prep array (nonpeaks already exist)
 #   GPU_CONSTRAINT=..  passed to every engine's training jobs as
-#                      --constraint, e.g. "GPU_SKU:L40S", so all engines run
-#                      on one GPU type and their runtimes compare
-#                      (`sh_node_feat` lists the feature names on sherlock)
+#                      --constraint, e.g. one GPU model's feature name, so all
+#                      engines run on one GPU type and their runtimes compare
+#                      (your cluster lists its node features)
 #   SBATCH_EXTRA=".."  more sbatch options for every GPU job, word-split, e.g.
-#                      "--exclude=<node>,<node>"
-#   TF_GPU_CONSTRAINT=..   the TensorFlow jobs' constraint when GPU_CONSTRAINT is
-#                      unset. Default: GPUs of 16 GB or more -- compute
-#                      capability 6.0 (P100), 7.0 (V100), 8.x and 9.0, leaving
-#                      out 6.1 (12 GB TITAN Xp) and 7.5 (11 GB RTX 2080 Ti).
-#                      TensorFlow's DeepSHAP runs in a second process beside
-#                      the one that trained, and the two do not fit 12 GB.
-#                      Set it empty to drop it.
-#   JAX_GPU_CONSTRAINT=..  the JAX jobs' constraint when GPU_CONSTRAINT is
-#                      unset. Default: compute capability 7.5 or newer, the
-#                      GPUs the JAX env's cuDNN 9.27 has kernels for (not the
-#                      Pascal P100/TITAN Xp or Volta V100 nodes). Set it
-#                      empty to drop it.
+#                      "--exclude=<nodes>"
+#
+# From site.env (an environment variable of the same name overrides it; an
+# empty one drops it):
+#   TF_GPU_CONSTRAINT  the TensorFlow jobs' constraint when GPU_CONSTRAINT is
+#                      unset: GPUs of 16 GB or more. TensorFlow's DeepSHAP runs
+#                      in a second process beside the one that trained, and the
+#                      two do not fit 12 GB. (The sweep's: compute capability
+#                      6.0, 7.0, 8.x and 9.0, leaving out 6.1, a 12 GB TITAN Xp,
+#                      and 7.5, an 11 GB RTX 2080 Ti.)
+#   JAX_GPU_CONSTRAINT the JAX jobs' constraint when GPU_CONSTRAINT is unset:
+#                      compute capability 7.5 or newer, the GPUs the JAX env's
+#                      cuDNN 9.27 has kernels for (not Pascal or Volta).
+#   SBATCH_SHARED_GPU_ARGS  sbatch options that give the TensorFlow jobs a GPU
+#                      in shared (Default) compute mode, where the cluster's
+#                      GPUs default to Exclusive_Process, which refuses the
+#                      TensorFlow engine's second (DeepSHAP) process
 
 set -euo pipefail
 
 # Read before _common.sh, which defines ENGINES as the list of all engines.
 REQUESTED_ENGINES="${ENGINES:-}"
 
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
 HERE="$(dirname "$(readlink -f "$0")")"
 # shellcheck source=_common.sh
 source "${HERE}/_common.sh"
+cd "${HERE}"
 
 parse_common_flags "$@"
-CLUSTER="sherlock"
+CLUSTER="slurm"
 DRY=""
 CONTRIBUTIONS=""
 DEEPSHAP_SEEDS=""
@@ -81,10 +95,14 @@ for arg in ${ARGS[@]+"${ARGS[@]}"}; do
     --contribution|--contributions) CONTRIBUTIONS=1 ;;
     --deepshap-seeds) DEEPSHAP_SEEDS=1 ;;
     --original-retrain) ORIGINAL_RETRAIN=1 ;;
-    sherlock|local) CLUSTER="${arg}" ;;
-    *) echo "unknown argument '${arg}' (usage: submit_all.sh [sherlock|local] [--container] [--contribution|--deepshap-seeds|--original-retrain] [--dry-run])" >&2; exit 2 ;;
+    slurm|local) CLUSTER="${arg}" ;;
+    sherlock) CLUSTER="slurm" ;;
+    *) echo "unknown argument '${arg}' (usage: submit_all.sh [slurm|local] [--container] [--contribution|--deepshap-seeds|--original-retrain] [--dry-run])" >&2; exit 2 ;;
   esac
 done
+require_sweep REFERENCE_DIR GENOME CHROM_SIZES
+[[ -n "${DEEPSHAP_SEEDS}${ORIGINAL_RETRAIN}" ]] && require_site ORIGINAL_REPO
+[[ -n "${DEEPSHAP_SEEDS}" ]] && require_site ENCODE_MODELS
 # The original runs with TensorFlow, whatever ENGINES says.
 [[ -n "${DEEPSHAP_SEEDS}${ORIGINAL_RETRAIN}" ]] && REQUESTED_ENGINES="tensorflow"
 CONTAINER_ARG=()
@@ -104,8 +122,8 @@ done
 
 ARRAY_OPT=()
 [[ -n "${ARRAY:-}" ]] && ARRAY_OPT=(--array="${ARRAY}")
-JAX_GPU_CONSTRAINT="${JAX_GPU_CONSTRAINT-GPU_CC:7.5|GPU_CC:8.0|GPU_CC:8.6|GPU_CC:8.9|GPU_CC:9.0}"
-TF_GPU_CONSTRAINT="${TF_GPU_CONSTRAINT-GPU_CC:6.0|GPU_CC:7.0|GPU_CC:8.0|GPU_CC:8.6|GPU_CC:8.9|GPU_CC:9.0}"
+JAX_GPU_CONSTRAINT="${JAX_GPU_CONSTRAINT:-}"
+TF_GPU_CONSTRAINT="${TF_GPU_CONSTRAINT:-}"
 constraint_for() {
   local constraint="${GPU_CONSTRAINT:-}"
   [[ -z "${constraint}" && "$1" == "jax" ]] && constraint="${JAX_GPU_CONSTRAINT}"
@@ -121,21 +139,17 @@ engine_options() {
   ENGINE_OPT=(${SBATCH_EXTRA_OPT[@]+"${SBATCH_EXTRA_OPT[@]}"})
   constraint="$(constraint_for "${engine}")"
   [[ -n "${constraint}" ]] && ENGINE_OPT+=("${constraint}")
-  # sherlock's GPUs default to Exclusive_Process compute mode, which refuses
-  # the TensorFlow engine's second (DeepSHAP) process; --gpu_cmode is
-  # sherlock's own sbatch option for the job's GPUs.
-  if [[ "${engine}" == "tensorflow" && "${CLUSTER}" == "sherlock" ]]; then ENGINE_OPT+=(--gpu_cmode=shared); fi
+  # A GPU in Exclusive_Process compute mode refuses the TensorFlow engine's
+  # second (DeepSHAP) process: site.env's SBATCH_SHARED_GPU_ARGS asks for one
+  # in shared mode where the cluster's default is exclusive.
+  local shared=()
+  read -r -a shared <<< "${SBATCH_SHARED_GPU_ARGS:-}"
+  if [[ "${engine}" == "tensorflow" && "${CLUSTER}" == "slurm" ]]; then ENGINE_OPT+=(${shared[@]+"${shared[@]}"}); fi
   return 0
 }
 
-submit() {
-  if [[ -n "${DRY}" ]]; then
-    echo "sbatch --parsable $*" >&2
-    echo "<jobid>"
-  else
-    sbatch --parsable "$@"
-  fi
-}
+# site.env's sbatch options and log directory, then these (_common.sh).
+submit() { site_sbatch "$@"; }
 
 if [[ -n "${DEEPSHAP_SEEDS}" ]]; then
   echo "=== the original chrombpnet's DeepSHAP on the original models, one array per seed" \
@@ -158,7 +172,7 @@ fi
 if [[ -n "${ORIGINAL_RETRAIN}" ]]; then
   if (( USE_CONTAINER )); then
     echo "Error: --original-retrain runs natively, not with --container: the original's report PDF" \
-         "needs the system's pango (on sherlock, a module), which the image does not have." >&2
+         "needs the system's pango (site.env: report_libraries), which the image does not have." >&2
     exit 2
   fi
   echo "=== the original chrombpnet, retrained on each row's sweep inputs, then its DeepSHAP" \

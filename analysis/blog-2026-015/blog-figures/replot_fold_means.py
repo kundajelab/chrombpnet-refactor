@@ -5,7 +5,8 @@ import sys
 
 import pandas as pd
 
-sys.path.insert(0, "/path/to/workdir/software/chrombpnet-refactor/analysis/expand")
+# analysis/expand, two levels up from this file in the repository.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "expand"))
 import compare_fold_means as cfm  # noqa: E402
 
 out_dir, label = sys.argv[1], sys.argv[2]

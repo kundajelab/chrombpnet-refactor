@@ -18,15 +18,21 @@
 
 set -euo pipefail
 
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
+
 ENCID="${1:-ENCSR000EOT}"
 CHROM="${2:-chr1}"
 
-CONDA_ENV="${CONDA_ENV:-/path/to/workdir/software/miniconda3/envs/chrombpnet-pytorch}"
+[[ -n "${CONDA_ENV:-}" ]] || { require_site CONDA_ROOT; CONDA_ENV="${CONDA_ROOT}/envs/chrombpnet-pytorch"; }
 export PATH="${CONDA_ENV}/bin:${PATH}"
 
-OAK="/path/to/workdir"
-GENOME="${OAK}/chromatlas/reference/hg38/hg38.fa"
-IDS="${OAK}/sherlock/ids/chromatlas/chrombpnet-refactor/ids_chrombpnet_refactor_benchmark_data_aug.txt"
+require_site GENOME CHROM_SIZES
+[[ -n "${IDS_FILE:-}" ]] || { require_site DNASE_RC_IDS; IDS_FILE="${DNASE_RC_IDS}"; }
+IDS="${IDS_FILE}"
 
 line=$(awk -v e="${ENCID}" '$2==e {print; exit}' "${IDS}")
 [[ -n "${line}" ]] || { echo "no such ENCID in ${IDS}: ${ENCID}"; exit 2; }
@@ -49,7 +55,7 @@ fi
 echo "${CHROM}: $(zcat "${TAG}" | wc -l) reads"
 
 SIZES="${WORK}/sizes.tsv"
-awk -v c="${CHROM}" '$1==c' "${OAK}/chromatlas/reference/hg38/hg38.chrom.sizes" > "${SIZES}"
+awk -v c="${CHROM}" '$1==c' "${CHROM_SIZES}" > "${SIZES}"
 
 if [[ "${ASSAY}" == "DNASE" ]]; then
   ARMS=(standard right left both-half both-full)

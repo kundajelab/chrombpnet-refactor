@@ -12,8 +12,23 @@
 # rows) are kept.
 #
 #   bash submit_headtohead_fast.sh
-#   python summarize_rerun.py      # the NVIDIA-L40S_cuda-89_headtohead-fast section
+#   python summarize_rerun.py <OPTIMIZATION_OUT>   # the NVIDIA-L40S_cuda-89_headtohead-fast section
+# site.env: SBATCH_L40S, SBATCH_SITE_ARGS, LOG_DIR.
 set -eo pipefail
-cd /path/to/workdir/software/chrombpnet-refactor/analysis/blog-2026-015/optimization
+cd "$(dirname "$(readlink -f "$0")")"   # sbatch from this folder: the jobs find ../_site.sh through it
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
+# Slurm logs into site.env's LOG_DIR when it names one (else in this folder).
+log_args () {  # %j | %A_%a -> LOGS
+  LOGS=()
+  [[ -n "${LOG_DIR:-}" ]] && LOGS=(-o "${LOG_DIR}/%x.$1.out" -e "${LOG_DIR}/%x.$1.err")
+  return 0
+}
+require_site SBATCH_L40S
+log_args %A_%a
+# shellcheck disable=SC2086  # the site's options are word-split on purpose
 ARMS=orig_predict,ref_predict,ref_predict_fast RUN_KIND=headtohead-fast \
-  sbatch --constraint="GPU_SKU:L40S" --time=03:00:00 --job-name=chrombpnet_headtohead_fast run_headtohead.sh sherlock
+  sbatch ${SBATCH_SITE_ARGS} ${SBATCH_L40S} "${LOGS[@]}" --time=03:00:00 --job-name=chrombpnet_headtohead_fast run_headtohead.sh slurm

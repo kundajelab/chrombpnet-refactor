@@ -2,10 +2,9 @@
 # Collate the per-fold timings into one table per run, with speedups of the
 # fused-kernel arm against the default. Run after the jobs finish:
 #
-#   ./summarize.sh                      # the default results directory (chrombpnet-refactor-optimization/analysis)
-#   ./summarize.sh /path/to/results     # or somewhere else
+#   ./summarize.sh RESULTS     # the jobs' OUT_ROOT (site.env's OPTIMIZATION_ANALYSIS)
 set -euo pipefail
-RESULTS="${1:-/path/to/workdir/chromatlas/test/chrombpnet-refactor-optimization/analysis}"
+RESULTS="${1:?usage: summarize.sh RESULTS_DIR (the OUT_ROOT of the benchmark jobs, site.env OPTIMIZATION_ANALYSIS)}"
 shopt -s nullglob
 # Runs live at results/<run tag>/fold_N/ so concurrent sweeps on different
 # cards cannot collide. The older flat results/fold_N/ layout is still read.

@@ -3,7 +3,7 @@
 run tag (*_sections34*), every number from the same job, dataset, fold, model
 (the full model, -cm), regions and batch size.
 
-    python summarize_sections34.py [ANALYSIS_DIR]
+    python summarize_sections34.py ANALYSIS_DIR      # the jobs' OUT_ROOT (site.env's OPTIMIZATION_OUT)
 
 Section 3 (chrombpnet 1.x vs 1.x with the optimization kit, `fast` where the
   run has it, else `exact`): per lever, the stage it replaces: stock (the
@@ -26,8 +26,9 @@ import statistics
 import sys
 from collections import defaultdict
 
-ROOT = sys.argv[1] if len(sys.argv) > 1 else \
-    "/path/to/workdir/chromatlas/test/chrombpnet-refactor-optimization/analysis-rerun"
+if len(sys.argv) < 2:
+    sys.exit("usage: python summarize_sections34.py ANALYSIS_DIR  (the jobs' OUT_ROOT: site.env's OPTIMIZATION_OUT)")
+ROOT = sys.argv[1]
 HERE = os.path.dirname(os.path.abspath(__file__))
 ARMS = ("stock", "stages", "stockmalloc", "fast_k1", "fast", "exact", "refactor4", "refactor4_fast", "refactor4_exact",
         "refactor4_nomalloc", "refactor4_prev", "refactor", "refactor_nomalloc", "forward_eager", "forward_fast",

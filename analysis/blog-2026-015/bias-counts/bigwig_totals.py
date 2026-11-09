@@ -3,7 +3,9 @@
 bigWigs (with bias: "predicted signal profile"; without: "bias-corrected
 predicted signal profile"), read from each file's total summary.
 
-    python bigwig_totals.py OUT.tsv [model_enffs_download.tsv]
+    python bigwig_totals.py OUT.tsv MODEL_DOWNLOADS.tsv
+
+MODEL_DOWNLOADS.tsv: each model's two prediction bigWigs on the ENCODE portal (their download URLs).
 
 A bigWig's header points at a 40-byte total summary (bases covered, min, max,
 sum, sum of squares) computed over the full-resolution data when the file was
@@ -19,7 +21,6 @@ import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
-DOWNLOADS = "/path/to/workdir/sherlock/ids/encode/portal/model_enffs_download.tsv"
 COLUMNS = {"with_bias": "predicted signal profile bigWig",
            "without_bias": "bias-corrected predicted signal profile bigWig"}
 MAGIC = 0x888FFC26
@@ -59,8 +60,9 @@ def total_summary(source):
 
 
 def main():
-    out = sys.argv[1]
-    downloads = sys.argv[2] if len(sys.argv) > 2 else DOWNLOADS
+    if len(sys.argv) != 3:
+        sys.exit(__doc__)
+    out, downloads = sys.argv[1], sys.argv[2]
     with open(downloads) as handle:
         models = [row for row in csv.DictReader(handle, delimiter="\t") if row["type"] == "ChromBPNet"]
     jobs = [(row, kind, row[column]) for row in models for kind, column in COLUMNS.items()]

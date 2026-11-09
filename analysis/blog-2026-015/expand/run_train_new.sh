@@ -4,16 +4,15 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --gpus=1
 #SBATCH --mem=64GB
-#SBATCH --partition=<partitions>
 #SBATCH --job-name=expand_new
-#SBATCH --output=/path/to/workdir/sherlock/logs/expand_new.%A_%a.out
-#SBATCH --error=/path/to/workdir/sherlock/logs/expand_new.%A_%a.err
+#SBATCH --output=expand_new.%A_%a.out
+#SBATCH --error=expand_new.%A_%a.err
 #SBATCH --array=0-19
 
 # Train the new version for one dataset and fold: a profile-only bias model,
 # then ChromBPNet with the epoch kept by validation counts r + 1 - median JSD.
 #
-#   sbatch run_train_new.sh sherlock --container      # all 20 rows
+#   sbatch run_train_new.sh slurm --container      # all 20 rows
 #   SLURM_ARRAY_TASK_ID=5 ./run_train_new.sh local    # one row, here
 #
 # Each task runs the engines sweep's two commands (../engines/run_train_full.sh)
@@ -43,17 +42,13 @@
 
 set -euo pipefail
 
-_find_here() {
-  local candidate
-  for candidate in "${EXPAND_DIR:-}" "${SLURM_SUBMIT_DIR:-}" \
-      "/path/to/workdir/software/chrombpnet-refactor/analysis/blog-2026-015/expand" \
-      "$(dirname "$(readlink -f "$0")")"; do
-    [[ -n "${candidate}" && -f "${candidate}/_common.sh" && -f "${candidate}/run_train_new.sh" ]] \
-      && { echo "${candidate}"; return 0; }
-  done
-  return 1
-}
-EXPAND_DIR="$(_find_here)" || { echo "Error: cannot locate expand/_common.sh; set EXPAND_DIR." >&2; exit 1; }
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
+EXPAND_DIR="${EXPAND_DIR:-${BLOG_SCRIPTS}/expand}"
+[[ -f "${EXPAND_DIR}/_common.sh" ]] || { echo "Error: no _common.sh in ${EXPAND_DIR}; set EXPAND_DIR." >&2; exit 1; }
 # shellcheck source=_common.sh
 source "${EXPAND_DIR}/_common.sh"
 

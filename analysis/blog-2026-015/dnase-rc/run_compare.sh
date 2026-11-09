@@ -9,7 +9,7 @@
 # and summarize.py reads it from there.
 #
 #   ./run_compare.sh <cluster> <data-aug>
-#   sbatch run_compare.sh sherlock right
+#   sbatch run_compare.sh slurm right
 #
 #   DRY_RUN=1            resolve and print every path and command, run nothing
 #   FORCE=1              recompute results that already exist (default: skip them)
@@ -17,9 +17,9 @@
 #                        metrics are kept and the predictions removed)
 #   TF_CONDA_ENV=...     env for the TensorFlow model (default: chrombpnet)
 #   TF_CHROMBPNET_DIR=.. the original ChromBPNet checkout it runs from
-#                        (default: /path/to/workdir/software/chrombpnet)
+#                        (default: ORIGINAL_REPO from site.env)
 #   TF_BATCH_SIZE=...    its prediction batch size (default 256; the original's
-#                        512 runs out of memory on the 11-12 GB sherlock GPUs)
+#                        512 runs out of memory on 11-12 GB GPUs)
 #
 # Results, under comparisons/<arm>/<ASSAY>/<ENCID>/fold_N/:
 #
@@ -74,13 +74,18 @@
 #SBATCH --ntasks=1
 #SBATCH --gpus=1
 #SBATCH --mem=64GB
-#SBATCH --partition=<partitions>
 #SBATCH --job-name=dnase_rc_cmp
-#SBATCH --output=/path/to/workdir/sherlock/logs/dnase_rc_cmp.%A_%a.out
-#SBATCH --error=/path/to/workdir/sherlock/logs/dnase_rc_cmp.%A_%a.err
+#SBATCH --output=dnase_rc_cmp.%A_%a.out
+#SBATCH --error=dnase_rc_cmp.%A_%a.err
 #SBATCH --array=0-19
 
 set -euo pipefail
+
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
 
 # `standard` is the reference every other arm is compared against, so it is
 # not itself comparable.
@@ -94,13 +99,13 @@ contains() { local n="$1"; shift; for x in "$@"; do [[ "$x" == "$n" ]] && return
 # /var/spool/slurmd/job<N>/slurm_script and runs it from there, so under
 # sbatch $0 is that copy and its directory holds nothing else -- sourcing a
 # sibling file through it fails on the cluster while working perfectly when
-# run by hand, which is exactly how it got shipped. Resolve explicitly, most
-# specific first, and verify the directory really is the right one.
+# run by hand, which is exactly how it got shipped. So it is DNASE_RC_DIR, or
+# ${BLOG_SCRIPTS}/dnase-rc -- which the lines above find through
+# SLURM_SUBMIT_DIR under sbatch, so submit from this folder -- and the
+# directory is verified before it is used.
 _find_dnase_rc_dir() {
   local candidate
-  for candidate in "${DNASE_RC_DIR:-}" "${SLURM_SUBMIT_DIR:-}" \
-      "/path/to/workdir/software/chrombpnet-refactor/analysis/blog-2026-015/dnase-rc" \
-      "$(dirname "$(readlink -f "$0")")"; do
+  for candidate in "${DNASE_RC_DIR:-}" "${BLOG_SCRIPTS}/dnase-rc"; do
     [[ -n "${candidate}" && -f "${candidate}/_args.sh" ]] && { echo "${candidate}"; return 0; }
   done
   return 1
@@ -117,15 +122,18 @@ DRY_RUN="${DRY_RUN:-0}"
 FORCE="${FORCE:-0}"
 KEEP_PREDICTIONS="${KEEP_PREDICTIONS:-0}"
 TF_CONDA_ENV="${TF_CONDA_ENV:-chrombpnet}"
-TF_CHROMBPNET_DIR="${TF_CHROMBPNET_DIR:-/path/to/workdir/software/chrombpnet}"
+[[ -n "${TF_CHROMBPNET_DIR:-}" ]] || { require_site ORIGINAL_REPO; TF_CHROMBPNET_DIR="${ORIGINAL_REPO}"; }
 TF_BATCH_SIZE="${TF_BATCH_SIZE:-256}"
 
-if [[ "$CLUSTER" == "sherlock" ]]; then
-	# chrombpnet-pytorch by default; CONDA_ENV=chrombpnet-pytorch-sherlock (torch
-	# 2.5.1, built on sherlock for glibc 2.17) reproduces earlier runs.
+# The glibc 2.17 build of the environment (envs/chrombpnet-pytorch-glibc.yml), by
+# name; site.env's site_pytorch_compiler hook runs before it is activated on a Slurm node.
+PT_ENV_GLIBC217="${PT_ENV_GLIBC217:-chrombpnet-pytorch-glibc}"
+if [[ "$CLUSTER" == "slurm" ]]; then
+	# chrombpnet-pytorch by default; CONDA_ENV=${PT_ENV_GLIBC217} (torch
+	# 2.5.1, built for glibc 2.17) reproduces earlier runs.
 	CONDA_ENV="${CONDA_ENV:-chrombpnet-pytorch}"
-	if [[ "${CONDA_ENV}" == "chrombpnet-pytorch-sherlock" ]]; then
-		module load gcc/14.2.0
+	if [[ "${CONDA_ENV}" == "${PT_ENV_GLIBC217}" ]]; then
+		site_hook pytorch_compiler
 	fi
 else
 	: "${SLURM_ARRAY_TASK_ID:=0}"
@@ -134,24 +142,22 @@ fi
 
 echo "conda environment: ${CONDA_ENV}  (TensorFlow model: ${TF_CONDA_ENV}, ${TF_CHROMBPNET_DIR})"
 # chrombpnet-pytorch (PyTorch 2.14) needs glibc >= 2.28 (engines/envs/glibc_scan.py:
-# torch and igraph); some of sherlock's GPU nodes (the L40S ones) run 2.17. Stop
+# torch and igraph); some clusters' GPU nodes still run glibc 2.17. Stop
 # here on such a node rather than failing at the first import.
 GLIBC_FLOOR="${GLIBC_FLOOR:-2.28}"
-if [[ "${CONDA_ENV}" != "chrombpnet-pytorch-sherlock" ]]; then
+if [[ "${CONDA_ENV}" != "${PT_ENV_GLIBC217}" ]]; then
 	NODE_GLIBC="$(ldd --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+$' || true)"
 	if [[ -n "${NODE_GLIBC}" && "$(printf '%s\n%s\n' "${GLIBC_FLOOR}" "${NODE_GLIBC}" | sort -V | head -1)" != "${GLIBC_FLOOR}" ]]; then
 		echo "Error: ${CONDA_ENV} needs glibc >= ${GLIBC_FLOOR}; this node ($(hostname)) has ${NODE_GLIBC}." >&2
-		echo "       Resubmit with --exclude=$(hostname), or set CONDA_ENV=chrombpnet-pytorch-sherlock." >&2
+		echo "       Resubmit with --exclude=$(hostname), or set CONDA_ENV=${PT_ENV_GLIBC217}." >&2
 		exit 1
 	fi
 fi
-eval "$(conda shell.bash hook)"
+eval "$("${CONDA_ROOT:+${CONDA_ROOT}/bin/}conda" shell.bash hook)"
 conda activate "${CONDA_ENV}"
 
-IDS_FILE="${IDS_FILE:-/path/to/workdir/sherlock/ids/chromatlas/chrombpnet-refactor/ids_chrombpnet_refactor_benchmark_data_aug.txt}"
-OAK_DIR="/path/to/workdir"
-REFERENCE_DIR="${OAK_DIR}/chromatlas/reference"
-ATLAS_DIR="/path/to/lab/projects/chromatin-atlas-2022"
+[[ -n "${IDS_FILE:-}" ]] || { require_site DNASE_RC_IDS; IDS_FILE="${DNASE_RC_IDS}"; }
+require_site GENOME CHROM_SIZES REFERENCE_DIR DNASE_RC_ROOT
 
 # SLURM_ARRAY_TASK_ID is 0-based; data row 1 is the first line after the header.
 DATA_ROW=$((SLURM_ARRAY_TASK_ID + 1))
@@ -177,11 +183,11 @@ if contains "${DATA_AUG}" "${DNASE_ONLY_ARMS[@]}" && [[ "${ASSAY}" != "DNASE" ]]
   exit 0
 fi
 
-GENOME_PATH=${REFERENCE_DIR}/hg38/hg38.fa
-CHROM_PATH=${REFERENCE_DIR}/hg38/hg38.chrom.sizes
+GENOME_PATH=${GENOME}
+CHROM_PATH=${CHROM_SIZES}
 FOLD_JSON_PATH=${REFERENCE_DIR}/folds/fold_${FOLD_NUM}.json
 
-ROOT=${OAK_DIR}/chromatlas/test/chrombpnet-refactor-dnase-rc
+ROOT=${DNASE_RC_ROOT}
 ARM_FOLD=${ROOT}/${DATA_AUG}/${ASSAY}/${ENCID}/fold_${FOLD_NUM}
 STD_FOLD=${ROOT}/standard/${ASSAY}/${ENCID}/fold_${FOLD_NUM}
 
@@ -209,7 +215,10 @@ TF_RESAVED=${ROOT}/standard_tensorflow/${ASSAY}/${ENCID}/fold_${FOLD_NUM}/chromb
 [[ -f "${TF_RESAVED}" ]] && TF_MODEL="${TF_RESAVED}"
 # Every TensorFlow run in the ids table trained on the atlas bigwig (checked
 # against each run's chrombpnet.args.json; one names a /scratch copy of it).
-TF_BIGWIG="${TF_BIGWIG:-${ATLAS_DIR}/${ASSAY}/${ENCID}/preprocessing/bigWigs/${ENCID}.bigWig}"
+if [[ -z "${TF_BIGWIG:-}" ]]; then
+  require_site ATLAS_DIR
+  TF_BIGWIG="${ATLAS_DIR}/${ASSAY}/${ENCID}/preprocessing/bigWigs/${ENCID}.bigWig"
+fi
 
 OUT_DIR=${ROOT}/comparisons/${DATA_AUG}/${ASSAY}/${ENCID}/fold_${FOLD_NUM}
 
@@ -248,8 +257,8 @@ if [[ "${HAVE_STD}" -eq 1 ]]; then
 fi
 
 # The original TensorFlow ChromBPNet, from its own checkout. TF 2.8 needs
-# CUDA 11.2 + cuDNN 8.1 to see a GPU: the same modules the atlas prediction
-# jobs load on sherlock, the system copies on the local machine. Fails if
+# CUDA 11.2 + cuDNN 8.1 to see a GPU, which site.env's site_tf28_libraries
+# hook provides (module loads, or LD_LIBRARY_PATH). Fails if
 # `chrombpnet` would import from anywhere but TF_CHROMBPNET_DIR.
 tensorflow_env() {
   conda activate "${TF_CONDA_ENV}" || return 1
@@ -257,14 +266,7 @@ tensorflow_env() {
   # TF otherwise reserves the whole card up front; on a shared GPU, take
   # only what the model needs.
   export TF_FORCE_GPU_ALLOW_GROWTH=true
-  if [[ "${CLUSTER}" == "sherlock" ]]; then
-    module load cuda/11.2.0 cudnn/8.1.1.33 || return 1
-  else
-    local d
-    for d in /usr/local/cuda-11.2/lib64 /usr/local/cudnn-linux-x86_64-8.1.1_cuda11-archive/lib64; do
-      [[ -d "${d}" ]] && export LD_LIBRARY_PATH="${d}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
-    done
-  fi
+  site_hook tf28_libraries || return 1
   local where
   where="$(python -c 'import chrombpnet, os; print(os.path.dirname(os.path.dirname(os.path.realpath(chrombpnet.__file__))))')" || return 1
   [[ "${where}" == "$(realpath "${TF_CHROMBPNET_DIR}")" ]] || {

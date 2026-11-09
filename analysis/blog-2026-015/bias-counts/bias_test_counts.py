@@ -2,7 +2,10 @@
 """The three bias models most ENCODE ChromBPNet models use: their counts head's
 predictions on held-out test chromosomes (fold 1) against the observed counts.
 
-    python bias_test_counts.py OUT_DIR
+    python bias_test_counts.py OUT_DIR ATLAS_DIR
+
+ATLAS_DIR is the ENCODE chromatin atlas project directory (ATAC/ and DNASE/ with each
+experiment's preprocessing/ and model runs, as the atlas lays them out).
 
 Each bias model's predictions on its training experiment's fold-1 test peaks
 and non-peaks were saved when that experiment's ChromBPNet model was trained
@@ -22,16 +25,15 @@ import numpy as np
 import pyBigWig
 from scipy.stats import pearsonr
 
-PROJECT = "/path/to/lab/projects/chromatin-atlas-2022"
 OUTPUT_LENGTH = 1000
-# (label, assay, models using it, fold-1 run directory, observed bigWig)
+# (label, assay, fold-1 run directory, observed bigWig), relative to the atlas directory
 BIAS_MODELS = [
-    ("ENCSR880CUB", "DNase-seq", PROJECT + "/DNASE/ENCSR880CUB/chrombppnet_model_encsr880cub_bias_fold_1",
-     PROJECT + "/DNASE/ENCSR880CUB/preprocessing/bigWigs/ENCSR880CUB.bigWig"),
-    ("ENCSR283TME", "DNase-seq", PROJECT + "/DNASE/ENCSR283TME/chrombppnet_model_encsr283tme_bias_fold_1",
-     PROJECT + "/DNASE/ENCSR283TME/preprocessing/bigWigs/ENCSR283TME.bigWig"),
-    ("ENCSR868FGK", "ATAC-seq", PROJECT + "/ATAC/ENCSR868FGK/chrombpnet_model_feb15_fold_1",
-     PROJECT + "/ATAC/ENCSR868FGK/preprocessing/bigWigs/ENCSR868FGK.bigWig"),
+    ("ENCSR880CUB", "DNase-seq", "DNASE/ENCSR880CUB/chrombppnet_model_encsr880cub_bias_fold_1",
+     "DNASE/ENCSR880CUB/preprocessing/bigWigs/ENCSR880CUB.bigWig"),
+    ("ENCSR283TME", "DNase-seq", "DNASE/ENCSR283TME/chrombppnet_model_encsr283tme_bias_fold_1",
+     "DNASE/ENCSR283TME/preprocessing/bigWigs/ENCSR283TME.bigWig"),
+    ("ENCSR868FGK", "ATAC-seq", "ATAC/ENCSR868FGK/chrombpnet_model_feb15_fold_1",
+     "ATAC/ENCSR868FGK/preprocessing/bigWigs/ENCSR868FGK.bigWig"),
 ]
 
 
@@ -46,9 +48,12 @@ def observed_log_counts(bigwig, chroms, centers):
 
 
 def main():
-    out_dir = sys.argv[1]
+    if len(sys.argv) != 3:
+        sys.exit(__doc__)
+    out_dir, atlas = sys.argv[1], sys.argv[2]
     os.makedirs(out_dir, exist_ok=True)
     for label, assay, run, bigwig in BIAS_MODELS:
+        run, bigwig = os.path.join(atlas, run), os.path.join(atlas, bigwig)
         with h5py.File(os.path.join(run, "bias_predictions.h5"), "r") as handle:
             chroms = handle["coords/coords_chrom"][()].astype(str)
             centers = handle["coords/coords_center"][()]

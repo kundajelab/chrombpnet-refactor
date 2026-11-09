@@ -4,23 +4,21 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --gpus=1
 #SBATCH --mem=96GB
-#SBATCH --partition=<partitions>
-#SBATCH --constraint="GPU_SKU:H100_SXM5"
 #SBATCH --job-name=chrombpnet_optimization
-#SBATCH --output=/path/to/workdir/sherlock/logs/chrombpnet_optimization.%x.%A_%a.out
-#SBATCH --error=/path/to/workdir/sherlock/logs/chrombpnet_optimization.%x.%A_%a.err
+#SBATCH --output=%x.%A_%a.out
+#SBATCH --error=%x.%A_%a.err
 #SBATCH --array=0-4
 #
 # Measure what --predict-fk is worth, on the five folds trained by
 # run/run_chrombpnet_refactor_benchmark_260911.sh.
 #
-# Pick the card on the sbatch line -- a command-line --constraint overrides
-# the directive above:
+# Pick the card on the sbatch line (the September sweep ran on H100s: site.env's
+# SBATCH_H100), from this folder:
 #
-#   ./list_gpu_skus.sh                  # what the partitions actually offer
-#   sbatch --constraint="GPU_SKU:<name>" run_chrombpnet_optimization_benchmark.sh sherlock
+#   ./list_gpu_skus.sh <partitions>     # what the partitions actually offer
+#   sbatch ${SBATCH_SITE_ARGS} ${SBATCH_H100} run_chrombpnet_optimization_benchmark.sh slurm
 #
-# Use a name that command prints, verbatim. Slurm does not fail a submission
+# Use a feature name that command prints, verbatim. Slurm does not fail a submission
 # whose constraint matches no node -- it accepts the job and leaves it
 # pending forever with reason BadConstraints, which looks like a queue wait
 # rather than a mistake. Check with `squeue -u $USER` after submitting; if
@@ -47,7 +45,7 @@
 #
 # Usage:  sbatch [--constraint=...] run_chrombpnet_optimization_benchmark.sh \
 #             CLUSTER [FOLD_NUM] [N_REGIONS] [ARMS]
-#   CLUSTER    sherlock | local
+#   CLUSTER    slurm (default) | local
 #   FOLD_NUM   0-4, which fold to run (default SLURM_ARRAY_TASK_ID)
 #   N_REGIONS  regions to subsample from the fold's peaks (default 20000;
 #              'all' uses every peak, ~270k, which is roughly 13x slower)
@@ -58,10 +56,16 @@
 #              was complete; to re-run that sweep, check out 693d162.
 #              (default "none,1,2,3,1|3,all"; '|' stands in for ',' within an
 #              element, so 1|3 means --optimize 1,3)
+#   env: CONDA_ENV, BENCHMARK_LEVEL (lite), ASSAY (ATAC), ENCID (ENCSR868FGK), N_CONTRIB
+#        (2000), MODELS_ROOT, OUT_ROOT (site.env's OPTIMIZATION_ANALYSIS), TRITON_CACHE_DIR
+#        (.triton-cache/<glibc> beside OUT_ROOT)
+#   site.env: GENOME, CHROM_SIZES, REFERENCE_DIR, BENCHMARK_RUNS (unless MODELS_ROOT is
+#        set), OPTIMIZATION_ANALYSIS (unless OUT_ROOT is set); optional PT_ENV_GLIBC217
+#        and the hook pytorch_compiler (under Slurm)
 
 set -euo pipefail
 
-CLUSTER="${1:-sherlock}"
+CLUSTER="${1:-slurm}"
 FOLD_NUM="${2:-${SLURM_ARRAY_TASK_ID:-0}}"
 N_REGIONS="${3:-20000}"
 # DeepLIFT costs far more per region than a forward, so contribs_bw gets its
@@ -69,26 +73,33 @@ N_REGIONS="${3:-20000}"
 N_CONTRIB="${N_CONTRIB:-2000}"
 ARMS_ARG="${4:-default,fk}"
 
-OAK_DIR="/path/to/workdir"
-REPO="${CHROMBPNET_REPO:-${OAK_DIR}/software/chrombpnet-refactor}"
-REFERENCE_DIR="${OAK_DIR}/chromatlas/reference"
-GENOME_PATH="${REFERENCE_DIR}/hg38/hg38.fa"
-CHROM_PATH="${REFERENCE_DIR}/hg38/hg38.chrom.sizes"
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
+SITE_NEEDS=(GENOME CHROM_SIZES REFERENCE_DIR)
+[[ -n "${MODELS_ROOT:-}" ]] || SITE_NEEDS+=(BENCHMARK_RUNS)
+[[ -n "${OUT_ROOT:-}" ]] || SITE_NEEDS+=(OPTIMIZATION_ANALYSIS)
+require_site "${SITE_NEEDS[@]}"
+REPO="${CHROMBPNET_REPO}"
+GENOME_PATH="${GENOME}"
+CHROM_PATH="${CHROM_SIZES}"
 
 # Where the benchmark run left its trained folds. Mirrors that script's
-# ENCID_DIR: .../chrombpnet-refactor-${BENCHMARK_LEVEL}-cleanup/${ASSAY}/${ENCID}
+# ENCID_DIR: <BENCHMARK_RUNS>/chrombpnet-refactor-${BENCHMARK_LEVEL}-cleanup/${ASSAY}/${ENCID}
 BENCHMARK_LEVEL="${BENCHMARK_LEVEL:-lite}"
 ASSAY="${ASSAY:-ATAC}"
 ENCID="${ENCID:-ENCSR868FGK}"
-MODELS_ROOT="${OAK_DIR}/chromatlas/test/chrombpnet-refactor-${BENCHMARK_LEVEL}-cleanup/${ASSAY}/${ENCID}"
+MODELS_ROOT="${MODELS_ROOT:-${BENCHMARK_RUNS}/chrombpnet-refactor-${BENCHMARK_LEVEL}-cleanup/${ASSAY}/${ENCID}}"
 
-OUT_ROOT="${OAK_DIR}/chromatlas/test/chrombpnet-refactor-optimization/analysis"
+OUT_ROOT="${OUT_ROOT:-${OPTIMIZATION_ANALYSIS}}"
 
 # Environment (CONDA_ENV overrides):
 #
 #   chrombpnet-pytorch            torch 2.14.1+cu126  the default; needs glibc >= 2.28
 #                                                     and a CUDA >= 12.6 driver
-#   chrombpnet-pytorch-sherlock  torch 2.5.1+cu118   built on sherlock (glibc 2.17); earlier runs
+#   PT_ENV_GLIBC217 (site.env)   torch 2.5.1+cu118   a build for glibc 2.17 nodes; earlier runs
 #
 # This used to pick chrombpnet-refactor (torch 2.12 / CUDA 13) on drivers that
 # support CUDA 13; that env is gone.
@@ -98,26 +109,27 @@ if [[ -z "${CONDA_ENV:-}" ]]; then
   CONDA_ENV="chrombpnet-pytorch"
 fi
 # chrombpnet-pytorch (PyTorch 2.14) needs glibc >= 2.28 (engines/envs/glibc_scan.py:
-# torch and igraph); some of sherlock's GPU nodes (the L40S ones) run 2.17. Stop
-# here on such a node rather than failing at the first import.
+# torch and igraph); some clusters' GPU nodes (the blog's L40S ones) run 2.17.
+# Stop here on such a node rather than failing at the first import.
+is_glibc217_env () { [[ -n "${PT_ENV_GLIBC217:-}" && "$1" == "${PT_ENV_GLIBC217}" ]]; }
 GLIBC_FLOOR="${GLIBC_FLOOR:-2.28}"
-if [[ "${CONDA_ENV}" != "chrombpnet-pytorch-sherlock" ]]; then
+if ! is_glibc217_env "${CONDA_ENV}"; then
   NODE_GLIBC="$(ldd --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+$' || true)"
   if [[ -n "${NODE_GLIBC}" && "$(printf '%s\n%s\n' "${GLIBC_FLOOR}" "${NODE_GLIBC}" | sort -V | head -1)" != "${GLIBC_FLOOR}" ]]; then
     echo "Error: ${CONDA_ENV} needs glibc >= ${GLIBC_FLOOR}; this node ($(hostname)) has ${NODE_GLIBC}." >&2
-    echo "       Resubmit with --exclude=$(hostname), or set CONDA_ENV=chrombpnet-pytorch-sherlock." >&2
+    echo "       Resubmit with --exclude=$(hostname), or set CONDA_ENV to a glibc 2.17 build (site.env PT_ENV_GLIBC217)." >&2
     exit 1
   fi
 fi
-if [[ "${CLUSTER}" == "sherlock" && "${CONDA_ENV}" == "chrombpnet-pytorch-sherlock" ]]; then
-  module load gcc/14.2.0
+if [[ "${CLUSTER}" == slurm ]] && is_glibc217_env "${CONDA_ENV}"; then
+  site_hook pytorch_compiler
 fi
 
 FOLD_DIR="${MODELS_ROOT}/fold_${FOLD_NUM}"
 MODEL_DIR="${FOLD_DIR}/model"
 
 echo "conda environment: ${CONDA_ENV}"
-eval "$(conda shell.bash hook)"
+eval "$("${CONDA_EXE:-${CONDA_ROOT:+${CONDA_ROOT}/bin/}conda}" shell.bash hook)"
 conda activate "${CONDA_ENV}"
 
 export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
@@ -126,12 +138,12 @@ export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:T
 # kernels on first use. A shared cache means only the first job of a sweep pays
 # it; a $HOME cache would have array tasks racing each other.
 # Triton caches the helpers it compiles (cuda_utils.so) alongside the kernels,
-# built against the host's glibc. Sherlock's GPU nodes do not all run the same
-# OS: a build on an H200 node (glibc 2.34) fails to load on an L40S node (2.17),
-# which is what failed every fused-kernel run on the L40S. One cache per glibc
-# version, shared by the array's tasks.
+# built against the host's glibc. A cluster's GPU nodes need not all run the
+# same OS: a build on an H200 node (glibc 2.34) failed to load on an L40S node
+# (2.17), which is what failed every fused-kernel run on the L40S. One cache per
+# glibc version, shared by the array's tasks.
 GLIBC_VERSION="$(ldd --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+$' || true)"
-export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-${OAK_DIR}/chromatlas/test/chrombpnet-refactor-optimization/.triton-cache/glibc-${GLIBC_VERSION:-unknown}}"
+export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-$(dirname "${OUT_ROOT}")/.triton-cache/glibc-${GLIBC_VERSION:-unknown}}"
 mkdir -p "${TRITON_CACHE_DIR}"
 
 # --------------------------------------------------------------- preflight

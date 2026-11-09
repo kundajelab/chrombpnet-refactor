@@ -5,46 +5,68 @@
 # runs in its own conda environment, chrombpnet-<engine>, all three editable
 # installs of the same checkout (CHROMBPNET_DIR below).
 #
-# Callers set nothing before sourcing; everything here can be overridden from
-# the environment:
+# Callers source ../_site.sh first, which reads this site's paths from
+# site.env (../site.env.example). Everything here can be overridden from the
+# environment:
 #
 #   CHROMBPNET_DIR   the checkout every env must import chrombpnet from
-#   IDS_FILE         the dataset x fold table (one data row per array task)
-#   ROOT             where runs are written
+#                    (default: site.env's CHROMBPNET_REPO)
+#   IDS_FILE         the dataset x fold table, one data row per array task
+#                    (default: site.env's ENGINES_IDS)
+#   ROOT             where runs are written (default: site.env's ENGINES_ROOT)
 #   CONDA_ENV_PREFIX env names are ${CONDA_ENV_PREFIX}<engine>
+#
+# The rest is site.env's as it stands: REFERENCE_DIR (folds/fold_<k>.json and
+# blacklist.bed.gz), GENOME, CHROM_SIZES, CONDA_ROOT, CONTAINER_IMAGE,
+# CONTAINER_BINDS, TF28_LIBRARY_DIRS, and the hooks tf28_libraries and
+# pytorch_compiler, which run under Slurm outside the container.
 
 ENGINES=(pytorch tensorflow jax)
 
-OAK_DIR="/path/to/workdir"
-REFERENCE_DIR="${OAK_DIR}/chromatlas/reference"
-LOG_DIR="${LOG_DIR:-${OAK_DIR}/sherlock/logs}"
-CHROMBPNET_DIR="${CHROMBPNET_DIR:-${OAK_DIR}/software/chrombpnet-refactor}"
-IDS_FILE="${IDS_FILE:-${OAK_DIR}/sherlock/ids/chromatlas/chrombpnet-refactor/ids_chrombpnet_refactor_benchmark_data_aug.txt}"
-ROOT="${ROOT:-${OAK_DIR}/chromatlas/test/chrombpnet-refactor-engines}"
+if ! declare -F require_site > /dev/null; then
+  echo "Error: source ../_site.sh before $(basename "${BASH_SOURCE[0]}")" >&2
+  exit 2
+fi
+CHROMBPNET_DIR="${CHROMBPNET_DIR:-${CHROMBPNET_REPO}}"
+IDS_FILE="${IDS_FILE:-${ENGINES_IDS:-}}"
+ROOT="${ROOT:-${ENGINES_ROOT:-}}"
 CONDA_ENV_PREFIX="${CONDA_ENV_PREFIX:-chrombpnet-}"
-CONDA_ROOT="${CONDA_ROOT:-${OAK_DIR}/software/miniconda3}"
 
-GENOME_PATH="${REFERENCE_DIR}/hg38/hg38.fa"
-CHROM_PATH="${REFERENCE_DIR}/hg38/hg38.chrom.sizes"
-BLACKLIST_PATH="${REFERENCE_DIR}/blacklist.bed.gz"
+GENOME_PATH="${GENOME:-}"
+CHROM_PATH="${CHROM_SIZES:-}"
+BLACKLIST_PATH="${REFERENCE_DIR:+${REFERENCE_DIR}/blacklist.bed.gz}"
+
+# Stops, naming each site.env setting left empty, unless the sweep's run tree
+# and ids table are known (ROOT and IDS_FILE, or site.env's ENGINES_ROOT and
+# ENGINES_IDS) and every further site.env name given is set.
+#   require_sweep [NAME...]
+require_sweep() {
+  local names=()
+  [[ -n "${ROOT}" ]] || names+=(ENGINES_ROOT)
+  [[ -n "${IDS_FILE}" ]] || names+=(ENGINES_IDS)
+  require_site ${names[@]+"${names[@]}"} "$@"
+}
 
 # --container runs an engine's conda env inside a container: a plain Ubuntu
-# 22.04 image -- the OS the envs were built and tested on (the lab GPU host) -- running
-# the same env from /oak, with the node's GPU driver bound in (--nv). Off by
+# 22.04 image (site.env's CONTAINER_IMAGE) -- the OS the envs were built and
+# tested on -- running the same env from the host's filesystem (site.env's
+# CONTAINER_BINDS), with the node's GPU driver bound in (--nv). Off by
 # default, for every engine. Two reasons to turn it on:
 #
-#   jax         required on sherlock: jaxlib 0.11 and the CUDA 12 wheels it
-#               brings need glibc >= 2.27, and sherlock's nodes have 2.17.
-#               Without --container a JAX job there stops at once and says so.
+#   jax         required on a host whose glibc is older than 2.27: jaxlib 0.11
+#               and the CUDA 12 wheels it brings need 2.27 (Sherlock's nodes,
+#               where the sweep ran, have 2.17). Without --container a JAX job
+#               there stops at once and says so.
 #   all three   the same OS userland for every engine. Making a bigwig pipes
 #               the reads through the system's awk and sort; the host's
 #               (CentOS 7's gawk and coreutils, in the host locale) took 2.4x
 #               as long as the image's (mawk, coreutils 8.32, C.UTF-8) on the
 #               same node -- engine-independent time in the runtime comparison.
 #
-# check_envs.sh --container pulls the image once. USE_CONTAINER=1 in the
-# environment means the same as --container.
-CONTAINER_IMAGE="${CONTAINER_IMAGE:-${JAX_IMAGE:-${OAK_DIR}/software/containers/ubuntu-22.04.sif}}"
+# check_envs.sh --container pulls the image once, to CONTAINER_IMAGE (JAX_IMAGE,
+# its old name, still works). USE_CONTAINER=1 in the environment means the same
+# as --container.
+CONTAINER_IMAGE="${CONTAINER_IMAGE:-${JAX_IMAGE:-}}"
 CONTAINER_IMAGE_SOURCE="docker://ubuntu:22.04"
 JAX_IMAGE="${CONTAINER_IMAGE}"   # its name when only JAX used it
 case "${USE_CONTAINER:-0}" in
@@ -55,7 +77,7 @@ export USE_CONTAINER
 
 # Takes --container out of the arguments (setting USE_CONTAINER=1) and leaves
 # the rest, in order, in ARGS. Read ARGS as ${ARGS[@]+"${ARGS[@]}"}: an empty
-# "${ARGS[@]}" is an error under set -u in bash 4.2 (sherlock's).
+# "${ARGS[@]}" is an error under set -u in bash 4.2 (CentOS 7's).
 parse_common_flags() {
   ARGS=()
   local a
@@ -72,20 +94,25 @@ in_container() { [[ -n "${APPTAINER_CONTAINER:-}${SINGULARITY_CONTAINER:-}" ]]; 
 
 # Whether this script must re-run itself in the container: asked for, and not
 # there yet. (Arguments are ignored; they named the engine and cluster when
-# only JAX on sherlock used the container.)
+# only JAX on the cluster used the container.)
 needs_container() {
   in_container && return 1
   [[ "${USE_CONTAINER}" == "1" ]]
 }
 
-# Fails, saying what to do, for an engine that cannot run natively here.
+# This host's glibc version, e.g. 2.17 (empty when getconf cannot tell).
+host_glibc() { getconf GNU_LIBC_VERSION 2>/dev/null | awk '{print $2}'; }
+
+# Fails, saying what to do, for an engine that cannot run natively here: JAX
+# on a glibc older than 2.27. (The cluster argument is no longer needed.)
 check_native() {
-  local engine="$1" cluster="$2"
+  local engine="$1" glibc
   in_container && return 0
   [[ "${USE_CONTAINER}" == "1" ]] && return 0
-  if [[ "${engine}" == "jax" && "${cluster}" == "sherlock" ]]; then
-    echo "Error: the JAX engine needs --container on sherlock (jaxlib needs glibc >= 2.27;" \
-         "the nodes have 2.17)." >&2
+  glibc="$(host_glibc)"
+  if [[ "${engine}" == "jax" && -n "${glibc}" ]] && ! printf '2.27\n%s\n' "${glibc}" | sort -V -C; then
+    echo "Error: the JAX engine needs --container here (jaxlib needs glibc >= 2.27;" \
+         "this host has ${glibc})." >&2
     return 1
   fi
 }
@@ -96,6 +123,7 @@ container_runtime() { command -v apptainer || command -v singularity; }
 # tasks pulling at once would be a mess).
 ensure_image() {
   local runtime
+  [[ -n "${CONTAINER_IMAGE}" ]] || require_site CONTAINER_IMAGE
   runtime="$(container_runtime)" || { echo "Error: neither apptainer nor singularity is on PATH" >&2; return 1; }
   [[ -f "${CONTAINER_IMAGE}" ]] && return 0
   echo "pulling ${CONTAINER_IMAGE_SOURCE} -> ${CONTAINER_IMAGE} (once)"
@@ -103,61 +131,103 @@ ensure_image() {
   "${runtime}" pull "${CONTAINER_IMAGE}" "${CONTAINER_IMAGE_SOURCE}"
 }
 
+# The directories of a colon-separated list that exist, colon-separated.
+existing_dirs() {
+  local d dirs=() found=()
+  IFS=: read -r -a dirs <<< "$1"
+  for d in ${dirs[@]+"${dirs[@]}"}; do
+    if [[ -d "${d}" ]]; then found+=("${d}"); fi
+  done
+  ( IFS=:; echo "${found[*]-}" )
+}
+
 # The TensorFlow engine's CUDA 11.2 and cuDNN 8.1 library directories on this
-# host, colon-separated: the modules' on sherlock, the /usr/local copies
-# elsewhere. Run on the host, because the container has neither `module` nor
-# those directories; container_run binds them and hands them in as
-# TF_CUDA_DIRS, which activate_engine puts on LD_LIBRARY_PATH.
+# host, colon-separated: site.env's TF28_LIBRARY_DIRS (those that exist) if it
+# names any, else, under Slurm, the CUDA and cuDNN directories that site.env's
+# hook tf28_libraries puts on LD_LIBRARY_PATH (module loads, say). Run on the
+# host, because the container has neither `module` nor those directories;
+# container_run binds them and hands them in as TF_CUDA_DIRS, which
+# activate_engine puts on LD_LIBRARY_PATH.
 tf_cuda_dirs() {
   local cluster="$1"
-  if [[ "${cluster}" == "sherlock" ]]; then
-    # A subshell, so the modules stay out of this shell.
-    ( module load cuda/11.2.0 cudnn/8.1.1.33 > /dev/null 2>&1 || exit 1
+  if [[ -n "${TF28_LIBRARY_DIRS:-}" ]]; then
+    existing_dirs "${TF28_LIBRARY_DIRS}"
+  elif [[ "${cluster}" == "slurm" ]]; then
+    # A subshell, so what the hook loads stays out of this shell.
+    ( site_hook tf28_libraries > /dev/null 2>&1 || exit 1
       printf '%s' "${LD_LIBRARY_PATH:-}" | tr ':' '\n' | grep -iE 'cuda|cudnn' | paste -sd: - )
-  else
-    local d found=()
-    for d in /usr/local/cudnn-linux-x86_64-8.1.1_cuda11-archive/lib64 /usr/local/cuda-11.2/lib64; do
-      [[ -d "${d}" ]] && found+=("${d}")
-    done
-    ( IFS=:; echo "${found[*]-}" )
   fi
 }
 
-# Runs a command in the container: /oak (and /scratch, and a TMPDIR outside
-# /tmp) bound, the GPU driver bound (--nv), and the C.UTF-8 locale, which the
-# image has, instead of whatever the host's LANG/LC_ALL name. The host
-# environment -- the SLURM_* variables, USE_CONTAINER -- passes through; PATH
-# does not (the image's replaces it).
+# Runs a command in the container: site.env's CONTAINER_BINDS (the host
+# directories the envs, checkouts, data and outputs live in, those that exist
+# here; Apptainer itself binds $HOME, /tmp and the working directory) and a
+# TMPDIR outside /tmp bound, the GPU driver bound (--nv), and the C.UTF-8
+# locale, which the image has, instead of whatever the host's LANG/LC_ALL name.
+# The host environment -- the SLURM_* variables, USE_CONTAINER -- passes
+# through; PATH does not (the image's replaces it).
 #
 #   container_run <engine> <cluster> <command...>
 #
 # For tensorflow the host's CUDA 11.2 / cuDNN 8.1 directories are bound too,
-# and named in TF_CUDA_DIRS.
+# and named in TF_CUDA_DIRS. (Where those are symlinks into a larger tree, as a
+# module's may be, put that tree in CONTAINER_BINDS.)
 container_run() {
-  local engine="$1" cluster="$2" runtime binds=(--bind /oak) d dirs=()
+  local engine="$1" cluster="$2" runtime binds=() d dirs=()
   shift 2
+  [[ -n "${CONTAINER_IMAGE}" ]] || require_site CONTAINER_IMAGE
   runtime="$(container_runtime)" || { echo "Error: neither apptainer nor singularity is on PATH" >&2; return 1; }
   if [[ ! -f "${CONTAINER_IMAGE}" ]]; then
     echo "Error: no container image at ${CONTAINER_IMAGE}. Run ./check_envs.sh --container once, which pulls it," >&2
     echo "       or: ${runtime##*/} pull ${CONTAINER_IMAGE} ${CONTAINER_IMAGE_SOURCE}" >&2
     return 1
   fi
+  read -r -a dirs <<< "${CONTAINER_BINDS:-}"
+  for d in ${dirs[@]+"${dirs[@]}"}; do
+    if [[ -e "${d%%:*}" ]]; then binds+=(--bind "${d}"); fi
+  done
   if [[ "${engine}" == "tensorflow" ]]; then
     TF_CUDA_DIRS="$(tf_cuda_dirs "${cluster}")" || TF_CUDA_DIRS=""
     if [[ -z "${TF_CUDA_DIRS}" ]]; then
-      echo "Error: no CUDA 11.2 / cuDNN 8.1 found on this host to hand to TensorFlow in the container" >&2
+      echo "Error: no CUDA 11.2 / cuDNN 8.1 found on this host to hand to TensorFlow in the container" \
+           "(site.env: TF28_LIBRARY_DIRS, or under Slurm the hook tf28_libraries)" >&2
       return 1
     fi
     export TF_CUDA_DIRS
     IFS=: read -r -a dirs <<< "${TF_CUDA_DIRS}"
     for d in "${dirs[@]}"; do binds+=(--bind "${d}"); done
-    # A module's library symlinks may point elsewhere in the module tree.
-    [[ -d /share/software ]] && binds+=(--bind /share/software)
   fi
-  [[ -d /scratch ]] && binds+=(--bind /scratch)
   if [[ -n "${TMPDIR:-}" && -d "${TMPDIR}" && "${TMPDIR}" != /tmp* ]]; then binds+=(--bind "${TMPDIR}"); fi
   echo "container: ${CONTAINER_IMAGE} (${engine})"
-  LANG=C.UTF-8 LC_ALL= "${runtime}" exec --nv "${binds[@]}" "${CONTAINER_IMAGE}" "$@"
+  LANG=C.UTF-8 LC_ALL= "${runtime}" exec --nv ${binds[@]+"${binds[@]}"} "${CONTAINER_IMAGE}" "$@"
+}
+
+# sbatch as the submit scripts call it (theirs and expand's): site.env's
+# SBATCH_SITE_ARGS first (partition, nodes to avoid and the like; word-split),
+# then, with site.env's LOG_DIR set, the job script's own #SBATCH --output and
+# --error names under LOG_DIR -- without it the logs land where sbatch runs,
+# and the submit scripts run it from their own folder -- then the arguments.
+# With DRY set it prints the command and outputs <jobid> instead.
+#   site_sbatch <sbatch options...> <job script> [its arguments...]
+site_sbatch() {
+  local a script="" opts=() name value
+  read -r -a opts <<< "${SBATCH_SITE_ARGS:-}"
+  for a in "$@"; do
+    if [[ "${a}" != -* && -f "${a}" ]]; then script="${a}"; break; fi
+  done
+  if [[ -n "${LOG_DIR:-}" && -n "${script}" ]]; then
+    for name in output error; do
+      value="$(sed -n "s/^#SBATCH --${name}=//p" "${script}" | head -n 1)"
+      if [[ -n "${value}" ]]; then opts+=("--${name}=${LOG_DIR}/${value}"); fi
+    done
+  fi
+  if [[ -n "${DRY:-}" ]]; then
+    echo "sbatch --parsable ${opts[*]+${opts[*]} }$*" >&2
+    echo "<jobid>"
+  else
+    if [[ -n "${LOG_DIR:-}" ]]; then mkdir -p "${LOG_DIR}"; fi
+    sbatch --parsable ${opts[@]+"${opts[@]}"} "$@"
+  fi
 }
 
 # Checkpoint suffix each engine writes.
@@ -186,7 +256,7 @@ _usage() {
     echo
     echo "  received : cluster=${1:-<unset>}  engine=${2:-<unset>}"
     echo "  engines  : ${ENGINES[*]}"
-    echo "  cluster  : sherlock | local  (inferred from \$SLURM_JOB_ID if omitted)"
+    echo "  cluster  : slurm | local  (inferred from \$SLURM_JOB_ID if omitted; sherlock = slurm)"
   } >&2
   exit 2
 }
@@ -208,15 +278,18 @@ resolve_args() {
   resolve_cluster "${CLUSTER}"
 }
 
-# Sets CLUSTER to sherlock or local; infers it when empty.
+# Sets CLUSTER to slurm (a Slurm job) or local (a plain run on a GPU host);
+# infers it when empty. sherlock, the name these runs were submitted with,
+# means slurm.
 resolve_cluster() {
   CLUSTER="${1:-}"
   if [[ -z "${CLUSTER}" ]]; then
-    if [[ -n "${SLURM_JOB_ID:-}" ]]; then CLUSTER="sherlock"; else CLUSTER="local"; fi
+    if [[ -n "${SLURM_JOB_ID:-}" ]]; then CLUSTER="slurm"; else CLUSTER="local"; fi
     echo "note: no cluster given; inferred '${CLUSTER}'"
   fi
-  if [[ "${CLUSTER}" != "sherlock" && "${CLUSTER}" != "local" ]]; then
-    echo "unknown cluster '${CLUSTER}' (expected sherlock or local)" >&2
+  [[ "${CLUSTER}" == "sherlock" ]] && CLUSTER="slurm"
+  if [[ "${CLUSTER}" != "slurm" && "${CLUSTER}" != "local" ]]; then
+    echo "unknown cluster '${CLUSTER}' (expected slurm or local)" >&2
     exit 2
   fi
 }
@@ -253,6 +326,7 @@ read_row() {
 # Resolves the array task to a data row and reads it. Exits 0 with a SKIP
 # line when the task lies past the table, so a wide --array is harmless.
 select_row() {
+  require_sweep REFERENCE_DIR GENOME CHROM_SIZES
   if [[ -z "${SLURM_ARRAY_TASK_ID:-}" ]]; then
     echo "Error: SLURM_ARRAY_TASK_ID is unset. By hand: SLURM_ARRAY_TASK_ID=0 $(basename "$0") ..." >&2
     exit 2
@@ -275,20 +349,22 @@ prep_dir() { echo "${ROOT}/preprocess/${ASSAY}/${ENCID}/fold_${FOLD_NUM}"; }
 # then checks the env imports chrombpnet from CHROMBPNET_DIR. Each framework
 # brings or needs a different CUDA:
 #
-#   pytorch     torch 2.5.1+cu118 brings its own CUDA. On sherlock gcc/14.2.0
-#               as in the dnase-rc runs, except in the container.
-#   tensorflow  TF 2.8 needs CUDA 11.2 + cuDNN 8.1 from the system: the
-#               modules the dnase-rc comparison jobs load on sherlock, the
-#               /usr/local copies elsewhere; in the container, those same
-#               host directories (TF_CUDA_DIRS). Memory growth is on, because
+#   pytorch     torch 2.5.1+cu118 brings its own CUDA. Under Slurm, outside
+#               the container, site.env's hook pytorch_compiler (the sweep
+#               loaded gcc/14.2.0 there, as in the dnase-rc runs).
+#   tensorflow  TF 2.8 needs CUDA 11.2 + cuDNN 8.1 from the system:
+#               site.env's TF28_LIBRARY_DIRS if set, else under Slurm its hook
+#               tf28_libraries (the modules the dnase-rc comparison jobs
+#               load); in the container, those same host directories
+#               (TF_CUDA_DIRS). Memory growth is on, because
 #               DeepSHAP runs in a spawned child process that needs GPU
 #               memory while the parent still holds what it trained with.
 #               (The engine sets it itself since commit 636394d; set here
 #               too, for checkouts before that.)
 #   jax         jax[cuda12] brings CUDA 12 and cuDNN 9 as pip wheels, found
 #               by RUNPATH -- which LD_LIBRARY_PATH outranks. A system CUDA 12
-#               there (the lab GPU host's ~/.bashrc puts 12.4 on it; a loaded CUDA
-#               module would too) shadows the wheels, JAX fails its version
+#               there (a login shell's ~/.bashrc may put one on it; a loaded
+#               CUDA module would too) shadows the wheels, JAX fails its version
 #               check and falls back to the CPU. So CUDA and cuDNN
 #               directories are dropped from LD_LIBRARY_PATH for this job.
 #               (Since commit e460daf the engine also loads the bundled
@@ -307,29 +383,32 @@ activate_engine() {
   # conda by path, not by name: in the JAX container PATH is the image's
   # (apptainer does not pass the host's) and a `conda` shell function from
   # ~/.bashrc does not cross either. CONDA_EXE, which conda's shell hook
-  # exports, does; failing that, the miniconda the envs live in.
+  # exports, does; failing that, the conda the envs live in (site.env's
+  # CONDA_ROOT).
   conda_exe="${CONDA_EXE:-}"
   [[ -x "${conda_exe}" ]] || conda_exe="$(command -v conda 2>/dev/null || true)"
-  [[ -x "${conda_exe}" ]] || conda_exe="${CONDA_ROOT}/bin/conda"
+  if [[ ! -x "${conda_exe}" ]]; then
+    [[ -n "${CONDA_ROOT:-}" ]] || require_site CONDA_ROOT
+    conda_exe="${CONDA_ROOT}/bin/conda"
+  fi
   eval "$("${conda_exe}" shell.bash hook)" || { echo "Error: no conda at ${conda_exe}" >&2; return 1; }
   conda activate "${CONDA_ENV}" || { echo "Error: cannot activate ${CONDA_ENV}" >&2; return 1; }
   case "${engine}" in
     pytorch)
       # The image's libstdc++ is new enough, and it has no `module`.
-      if [[ "${cluster}" == "sherlock" ]] && ! in_container; then module load gcc/14.2.0 || return 1; fi
+      if [[ "${cluster}" == "slurm" ]] && ! in_container; then site_hook pytorch_compiler || return 1; fi
       ;;
     tensorflow)
+      local tf_dirs
       if in_container; then
         [[ -n "${TF_CUDA_DIRS:-}" ]] || { echo "Error: TF_CUDA_DIRS is empty: no CUDA 11.2 / cuDNN 8.1 was handed into the container" >&2; return 1; }
         export LD_LIBRARY_PATH="${TF_CUDA_DIRS}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
         echo "CUDA 11.2 / cuDNN 8.1 from the host: ${TF_CUDA_DIRS}"
-      elif [[ "${cluster}" == "sherlock" ]]; then
-        module load cuda/11.2.0 cudnn/8.1.1.33 || return 1
-      else
-        local d
-        for d in /usr/local/cudnn-linux-x86_64-8.1.1_cuda11-archive/lib64 /usr/local/cuda-11.2/lib64; do
-          [[ -d "${d}" ]] && export LD_LIBRARY_PATH="${d}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
-        done
+      elif [[ -n "${TF28_LIBRARY_DIRS:-}" ]]; then
+        tf_dirs="$(existing_dirs "${TF28_LIBRARY_DIRS}")"
+        if [[ -n "${tf_dirs}" ]]; then export LD_LIBRARY_PATH="${tf_dirs}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"; fi
+      elif [[ "${cluster}" == "slurm" ]]; then
+        site_hook tf28_libraries || return 1
       fi
       export TF_FORCE_GPU_ALLOW_GROWTH=true
       export TF_CPP_MIN_LOG_LEVEL="${TF_CPP_MIN_LOG_LEVEL:-1}"
@@ -351,7 +430,7 @@ activate_engine() {
 }
 
 # Small GPUs: total memory under SMALL_GPU_MIB (default 16000 MiB), i.e.
-# sherlock's 12 GB TITAN Xp and 11 GB RTX 2080 Ti. On those the scripts
+# Sherlock's 12 GB TITAN Xp and 11 GB RTX 2080 Ti. On those the scripts
 # lower the batch sizes that would not fit (run_train_full.sh,
 # run_contribution.sh); on anything larger every run keeps the pipeline's
 # defaults.
@@ -383,14 +462,15 @@ gpu_preflight() {
   local code mode
   # TensorFlow's DeepSHAP runs in a spawned second process (the shap fork
   # needs TF1 graph mode) while the first still holds the GPU it trained on.
-  # A GPU in Exclusive_Process compute mode -- sherlock's default -- refuses
-  # the second with CUDA_ERROR_DEVICE_UNAVAILABLE, an hour into the run.
+  # A GPU in Exclusive_Process compute mode -- some clusters' default,
+  # Sherlock's among them -- refuses the second with
+  # CUDA_ERROR_DEVICE_UNAVAILABLE, an hour into the run.
   if [[ "${engine}" == "tensorflow" ]]; then
     mode="$(nvidia-smi --query-gpu=compute_mode --format=csv,noheader 2>/dev/null | head -1)"
     if [[ "${mode}" == Exclusive_Process* ]]; then
       echo "Error: the GPU is in ${mode} compute mode, which refuses the TensorFlow engine's" \
-           "DeepSHAP process once training holds the GPU. On sherlock request --gpu_cmode=shared" \
-           "(submit_all.sh does for TensorFlow)." >&2
+           "DeepSHAP process once training holds the GPU. Ask Slurm for a shared-mode GPU:" \
+           "site.env's SBATCH_SHARED_GPU_ARGS, which submit_all.sh gives the TensorFlow jobs." >&2
       return 1
     fi
   fi
@@ -431,7 +511,7 @@ print("gpu preflight: jax", jax.__version__, "on", gpus[0].device_kind)' ;;
 # with a compiled part, exercised (an HDF5 file, a bigwig, a numba
 # compilation, a PNG, a PDF), and each command-line tool it runs. A GPU check
 # alone loads none of these, and a library built for a newer glibc than the
-# node's (sherlock: 2.17) fails only when it is first loaded -- hours into a
+# node's (Sherlock's: 2.17) fails only when it is first loaded -- hours into a
 # run. Also catches a missing package.
 runtime_check() {
   local engine="$1" tool out failed=0
@@ -505,7 +585,7 @@ PY
   fi
 }
 
-# "<commit> <branch>" of CHROMBPNET_DIR. git first; sherlock's system git
+# "<commit> <branch>" of CHROMBPNET_DIR. git first; CentOS 7's system git
 # (1.8) has no `-C` and predates worktrees, which that checkout is, so the
 # fallback reads .git itself: the worktree's gitdir, its commondir, loose
 # and packed refs. Needs a python on PATH (any activated env has one).

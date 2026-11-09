@@ -2,24 +2,29 @@
 # Why torch cannot see the GPU. Run it in the environment that failed:
 #
 #   ./diagnose_cuda.sh                              # chrombpnet-pytorch, as the benchmark
-#   CONDA_ENV=chrombpnet-pytorch-sherlock ./diagnose_cuda.sh
+#   CONDA_ENV=<glibc 2.17 build> ./diagnose_cuda.sh  # site.env's PT_ENV_GLIBC217
 #
 # torch.cuda.is_available() returns False for several unrelated reasons and
 # reports none of them, so this collects the things that distinguish them.
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
 CONDA_ENV="${CONDA_ENV:-chrombpnet-pytorch}"
 # chrombpnet-pytorch (PyTorch 2.14) needs glibc >= 2.28 (engines/envs/glibc_scan.py:
-# torch and igraph); some of sherlock's GPU nodes (the L40S ones) run 2.17. Stop
-# here on such a node rather than failing at the first import.
+# torch and igraph); some clusters' GPU nodes (the blog's L40S ones) run 2.17.
+# Stop here on such a node rather than failing at the first import.
 GLIBC_FLOOR="${GLIBC_FLOOR:-2.28}"
-if [[ "${CONDA_ENV}" != "chrombpnet-pytorch-sherlock" ]]; then
+if [[ -z "${PT_ENV_GLIBC217:-}" || "${CONDA_ENV}" != "${PT_ENV_GLIBC217}" ]]; then
   NODE_GLIBC="$(ldd --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+$' || true)"
   if [[ -n "${NODE_GLIBC}" && "$(printf '%s\n%s\n' "${GLIBC_FLOOR}" "${NODE_GLIBC}" | sort -V | head -1)" != "${GLIBC_FLOOR}" ]]; then
     echo "Error: ${CONDA_ENV} needs glibc >= ${GLIBC_FLOOR}; this node ($(hostname)) has ${NODE_GLIBC}." >&2
-    echo "       Resubmit with --exclude=$(hostname), or set CONDA_ENV=chrombpnet-pytorch-sherlock." >&2
+    echo "       Resubmit with --exclude=$(hostname), or set CONDA_ENV to a glibc 2.17 build (site.env PT_ENV_GLIBC217)." >&2
     exit 1
   fi
 fi
-eval "$(conda shell.bash hook)"; conda activate "${CONDA_ENV}"
+eval "$("${CONDA_EXE:-${CONDA_ROOT:+${CONDA_ROOT}/bin/}conda}" shell.bash hook)"; conda activate "${CONDA_ENV}"
 
 echo "host              : $(hostname)"
 echo "conda env         : ${CONDA_ENV}"

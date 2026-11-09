@@ -43,8 +43,8 @@ Three independent ways, none of which needs a GPU.
    complement at lag 0 (DNase) and lag −1 (ATAC), each decisive by >0.3 in
    correlation. Pinned by
    `tests/test_conventions.py::test_the_reference_pwms_agree_with_the_resolved_shift`.
-3. **Real reads**, via `./strand_pwm_check.py` — see
-   `chromatlas/test/chrombpnet-refactor-dnase-rc/analysis/strand_pwm_check.png`:
+3. **Real reads**, via `./strand_pwm_check.py --ids <ids table> --genome <hg38.fa>
+   --out <run tree>/analysis/strand_pwm_check` — see that `strand_pwm_check.png`:
 
    | ENCID | assay | best lag | corr | runner-up | label shift |
    |---|---|---|---|---|---|
@@ -259,7 +259,7 @@ ENCSR337UIU (ATAC,  stomach)  <-  ENCSR868FGK (ATAC,  K562) fold 0
 ```
 
 ```bash
-sbatch run_train_chrombpnet.sh sherlock right
+sbatch run_train_chrombpnet.sh slurm right
 DRY_RUN=1 SLURM_ARRAY_TASK_ID=10 ./run_train_chrombpnet.sh right   # check wiring only
 ```
 
@@ -303,7 +303,7 @@ reproduce in a harder sample", not as a second independent confirmation.
 ./check_runs.sh -v         # every run, not just the incomplete ones
 ./check_runs.sh -a right   # one arm
 
-sbatch run_retrain.sh sherlock right    # re-run only what is missing
+sbatch run_retrain_full.sh slurm right       # re-run only what is missing
 ```
 
 `check_runs.sh` cross-checks the artifacts on disk against the Slurm logs,
@@ -311,22 +311,22 @@ because either alone misleads: a run can leave `chrombpnet.pt` and still have
 died in QC with a half-written evaluation directory. It requires the model,
 the metrics JSON, **and** a log line reporting `Completed run`.
 
-`run_retrain.sh` applies the same three-way test per array task and exits 0
+`run_retrain_full.sh` applies the same three-way test per array task and exits 0
 when the run is already complete, so the whole array can be resubmitted after
-a partial sweep. Training itself is delegated to `run_train.sh`, so the two
+a partial sweep. Training itself is delegated to `run_train_full.sh`, so the two
 cannot drift apart.
 
 **The cluster argument is optional.** All three runners share `_args.sh`, and
 each of these works:
 
 ```bash
-sbatch run_retrain.sh sherlock right
-sbatch run_retrain.sh right                # cluster inferred from $SLURM_JOB_ID
-DATA_AUG=right sbatch run_retrain.sh       # arm exported instead of passed
+sbatch run_retrain_full.sh slurm right
+sbatch run_retrain_full.sh right                # cluster inferred from $SLURM_JOB_ID
+DATA_AUG=right sbatch run_retrain_full.sh       # arm exported instead of passed
 ```
 
 It was made optional after omitting it wasted 60 array tasks: `sbatch
-run_retrain.sh right` put `right` into `$1` and left `$2` unset, so the error
+run_retrain_full.sh right` put `right` into `$1` and left `$2` unset, so the error
 read `line 39: 2: usage ...` — naming argument 2 when argument 1 was the one
 missing. A bad or absent arm now prints what it actually received alongside
 the valid names, and the job stops before touching any data.
@@ -335,16 +335,43 @@ the valid names, and the job stops before touching any data.
 `biosample` column. It is a cache, so summarizing needs no network;
 regenerate with `./refresh_biosamples.sh` when the ids file changes.
 
+## Site configuration
+
+The scripts take their paths from the blog folder's site configuration (`../site.env`, or
+the file `BLOG_SITE_ENV` names; `../site.env.example` lists every value) and stop, naming
+the values, when one they need is empty:
+
+| Variable | What it is | Read by |
+|---|---|---|
+| `DNASE_RC_ROOT` | the run tree: `<arm>/<ASSAY>/<ENCID>/fold_<N>/`, `comparisons/`, `standard_tensorflow/`, `analysis/` | the runners, `summarize.sh`, `check_runs.sh`, `resave_tf_models.sh` |
+| `DNASE_RC_IDS` | the ids table: `ASSAY ENCID BAM_PATH PEAKS_BED_PATH FOLD_NUM TENSORFLOW_DIR ...`, one row per dataset and fold | the same, `refresh_biosamples.sh`, `check_arms_on_real_reads.sh` |
+| `ATLAS_DIR` | the chromatin atlas: `<ASSAY>/<ENCID>/preprocessing/{downloads,bigWigs}/` | `00_prepare_bams.sh`, `run_compare.sh`, `resave_tf_models.sh` |
+| `RAW_BAM_DIR` | holds `ENCSR868FGK/merged.bam`, linked rather than downloaded | `00_prepare_bams.sh` |
+| `GENOME`, `CHROM_SIZES`, `REFERENCE_DIR` | hg38, its sizes, and `folds/fold_<N>.json` + `blacklist.bed.gz` | the runners, `check_arms_on_real_reads.sh` |
+| `ORIGINAL_REPO` | chrombpnet 1.x, which scores the TensorFlow models | `run_compare.sh`, `resave_tf_models.sh` |
+| `CONDA_ROOT` | the conda installation holding `chrombpnet-pytorch`, `chrombpnet` and `bpnet` | all |
+| `PT_ENV_GLIBC217` | optional: the glibc 2.17 environment's name (default `chrombpnet-pytorch-glibc`) | the runners |
+| `LOG_DIR`, `SBATCH_SITE_ARGS` | where Slurm logs go (and are read back from); the cluster's own sbatch options | `submit_all.sh`, `check_runs.sh`, `run_retrain_full.sh` |
+
+Two optional site.env functions run where they are needed: `site_pytorch_compiler` before
+`PT_ENV_GLIBC217` is activated on a Slurm node, and `site_tf28_libraries` before TensorFlow
+2.8 runs (CUDA 11.2 / cuDNN 8.1: module loads, or `LD_LIBRARY_PATH`). A value in the
+environment wins over site.env's, and the scripts' own overrides (`ROOT`, `OUT`,
+`IDS_FILE`, `CONDA_ENV`, `TF_CHROMBPNET_DIR`, `TF_BIGWIG`, `LOGS`, `DNASE_RC_DIR`) still
+apply. The cluster argument is `slurm` or `local`. Submit jobs from this folder: under
+Slurm a job finds it through `SLURM_SUBMIT_DIR`. The `#SBATCH --output` paths are relative,
+so a plain `sbatch` writes its logs here; `submit_all.sh` sends them to `LOG_DIR`.
+
 ## Running it
 
 ```bash
 ./00_prepare_bams.sh                     # ~27.5 GB, once
-sbatch run_train.sh   sherlock standard  # then each other arm
-sbatch run_compare.sh sherlock right     # arm model vs standard model
+sbatch run_train_full.sh   slurm standard     # then each other arm
+sbatch run_compare.sh slurm right        # arm model vs standard model
 ./summarize.sh | column -t -s $'\t'
 ```
 
-`run_train.sh` and `run_compare.sh` each take the arm as an argument and run
+`run_train_full.sh` and `run_compare.sh` each take the arm as an argument and run
 a 20-way array (4 datasets × 5 folds). `standard` must be trained before any
 comparison, since it is the reference.
 
@@ -366,10 +393,10 @@ model on the arm's own test data, and prints the delta.
 ## Plotting the scores
 
 ```bash
-./plot_summarize.sh                 # -> analysis/summary_scores.png / .pdf / .tsv
-./plot_summarize.sh --refresh       # re-run summarize.sh first
-./plot_summarize.sh --arm right --arm standard
-./plot_summarize.sh --source headtohead
+./plot_summarize.sh --results <run tree>/analysis/results.tsv --out <dir>/summary_scores
+                                    # -> <dir>/summary_scores.png / .pdf / .tsv
+./plot_summarize.sh --results ... --out ... --arm right --arm standard
+./plot_summarize.sh --results ... --out ... --source headtohead
 ```
 
 One panel per arm; x nests biosample > ENCID (assay) > fold, with two bars
@@ -398,7 +425,7 @@ table view.
 | ENCSR868FGK | ATAC | already local; symlinked, not copied |
 
 Each ends up as one `alignments_merged.bam` (+ `.bai`) in that ENCID's
-`chromatin-atlas-2022/<ASSAY>/<ENCID>/preprocessing/downloads/`.
+`${ATLAS_DIR}/<ASSAY>/<ENCID>/preprocessing/downloads/`.
 `00_prepare_bams.sh` is idempotent — an ENCID whose final BAM already passes
 `samtools quickcheck` is skipped, and partial downloads resume.
 

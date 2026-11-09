@@ -1,7 +1,7 @@
 #!/bin/bash
 # Rebuild biosamples.tsv: ENCID -> short biosample label, from the ENCODE API.
 #
-#   ./refresh_biosamples.sh
+#   ./refresh_biosamples.sh          # IDS=... (default: DNASE_RC_IDS), OUT=...
 #
 # summarize.sh reads the cache rather than the API so it works offline and on
 # a compute node with no outbound network. Run this when the ids file gains an
@@ -13,11 +13,17 @@
 
 set -euo pipefail
 
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
+
 HERE="$(dirname "$(readlink -f "$0")")"
-IDS="${IDS:-/path/to/workdir/sherlock/ids/chromatlas/chrombpnet-refactor/ids_chrombpnet_refactor_benchmark_data_aug.txt}"
+[[ -n "${IDS:-}" ]] || { require_site DNASE_RC_IDS; IDS="${DNASE_RC_IDS}"; }
 OUT="${OUT:-${HERE}/biosamples.tsv}"
 
-CONDA_ENV="${CONDA_ENV:-/path/to/workdir/software/miniconda3/envs/chrombpnet-pytorch}"
+[[ -n "${CONDA_ENV:-}" ]] || { require_site CONDA_ROOT; CONDA_ENV="${CONDA_ROOT}/envs/chrombpnet-pytorch"; }
 export PATH="${CONDA_ENV}/bin:${PATH}"
 
 python - "$IDS" "$OUT" <<'PY'

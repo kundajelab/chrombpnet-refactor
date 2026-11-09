@@ -22,14 +22,23 @@ while getopts "e:v" opt; do
   esac
 done
 
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
 HERE="$(dirname "$(readlink -f "$0")")"
 # shellcheck source=_common.sh
 source "${HERE}/_common.sh"
+require_sweep
+# The submit scripts' logs: site.env's LOG_DIR, else the folder they were
+# submitted from (this one).
+LOGS="${LOG_DIR:-${HERE}}"
 
 # engine|encid|fold -> "log;state;reason" from the newest log of each.
 declare -A LOG_STATE
 latest_logs() {   # $1 = log name prefix; newest last
-  ls -1tr "${LOG_DIR}/$1".*.out 2>/dev/null
+  ls -1tr "${LOGS}/$1".*.out 2>/dev/null
 }
 reason_from() {   # $1 = .err path
   local reason
@@ -49,7 +58,7 @@ while read -r out; do
 done < <(latest_logs engines_train)
 
 # engine|task -> RUNNING/PENDING/..., for array tasks still in the queue
-# (squeue -r: one line per task). Without squeue (not on sherlock) a run with
+# (squeue -r: one line per task). Without squeue (not under Slurm) a run with
 # no COMPLETED marker and no error is reported as FAIL, which may mean running.
 declare -A QUEUE_STATE
 if command -v squeue > /dev/null 2>&1; then

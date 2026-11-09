@@ -1,17 +1,20 @@
 # Bias model counts: blog 2026-015 figure
 
 The figure under "Profile-only bias model" in blog 2026-015
-(`content/blogs/2026-015/chrombpnet_bias_counts.png`). Data live in
-`/path/to/workdir/chromatlas/test/bias-counts/`. Run everything with the
-`chrombpnet-pytorch` env's python (h5py, pyBigWig, pandas, matplotlib).
+(`content/blogs/2026-015/chrombpnet_bias_counts.png`). Every script takes its paths as
+arguments; run them from a data directory of your choice (DATA_DIR below), with the
+`chrombpnet-pytorch` environment's python (h5py, pyBigWig, pandas, matplotlib). The inputs are
+the ENCODE chromatin atlas project directory (ATLAS_DIR), a table of each ENCODE ChromBPNet
+model's run directory (ENCODE_PATHS.tsv) and a table of each model's prediction bigWigs on the
+ENCODE portal (MODEL_DOWNLOADS.tsv).
 
 | Step | Script | Output (in the data dir) |
 |---|---|---|
-| Which bias model each model and fold uses | `identify_bias_models.py bias_models.tsv` | `bias_models.tsv` |
-| Panel 1: the main bias models' fold-1 test-set counts | `bias_test_counts.py fig1` | `fig1/*_fold1_test_counts.tsv` |
-| Panel 2: each model's total predicted counts, from bigWig headers | `bigwig_totals.py prediction_totals.tsv` | `prediction_totals.tsv` |
+| Which bias model each model and fold uses | `identify_bias_models.py bias_models.tsv ENCODE_PATHS.tsv` | `bias_models.tsv` |
+| Panel 1: the main bias models' fold-1 test-set counts | `bias_test_counts.py fig1 ATLAS_DIR` | `fig1/*_fold1_test_counts.tsv` |
+| Panel 2: each model's total predicted counts, from bigWig headers | `bigwig_totals.py prediction_totals.tsv MODEL_DOWNLOADS.tsv` | `prediction_totals.tsv` |
 | Panel 2: totals over shared positions where headers can't be compared | `matched_totals.py prediction_totals.tsv matched_totals.tsv stream` | `matched_totals.tsv` |
-| The figure | `make_figure.py . OUT.png` | the PNG; prints the numbers it shows |
+| The figure | `make_figure.py DATA_DIR OUT.png` | the PNG; prints the numbers it shows |
 | Check: header totals against sums over every base | `check_exact.py FILE.bigWig [URL]` | – |
 
 ## How the bias models were identified

@@ -3,10 +3,9 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=64GB
-#SBATCH --partition=<partitions>
 #SBATCH --job-name=expand_compare_shared
-#SBATCH --output=/path/to/workdir/sherlock/logs/expand_compare_shared.%j.out
-#SBATCH --error=/path/to/workdir/sherlock/logs/expand_compare_shared.%j.err
+#SBATCH --output=expand_compare_shared.%j.out
+#SBATCH --error=expand_compare_shared.%j.err
 
 # The students against their teachers' five-fold mean, on the shared regions
 # run_shared_scores.sh scored (analysis/expand/compare_fold_means.py): DeepSHAP
@@ -20,17 +19,13 @@
 
 set -euo pipefail
 
-_find_here() {
-  local candidate
-  for candidate in "${EXPAND_DIR:-}" "${SLURM_SUBMIT_DIR:-}" \
-      "/path/to/workdir/software/chrombpnet-refactor/analysis/blog-2026-015/expand" \
-      "$(dirname "$(readlink -f "$0")")"; do
-    [[ -n "${candidate}" && -f "${candidate}/_common.sh" && -f "${candidate}/run_compare_shared.sh" ]] \
-      && { echo "${candidate}"; return 0; }
-  done
-  return 1
-}
-EXPAND_DIR="$(_find_here)" || { echo "Error: cannot locate expand/_common.sh; set EXPAND_DIR." >&2; exit 1; }
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
+EXPAND_DIR="${EXPAND_DIR:-${BLOG_SCRIPTS}/expand}"
+[[ -f "${EXPAND_DIR}/_common.sh" ]] || { echo "Error: no _common.sh in ${EXPAND_DIR}; set EXPAND_DIR." >&2; exit 1; }
 # shellcheck source=_common.sh
 source "${EXPAND_DIR}/_common.sh"
 
@@ -40,7 +35,8 @@ case "${TEACHER_SET}" in
   *) echo "Error: TEACHER_SET must be default or updated" >&2; exit 2 ;;
 esac
 OUT_DIR="${OUT_DIR:-${ROOT}/analysis/fold-mean-${TEACHER_SET}}"
-CONDA_ENV="${CONDA_ENV:-/path/to/workdir/software/miniconda3/envs/chrombpnet-pytorch}"
+[[ -n "${CONDA_ENV:-}" ]] || require_site CONDA_ROOT
+CONDA_ENV="${CONDA_ENV:-${CONDA_ROOT}/envs/chrombpnet-pytorch}"
 export PATH="${CONDA_ENV}/bin:${PATH}"
 ANALYSIS="${CHROMBPNET_DIR}/analysis"
 echo "TEACHER_SET: ${TEACHER_SET} (${LABEL}) -> ${OUT_DIR}"

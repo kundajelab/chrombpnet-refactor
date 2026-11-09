@@ -1,7 +1,8 @@
 # Shared by the expand scripts. Sourced, not executed.
 #
-# Three opt-in PyTorch changes in software/chrombpnet-refactor-expand (branch
-# expand), compared against the engines sweep's default PyTorch runs:
+# Three opt-in PyTorch changes in a chrombpnet-refactor checkout of the expand
+# branch (site.env's CHROMBPNET_EXPAND_REPO, at 3ddb713), compared against the
+# engines sweep's default PyTorch runs:
 #
 #   new      bias pipeline --bias-profile-only, then pipeline
 #            --model-selection pearsonr-jsd: a profile-only bias model, and
@@ -17,18 +18,31 @@
 # ids table, row selection, provenance -- is the engines sweep's
 # (../engines/_common.sh, sourced below with this checkout and root).
 #
-#   CHROMBPNET_DIR   the checkout (default: software/chrombpnet-refactor-expand)
-#   ROOT             where this comparison writes (default: chromatlas/test/
-#                    chrombpnet-refactor-expand); ${ROOT}/preprocess links
-#                    to the engines sweep's nonpeaks
-#   ENGINES_ROOT     the engines sweep, whose pytorch/ runs are the old models
-#                    and the teachers
+# Callers source ../_site.sh first (site.env); each can be overridden from the
+# environment:
+#
+#   CHROMBPNET_DIR   the checkout (default: site.env's CHROMBPNET_EXPAND_REPO)
+#   ROOT             where this comparison writes (default: site.env's
+#                    EXPAND_ROOT); ${ROOT}/preprocess links to the engines
+#                    sweep's nonpeaks
+#   ENGINES_ROOT     (site.env) the engines sweep, whose pytorch/ runs are the
+#                    old models and the teachers; its ids table, ENGINES_IDS
+#                    (or IDS_FILE), is this comparison's too
+#   ENGINES_SCRIPTS  the engines sweep's scripts (default: ../engines)
 
-_OAK="/path/to/workdir"
-CHROMBPNET_DIR="${CHROMBPNET_DIR:-${_OAK}/software/chrombpnet-refactor-expand}"
-ROOT="${ROOT:-${_OAK}/chromatlas/test/chrombpnet-refactor-expand}"
-ENGINES_ROOT="${ENGINES_ROOT:-${_OAK}/chromatlas/test/chrombpnet-refactor-engines}"
-ENGINES_SCRIPTS="${ENGINES_SCRIPTS:-${_OAK}/software/chrombpnet-refactor/analysis/blog-2026-015/engines}"
+if ! declare -F require_site > /dev/null; then
+  echo "Error: source ../_site.sh before $(basename "${BASH_SOURCE[0]}")" >&2
+  exit 2
+fi
+CHROMBPNET_DIR="${CHROMBPNET_DIR:-${CHROMBPNET_EXPAND_REPO:-}}"
+ROOT="${ROOT:-${EXPAND_ROOT:-}}"
+_expand_missing=()
+[[ -n "${CHROMBPNET_DIR}" ]] || _expand_missing+=(CHROMBPNET_EXPAND_REPO)
+[[ -n "${ROOT}" ]] || _expand_missing+=(EXPAND_ROOT)
+[[ -n "${IDS_FILE:-}" ]] || _expand_missing+=(ENGINES_IDS)
+require_site ${_expand_missing[@]+"${_expand_missing[@]}"} ENGINES_ROOT
+unset _expand_missing
+ENGINES_SCRIPTS="${ENGINES_SCRIPTS:-${BLOG_SCRIPTS}/engines}"
 export CHROMBPNET_DIR ROOT
 # chrombpnet-pytorch's editable install is the main checkout; this one comes
 # first on PYTHONPATH (it passes into the container), and activate_engine's
@@ -98,6 +112,7 @@ dataset_list() {
 # past the end, as select_row does.
 select_dataset() {
   local index="$1" line row
+  require_sweep REFERENCE_DIR GENOME CHROM_SIZES
   line="$(dataset_list | sed -n "$((index + 1))p")"
   if [[ -z "${line}" ]]; then
     echo "SKIP: array task ${index} is past the $(dataset_list | wc -l) datasets of ${IDS_FILE##*/}."
@@ -195,16 +210,18 @@ evaluate_student() {
 # have): the same check without it.
 eval "$(declare -f runtime_check | sed 's/ pybigtools//')"
 
-# On sherlock, outside the container, the jobs run in SHERLOCK_ENV:
-# chrombpnet-pytorch's PyTorch 2.14 wheel needs glibc 2.28 and sherlock has
-# 2.17. That env (the checkout's envs/chrombpnet-pytorch-sherlock.yml) has
-# PyTorch 2.5.1, the engines sweep's, and chrombpnet-pytorch's tangermeme,
-# modisco and memelite. Elsewhere, and in the container (--container),
-# chrombpnet-pytorch as before.
-SHERLOCK_ENV="${SHERLOCK_ENV:-chrombpnet-pytorch-sherlock}"
+# Under Slurm, outside the container, the jobs run in site.env's
+# PT_ENV_GLIBC217 when it names one: a build of the PyTorch env for glibc 2.17
+# nodes, where chrombpnet-pytorch's PyTorch 2.14 wheel (it needs glibc 2.28)
+# cannot run. The one these ran in on Sherlock (the checkout's
+# envs/chrombpnet-pytorch-sherlock.yml) has PyTorch 2.5.1, the engines
+# sweep's, and chrombpnet-pytorch's tangermeme, modisco and memelite.
+# Elsewhere, and in the container (--container), chrombpnet-pytorch as before.
 eval "$(declare -f activate_engine | sed '1s/^activate_engine /_engines_activate_engine /')"
 activate_engine() {
   local env="${3:-}"
-  if [[ -z "${env}" && "$2" == "sherlock" ]] && ! in_container; then env="${SHERLOCK_ENV}"; fi
+  if [[ -z "${env}" && "$2" == "slurm" && -n "${PT_ENV_GLIBC217:-}" ]] && ! in_container; then
+    env="${PT_ENV_GLIBC217}"
+  fi
   _engines_activate_engine "$1" "$2" "${env}" "${4:-}"
 }

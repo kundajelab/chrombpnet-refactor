@@ -4,10 +4,9 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --gpus=1
 #SBATCH --mem=96GB
-#SBATCH --partition=<partitions>
 #SBATCH --job-name=chrombpnet_section4
-#SBATCH --output=/path/to/workdir/sherlock/logs/chrombpnet_section4.%x.%j.out
-#SBATCH --error=/path/to/workdir/sherlock/logs/chrombpnet_section4.%x.%j.err
+#SBATCH --output=%x.%j.out
+#SBATCH --error=%x.%j.err
 #
 # Each of the blog's Section 4 changes measured on its own, old form against
 # new, on one GPU node (benchmark_section4.py has the stages): every
@@ -15,24 +14,32 @@
 # the file cache warmed first. ENCSR868FGK fold 0: the 20,000 peaks the pred_bw
 # jobs predict, the fold's own models, its GC-matching inputs.
 #
-#   sbatch --constraint="GPU_SKU:L40S" run_section4.sh sherlock
-#   sbatch -p owners --constraint="GPU_SKU:H200_SXM5" run_section4.sh sherlock
-#   python summarize_section4.py      # also reads the kit-fused jobs' pred_bw totals
+# From this folder, with site.env's cluster options and GPU constraints:
+#   sbatch ${SBATCH_SITE_ARGS} ${SBATCH_L40S} run_section4.sh slurm
+#   sbatch ${SBATCH_SITE_ARGS} ${SBATCH_H200} run_section4.sh slurm
+#   python summarize_section4.py <OPTIMIZATION_OUT>   # also reads the kit-fused jobs' pred_bw totals
 #
-# Checkouts: CODE_MAIN (software/chrombpnet-refactor) for the new forms,
+# Checkouts: CODE_MAIN (CHROMBPNET_REPO: chrombpnet-refactor) for the new forms,
 # code-693d162 for the bigWig writer forms and the old predictions writer,
-# the original package (software/chrombpnet) for the old GC matching. CPU-only
+# the original package (ORIGINAL_REPO) for the old GC matching. CPU-only
 # stages time the node's CPUs, so L40S and H200 nodes can differ there too.
 #
 # Usage: run_section4.sh [CLUSTER]
 #   env: ROUNDS (3), ROUNDS_GC (2: the old matching takes ~10 min), STAGES
-#        (gc,shared,bigwig,cast,h5), PT_ENV, CODE_MAIN, RUN_TAG, OUT_ROOT,
-#        ALLOW_BUSY_GPU
+#        (gc,shared,bigwig,cast,h5), PT_ENV, CODE_MAIN, RUN_TAG, OUT_ROOT (site.env's
+#        OPTIMIZATION_OUT), ALLOW_BUSY_GPU
+#   site.env: ORIGINAL_REPO, GENOME, CHROM_SIZES, REFERENCE_DIR, REFACTOR_MODELS,
+#        OPTIMIZATION_OUT (unless OUT_ROOT is set); optional PT_ENV_GLIBC217 and the hook
+#        pytorch_compiler (under Slurm)
 
 set -eo pipefail
 
-OAK_DIR="/path/to/workdir"
-HERE="${OAK_DIR}/software/chrombpnet-refactor/analysis/blog-2026-015/optimization"
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
+HERE="${BLOG_SCRIPTS}/optimization"
 # shellcheck source=_common.sh
 source "${HERE}/_common.sh"
 resolve_cluster "${1:-}"
@@ -53,19 +60,16 @@ variants () {
 }
 for stage in ${STAGES_ARG//,/ }; do variants "${stage}" > /dev/null; done
 
+SITE_NEEDS=(ORIGINAL_REPO GENOME CHROM_SIZES REFERENCE_DIR REFACTOR_MODELS)
+[[ -n "${OUT_ROOT:-}" ]] || SITE_NEEDS+=(OPTIMIZATION_OUT)
+require_site "${SITE_NEEDS[@]}"
 CODE_OLD="${HERE}/code-693d162"
-CODE_MAIN="${CODE_MAIN:-${OAK_DIR}/software/chrombpnet-refactor}"
-ORIGINAL="${OAK_DIR}/software/chrombpnet"
-FOLD="${OAK_DIR}/chromatlas/test/chrombpnet-refactor/ATAC/ENCSR868FGK/fold_${FOLD_NUM}"
-GENOME="${OAK_DIR}/chromatlas/reference/hg38/hg38.fa"
-CHROM_SIZES="${OAK_DIR}/chromatlas/reference/hg38/hg38.chrom.sizes"
-FOLD_JSON="${OAK_DIR}/chromatlas/reference/folds/fold_${FOLD_NUM}.json"
-OUT_ROOT="${OUT_ROOT:-${OAK_DIR}/chromatlas/test/chrombpnet-refactor-optimization/analysis-rerun}"
-if [[ "${CLUSTER}" == "sherlock" ]]; then
-  PT_ENV="${PT_ENV:-chrombpnet-pytorch-sherlock}"
-else
-  PT_ENV="${PT_ENV:-chrombpnet-pytorch}"
-fi
+CODE_MAIN="${CODE_MAIN:-${CHROMBPNET_REPO}}"
+ORIGINAL="${ORIGINAL_REPO}"
+FOLD="${REFACTOR_MODELS}/ATAC/ENCSR868FGK/fold_${FOLD_NUM}"
+FOLD_JSON="${REFERENCE_DIR}/folds/fold_${FOLD_NUM}.json"
+OUT_ROOT="${OUT_ROOT:-${OPTIMIZATION_OUT}}"
+PT_ENV="$(default_pt_env)"
 CANDIDATES="${FOLD}/data/output/ENCSR868FGK_auxiliary/candidates.bed"
 FOREGROUND="${FOLD}/data/output/ENCSR868FGK_auxiliary/foreground.gc.bed"
 for required in "${CODE_OLD}/chrombpnet/optimize.py" "${CODE_MAIN}/chrombpnet/CHROMBPNET.py" \
@@ -75,9 +79,9 @@ for required in "${CODE_OLD}/chrombpnet/optimize.py" "${CODE_MAIN}/chrombpnet/CH
   [[ -e "${required}" ]] || { echo "missing input: ${required}" >&2; exit 1; }
 done
 
-eval "$("${CONDA_EXE:-conda}" shell.bash hook)"
+eval "$("$(conda_exe)" shell.bash hook)"
 export LD_LIBRARY_PATH="$(ld_path_without_cuda)"
-[[ "${CLUSTER}" == "sherlock" && "${PT_ENV}" == "chrombpnet-pytorch-sherlock" ]] && module load gcc/14.2.0
+if [[ "${CLUSTER}" == slurm ]] && is_glibc217_env "${PT_ENV}"; then site_hook pytorch_compiler; fi
 conda activate "${PT_ENV}"
 export PYTHONNOUSERSITE=1
 

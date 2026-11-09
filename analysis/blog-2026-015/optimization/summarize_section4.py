@@ -5,7 +5,7 @@ in the form
 
     {memory or size advantage, if any}; {x}x faster (L40S: {a} s -> {b} s; H200: {c} s -> {d} s)
 
-    python summarize_section4.py [ANALYSIS_DIR]
+    python summarize_section4.py ANALYSIS_DIR      # the jobs' OUT_ROOT (site.env's OPTIMIZATION_OUT)
 
 Medians over every round of a run tag; GPUs from different jobs are never
 combined into one number, only placed side by side.
@@ -19,8 +19,9 @@ import statistics
 import sys
 from collections import defaultdict
 
-ROOT = sys.argv[1] if len(sys.argv) > 1 else \
-    "/path/to/workdir/chromatlas/test/chrombpnet-refactor-optimization/analysis-rerun"
+if len(sys.argv) < 2:
+    sys.exit("usage: python summarize_section4.py ANALYSIS_DIR  (the jobs' OUT_ROOT: site.env's OPTIMIZATION_OUT)")
+ROOT = sys.argv[1]
 
 # (row, stage or "pred_bw", old form, new form, what the memory/size note reports)
 ROWS = [

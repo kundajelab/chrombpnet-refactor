@@ -4,21 +4,21 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --gpus=1
 #SBATCH --mem=64GB
-#SBATCH --partition=<partitions>
 #SBATCH --job-name=engines_train
-#SBATCH --output=/path/to/workdir/sherlock/logs/engines_train.%A_%a.out
-#SBATCH --error=/path/to/workdir/sherlock/logs/engines_train.%A_%a.err
+#SBATCH --output=engines_train.%A_%a.out
+#SBATCH --error=engines_train.%A_%a.err
 #SBATCH --array=0-19
 
 # Train one engine's bias model and ChromBPNet model for one dataset and fold.
 #
-#   sbatch run_train_full.sh sherlock <engine> [--container]   # all 20 rows
+#   sbatch run_train_full.sh slurm <engine> [--container]   # all 20 rows
 #   SLURM_ARRAY_TASK_ID=5 ./run_train_full.sh local jax
 #
 # <engine> is pytorch, tensorflow or jax. The cluster may be omitted (it is
 # inferred from $SLURM_JOB_ID), and the engine may come from ENGINE= instead.
 # --container runs the env inside the Ubuntu 22.04 image (_common.sh); JAX on
-# sherlock needs it, and it gives every engine the same system tools.
+# a glibc older than 2.27 needs it, and it gives every engine the same system
+# tools.
 #
 # Each task runs, as dnase-rc/run_train_full.sh does for one arm:
 #
@@ -50,16 +50,13 @@
 
 set -euo pipefail
 
-_find_engines_dir() {
-  local candidate
-  for candidate in "${ENGINES_DIR:-}" "${SLURM_SUBMIT_DIR:-}" \
-      "/path/to/workdir/software/chrombpnet-refactor/analysis/blog-2026-015/engines" \
-      "$(dirname "$(readlink -f "$0")")"; do
-    [[ -n "${candidate}" && -f "${candidate}/_common.sh" ]] && { echo "${candidate}"; return 0; }
-  done
-  return 1
-}
-ENGINES_DIR="$(_find_engines_dir)" || { echo "Error: cannot locate _common.sh; set ENGINES_DIR." >&2; exit 1; }
+if [[ -z "${BLOG_SCRIPTS:-}" ]]; then
+  if [[ -n "${SLURM_JOB_ID:-}" ]]; then BLOG_SCRIPTS="$(cd "${SLURM_SUBMIT_DIR}/.." && pwd)"
+  else BLOG_SCRIPTS="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"; fi
+fi
+source "${BLOG_SCRIPTS}/_site.sh"
+ENGINES_DIR="${ENGINES_DIR:-${BLOG_SCRIPTS}/engines}"
+[[ -f "${ENGINES_DIR}/_common.sh" ]] || { echo "Error: no _common.sh in ${ENGINES_DIR}; set ENGINES_DIR." >&2; exit 1; }
 # shellcheck source=_common.sh
 source "${ENGINES_DIR}/_common.sh"
 

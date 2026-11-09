@@ -1,7 +1,7 @@
 # ChromBPNet across engines: PyTorch, TensorFlow, JAX
 
 Does the same ChromBPNet pipeline give the same models under each
-deep-learning engine? The package (`software/chrombpnet-refactor`) runs one
+deep-learning engine? The package (chrombpnet-refactor) runs one
 framework-neutral pipeline -- preprocessing, data generators, metrics,
 footprints, TF-MoDISco, reports -- with the model behind an engine:
 
@@ -28,51 +28,78 @@ array task `t` is data row `t+1`, fold = its `FOLD_NUM`.)
 
 ## Running it
 
+The scripts read this site's paths from `../site.env` (copy
+`../site.env.example` and fill it in, or point `BLOG_SITE_ENV` at another
+file); each stops and names any setting it needs that is left empty:
+
+- `ENGINES_ROOT` (the run tree, written here), `ENGINES_IDS` (the ids
+  table), `REFERENCE_DIR` (`folds/fold_<k>.json`, `blacklist.bed.gz`),
+  `GENOME`, `CHROM_SIZES`, `CONDA_ROOT`; for some steps `ORIGINAL_REPO`,
+  `ENCODE_MODELS`, `CONTAINER_IMAGE` and `CONTAINER_BINDS` (the host
+  directories `--container` binds).
+- The cluster's: `SBATCH_SITE_ARGS` (given to every job `submit_all.sh`
+  submits), `LOG_DIR` (where their logs go; without it, this folder),
+  `JAX_GPU_CONSTRAINT`, `TF_GPU_CONSTRAINT`, `SBATCH_SHARED_GPU_ARGS`, and
+  the hooks `pytorch_compiler`, `tf28_libraries` and `report_libraries`
+  (module loads and the like, run under Slurm outside the container).
+
+A variable set in the environment wins over site.env's, and `ROOT=` and
+`IDS_FILE=` replace `ENGINES_ROOT` and `ENGINES_IDS` for one run. Submit from
+this folder (`submit_all.sh` does): a job finds the scripts through
+`SLURM_SUBMIT_DIR`. The cluster argument is `slurm` or `local`; `sherlock`,
+which these runs were submitted with, means `slurm`. Below, `<NAME>` stands
+for site.env's value.
+
 ```bash
 # 1. On one GPU node: each env activates, imports the checkout, runs a
 #    convolution on the GPU, and loads and exercises everything the pipeline
 #    uses -- inside the container, as the jobs will run (see "The container").
-#    The first run pulls the image. The -C asks for a GPU the JAX env can use
-#    (compute capability 7.5+).
-srun -p <partitions> --gpus=1 --time=0:30:00 --gpu_cmode=shared \
-     -C "GPU_CC:7.5|GPU_CC:8.0|GPU_CC:8.6|GPU_CC:8.9|GPU_CC:9.0" ./check_envs.sh sherlock --container
+#    The first run pulls the image. The constraint asks for a GPU the JAX env
+#    can use (compute capability 7.5+).
+srun <SBATCH_SITE_ARGS> --gpus=1 --time=0:30:00 <SBATCH_SHARED_GPU_ARGS> \
+     --constraint="<JAX_GPU_CONSTRAINT>" ./check_envs.sh slurm --container
 
 # 2. Submit: 20 prep tasks (CPU), then 3 x 20 training tasks (GPU).
-./submit_all.sh sherlock --container --dry-run    # see the sbatch lines
-./submit_all.sh sherlock --container
+./submit_all.sh slurm --container --dry-run    # see the sbatch lines
+./submit_all.sh slurm --container
 
 # 3. Watch, and resubmit what failed (completed tasks skip themselves).
 #    check_runs.sh asks squeue which tasks are still running or pending.
 #    Cancel an engine's old array before resubmitting it (scancel <jobid>):
 #    two tasks of one engine on one dataset and fold would share a directory.
 ./check_runs.sh
-ENGINES=jax SKIP_PREP=1 ./submit_all.sh sherlock --container
+ENGINES=jax SKIP_PREP=1 ./submit_all.sh slurm --container
 
 # 4. Score the 30K peak subsample's missing heads (runs finished before the
 #    pipeline kept the counts head; heads already scored are skipped).
-#    JAX needs the container on sherlock; PyTorch and TensorFlow run natively.
-ENGINES="pytorch tensorflow" ./submit_all.sh sherlock --contribution
-ENGINES=jax ./submit_all.sh sherlock --container --contribution
+#    JAX needs the container on glibc 2.17 nodes; PyTorch and TensorFlow
+#    ran natively.
+ENGINES="pytorch tensorflow" ./submit_all.sh slurm --contribution
+ENGINES=jax ./submit_all.sh slurm --container --contribution
 
 # 5. Collate (a CPU job: the first run reads the original contribution
 #    scores, ~11 GB per dataset and fold) and plot.
-sbatch run_summarize.sh
+sbatch <SBATCH_SITE_ARGS> run_summarize.sh
 ./plot_summarize.sh
 ```
 
 `--container` (off by default) runs every step's conda env inside an Ubuntu
-22.04 image; JAX on sherlock needs it, and a submission including JAX there
-without it is refused. Leave it out to run PyTorch and TensorFlow natively,
-as the first sweep did.
+22.04 image; JAX needs it on a host whose glibc is older than 2.27
+(Sherlock's nodes have 2.17), and a submission including JAX from such a
+host without it is refused. Leave it out to run PyTorch and TensorFlow
+natively, as the first sweep did.
 
-`submit_all.sh` arguments: `[sherlock|local] [--container] [--contribution]
+`submit_all.sh` arguments: `[slurm|local] [--container] [--contribution]
 [--dry-run]`. Options (environment): `ENGINES="jax tensorflow"`,
-`ARRAY=0-4`, `SKIP_PREP=1`, `GPU_CONSTRAINT="GPU_SKU:L40S"` (passed to every
-engine's training jobs as `--constraint`; `sh_node_feat` lists sherlock's
-features) and `JAX_GPU_CONSTRAINT` (the JAX jobs' own, by default compute
-capability 7.5 or newer; empty drops it). The `GPU_CC:*` names are my
-reading of sherlock's feature list: if `sbatch` rejects them, check
-`sh_node_feat` and set `JAX_GPU_CONSTRAINT` (and the `-C` above) to match.
+`ARRAY=0-4`, `SKIP_PREP=1`, `GPU_CONSTRAINT=<feature>` (passed to every
+engine's training jobs as `--constraint`, e.g. one GPU model's feature
+name), `SBATCH_EXTRA` (more options for every GPU job), and site.env's
+`JAX_GPU_CONSTRAINT` (the JAX jobs' own: compute capability 7.5 or newer)
+and `TF_GPU_CONSTRAINT` (the TensorFlow jobs': 16 GB or more), each
+overridden by an environment variable of the same name, which empty drops
+it. The sweep's were Sherlock's compute-capability features,
+`GPU_CC:7.5|GPU_CC:8.0|GPU_CC:8.6|GPU_CC:8.9|GPU_CC:9.0` and
+`GPU_CC:6.0|GPU_CC:7.0|GPU_CC:8.0|GPU_CC:8.6|GPU_CC:8.9|GPU_CC:9.0`.
 
 One task by hand, on a machine with a GPU:
 
@@ -88,7 +115,7 @@ SLURM_ARRAY_TASK_ID=15 ./run_contribution.sh local jax
 `BATCH_SIZE=N` and `ALLOW_CPU=1`; `run_contribution.sh` takes `HEADS="counts"`,
 `FORCE=1`, `INTERPRET_BATCH_SIZE=N` and `DRY_RUN=1`. See their headers.
 
-On GPUs under 16 GB (`SMALL_GPU_MIB`; sherlock's 12 GB TITAN Xp, 11 GB RTX
+On GPUs under 16 GB (`SMALL_GPU_MIB`; Sherlock's 12 GB TITAN Xp, 11 GB RTX
 2080 Ti) `run_contribution.sh` scores PyTorch and JAX at an interpret batch
 size of 8 (TensorFlow explains one example at a time regardless). TensorFlow
 training needs a GPU of 16 GB or more, which `submit_all.sh` requests (see
@@ -121,7 +148,7 @@ good, and how far apart they are.
 ## The comparison
 
 `run_summarize.sh` writes five tables to a directory under
-`/path/to/workdir/chromatlas/test/chrombpnet-refactor-engines/analysis/`
+`${ENGINES_ROOT}/analysis/`
 and prints a headline (`run_summarize.py`'s docstring has the details). The
 directory says which of the engines' profile scores were read (`OUT_DIR`
 overrides it; a relative one is taken inside `analysis/`):
@@ -145,7 +172,7 @@ profile-stopgrad-off`).
 
 The contribution comparison reads ~11 GB of original scores per dataset and
 fold (all peaks; ~3 min each on the lab GPU host, 4 at a time), so run it as a job
-(`sbatch run_summarize.sh`); its results are cached in
+(`sbatch <SBATCH_SITE_ARGS> run_summarize.sh`); its results are cached in
 `.contributions_cache/`, keyed by the input files' sizes and times, so a
 rerun only redoes what changed. `--no-contributions` skips it. A run's
 counts scores exist once `run_contribution.sh` has scored them; until then
@@ -170,12 +197,12 @@ weighting into files of its own, and summarize those into a directory of
 their own:
 
 ```bash
-cd /path/to/workdir/software/chrombpnet-refactor/analysis/blog-2026-015/engines
+cd analysis/blog-2026-015/engines
 # 1. chrombpnet_nobias.midpoint.profile_scores.h5 beside each run's own scores
-PROFILE_WEIGHTING=midpoint ENGINES="pytorch tensorflow" ./submit_all.sh sherlock --contribution
-PROFILE_WEIGHTING=midpoint ENGINES=jax ./submit_all.sh sherlock --container --contribution
+PROFILE_WEIGHTING=midpoint ENGINES="pytorch tensorflow" ./submit_all.sh slurm --contribution
+PROFILE_WEIGHTING=midpoint ENGINES=jax ./submit_all.sh slurm --container --contribution
 # 2. once those have finished: tables and plots under analysis/profile-stopgrad-off/
-sbatch run_summarize.sh --profile-stopgrad off   # -> analysis/profile-stopgrad-off/
+sbatch <SBATCH_SITE_ARGS> run_summarize.sh --profile-stopgrad off   # -> analysis/profile-stopgrad-off/
 ./plot_summarize.sh --dir profile-stopgrad-off
 ```
 
@@ -197,15 +224,15 @@ original chrombpnet's DeepSHAP -- kundajelab/chrombpnet at 09938fd
 kundajelab shap fork -- on each row's original model, once per seed. The only
 change to the original is that its references are drawn from
 `RandomState(seed)` instead of unseeded. The model is the ENCODE release in
-`chromatlas/<ASSAY>/<ENCID>/models/fold_N/`, the one whose genome-wide scores
+`${ENCODE_MODELS}/<ASSAY>/<ENCID>/models/fold_N/`, the one whose genome-wide scores
 are the stored originals; the regions are the engines' whole 30K subsample
 (`N_REGIONS=N` for the first N only).
 
 ```bash
-cd /path/to/workdir/software/chrombpnet-refactor/analysis/blog-2026-015/engines
-SEEDS="1 2 3" ./submit_all.sh sherlock --deepshap-seeds     # one 20-row GPU array per seed, ~4 h a task
+cd analysis/blog-2026-015/engines
+SEEDS="1 2 3" ./submit_all.sh slurm --deepshap-seeds     # one 20-row GPU array per seed, ~4 h a task
 # once they have finished (with the engines' midpoint profile scores, the original's weighting):
-sbatch run_summarize.sh --profile-stopgrad off   # -> analysis/profile-stopgrad-off/
+sbatch <SBATCH_SITE_ARGS> run_summarize.sh --profile-stopgrad off   # -> analysis/profile-stopgrad-off/
 ./plot_summarize.sh --dir profile-stopgrad-off
 ```
 
@@ -241,11 +268,12 @@ model (seed 1, the engines' 30K subsample).
 - Natively only (`--container` is refused). The original's `train` and
   `bias train` end by writing their report PDF with weasyprint, which loads
   pango and cairo from the system -- its Dockerfile installs them with apt --
-  and the env does not bring them. On sherlock the job loads them as modules,
-  as the chrombpnet runs do (`module load system`, `pango`, `system cairo`);
-  the lab GPU host and the lab CPU host have them in the OS; the container image has neither. The
-  first submission (job 47622917), without the modules, stopped on all 20 rows
-  at the runtime check for this reason.
+  and the env does not bring them. Under Slurm the job runs site.env's hook
+  `report_libraries` for them (on Sherlock: the modules `system`, `pango` and
+  `system cairo`, as the chrombpnet runs load); the lab's GPU hosts have them
+  in the OS; the container image has neither. The first submission (job
+  47622917), without the modules, stopped on all 20 rows at the runtime check
+  for this reason.
 - Steps (`run_original_retrain.py` runs each from the original's checkout):
   the original's `chrombpnet bias train`, its `chrombpnet train` on that bias
   model, the test-set predictions its `pipeline` makes next (`train` stops
@@ -262,9 +290,9 @@ model (seed 1, the engines' 30K subsample).
   resubmitted and goes on from its next step.
 
 ```bash
-./submit_all.sh sherlock --original-retrain                  # one 20-row GPU array, natively (not --container)
+./submit_all.sh slurm --original-retrain                  # one 20-row GPU array, natively (not --container)
 # once it has finished:
-sbatch run_summarize.sh --profile-stopgrad off   # -> analysis/profile-stopgrad-off/
+sbatch <SBATCH_SITE_ARGS> run_summarize.sh --profile-stopgrad off   # -> analysis/profile-stopgrad-off/
 ./plot_summarize.sh --dir profile-stopgrad-off
 ```
 
@@ -310,9 +338,11 @@ now `--dnase-convention right-deprecated`; the engines the package default
 
 ## Environments
 
-All three are editable installs of `/path/to/workdir/
-software/chrombpnet-refactor` (they pointed at the `chrombpnet-engines`
-worktree until 2026-10-05, when its branch was merged into main), so **a job
+All three are editable installs of one chrombpnet-refactor checkout
+(site.env's `CHROMBPNET_REPO`, by default the repository holding these
+scripts; `activate_engine` checks that each env imports it). They pointed at
+the `chrombpnet-engines` worktree until 2026-10-05, when its branch was
+merged into main. So **a job
 runs whatever that checkout holds when it starts**: do not switch its branch
 or edit it while jobs run. Each run records the commit, and whether the tree
 was modified, in `provenance.txt`. The old `chrombpnet-refactor` env is
@@ -320,24 +350,25 @@ gone; `chrombpnet-pytorch-sherlock` still points at the same checkout.
 
 How each reaches a GPU (`activate_engine` in `_common.sh`):
 
-- **pytorch**: torch 2.5.1+cu118 brings its CUDA; `module load gcc/14.2.0`
-  on sherlock, as in the dnase-rc runs. Same stack as
-  `chrombpnet-pytorch-sherlock`.
+- **pytorch**: torch 2.5.1+cu118 brings its CUDA; under Slurm, site.env's
+  hook `pytorch_compiler` (on Sherlock `module load gcc/14.2.0`, as in the
+  dnase-rc runs). Same stack as `chrombpnet-pytorch-sherlock`.
 - **tensorflow**: TF 2.8 needs CUDA 11.2 + cuDNN 8.1 from the system:
-  `module load cuda/11.2.0 cudnn/8.1.1.33` on sherlock (what
-  `dnase-rc/run_compare.sh` loads for the original package), the
-  `/usr/local` copies elsewhere. `TF_FORCE_GPU_ALLOW_GROWTH=true`, because
+  site.env's `TF28_LIBRARY_DIRS` (the lab's GPU hosts' copies), or under
+  Slurm its hook `tf28_libraries` (on Sherlock `module load cuda/11.2.0
+  cudnn/8.1.1.33`, what `dnase-rc/run_compare.sh` loads for the original
+  package). `TF_FORCE_GPU_ALLOW_GROWTH=true`, because
   the engine's DeepSHAP runs in a spawned child process that needs GPU
   memory while the parent still holds what it trained with (the engine sets
   it itself since commit 636394d; the script keeps it). On GPUs newer
   than TF 2.8 knows (L40S, H100) it JIT-compiles from PTX at start-up: slow
   to start, then fine. For the same second process the GPU must not be in
-  Exclusive_Process compute mode, sherlock's default: the first sweep's
+  Exclusive_Process compute mode, Sherlock's default: the first sweep's
   TensorFlow tasks all died at the bias model's DeepSHAP with
   `CUDA_ERROR_DEVICE_UNAVAILABLE` (worker exit code -6). `submit_all.sh`
-  gives the TensorFlow jobs `--gpu_cmode=shared` (sherlock's own sbatch
-  option), and the TensorFlow preflight refuses an exclusive-mode GPU at
-  the start of a task.
+  gives the TensorFlow jobs site.env's `SBATCH_SHARED_GPU_ARGS` (on Sherlock
+  `--gpu_cmode=shared`, its own sbatch option), and the TensorFlow preflight
+  refuses an exclusive-mode GPU at the start of a task.
 - **jax**: `jax[cuda12]==0.11.2`, CUDA 12.9 and cuDNN 9 as pip wheels --
   the repository's default since commit 352b1d7 (it was `jax[cuda13]`).
   CUDA 13 dropped Pascal and Volta GPUs (the dnase-rc jobs landed on TITAN
@@ -410,27 +441,31 @@ With `--container`, `run_train_full.sh`, `run_prep_nonpeaks.sh`,
 `run_contribution.sh` and `check_envs.sh` run themselves again inside
 `apptainer exec --nv` (or `singularity`), with an Ubuntu 22.04 image -- the
 OS the envs were built and tested on (the lab GPU host) -- that runs the same conda env
-from /oak, with the node's GPU driver bound in. /oak, /scratch and a TMPDIR
-outside /tmp are bound; the host's environment variables (the SLURM ones,
+from the host, with the node's GPU driver bound in. site.env's
+`CONTAINER_BINDS` (the host directories the envs, checkouts, data and outputs
+live in; the sweep bound its file system and scratch) and a TMPDIR outside
+/tmp are bound; the host's environment variables (the SLURM ones,
 CONDA_EXE) pass through, except PATH, which is the image's -- so conda is
 called by its path (`CONDA_EXE`, else `$CONDA_ROOT/bin/conda`), never by
 name; the locale is C.UTF-8. It is off by default, for every engine.
 
-- **jax** needs it on sherlock (glibc, above); without it a JAX task there
-  stops at once and says so, and `submit_all.sh` refuses to submit.
+- **jax** needs it on a glibc older than 2.27 (above); without it a JAX task
+  there stops at once and says so, and `submit_all.sh` refuses to submit.
 - **tensorflow**: the image has no CUDA 11.2 / cuDNN 8.1 and no `module`, so
-  the host's directories are found first (the modules' on sherlock, loaded
-  in a subshell; `/usr/local` elsewhere), bound into the container with
-  `/share/software`, and put on LD_LIBRARY_PATH inside (`TF_CUDA_DIRS`).
-- **pytorch**: no `module load gcc/14.2.0` inside; the image's libstdc++ is
+  the host's directories are found first (`TF28_LIBRARY_DIRS`, or what the
+  hook `tf28_libraries` puts on LD_LIBRARY_PATH, run in a subshell), bound
+  into the container, and put on LD_LIBRARY_PATH inside (`TF_CUDA_DIRS`).
+  Where those are a module's symlinks into a larger tree, that tree goes in
+  `CONTAINER_BINDS` (the sweep bound Sherlock's software tree).
+- **pytorch**: no `pytorch_compiler` hook inside; the image's libstdc++ is
   new enough (the lab GPU host runs the same env natively on the same OS).
 - Why use it for all three: the same system tools. Making a bigwig pipes
   the reads through the system's `awk` and `sort`, and the first sweep made
   its bigwigs 2.2-2.4x faster in the JAX container than PyTorch and
   TensorFlow did on the host, on the same node and data -- engine-independent
   time in the runtime comparison (see "The first sweep").
-- The image is `/path/to/workdir/software/containers/ubuntu-22.04.sif`
-  (`CONTAINER_IMAGE`, or the old `JAX_IMAGE`, overrides it). `check_envs.sh
+- The image is site.env's `CONTAINER_IMAGE` (the old name `JAX_IMAGE`
+  still works). `check_envs.sh
   --container` pulls it the first time (`apptainer pull ...
   docker://ubuntu:22.04`); jobs never pull. `USE_CONTAINER=1` in the
   environment is the same as `--container`. `provenance.txt` records the
@@ -492,7 +527,7 @@ engines on the lab GPU host (JAX also through a stand-in container), the scripts
 their dry runs under bash 4.2 (CentOS 7's; empty arrays under `set -u`
 needed the `${a[@]+"${a[@]}"}` form), and the PyTorch and TensorFlow envs
 pass their test suites, the TF byte-identity harness (44/44) and the
-cross-engine DeepSHAP harness. Run `check_envs.sh` on sherlock again
+cross-engine DeepSHAP harness. Run `check_envs.sh` on the cluster again
 before submitting.
 
 ## The first sweep (2026-10-03 to 10-05): failures and runtimes
@@ -514,7 +549,7 @@ finished TensorFlow run had 16 GB or more (P100, V100, L40S).
   left. The bias stage survives because its model is smaller.
 - Tasks 10, 11, 17: `CUDA_ERROR_ILLEGAL_ADDRESS`, then `F
   device_event_mgr.cc:221 Unexpected Event status: 1`, in plain bias-model
-  training -- a GPU or node fault (<node>, <node>), not engine
+  training -- a GPU or node fault (two nodes), not engine
   code: other TensorFlow tasks trained on TITAN Xp nodes, and the user's
   PyTorch dnase-rc jobs hit the same illegal-address error there.
 - **`-bs 32` was not a fix.** Measured on the lab GPU host (2026-10-06) with an L40S
@@ -539,11 +574,12 @@ finished TensorFlow run had 16 GB or more (P100, V100, L40S).
   capability 6.0, 7.0, 8.x, 9.0), and `run_train_full.sh` no longer lowers
   the batch size on small GPUs. The reruns were relaunched on L40S at
   `-bs 64` (array 46951206, tasks 1, 6, 9, 17).
-- Tasks 10, 11 and 17 crashed on <node> (twice) and <node>;
-  `SBATCH_EXTRA="--exclude=<node>,<node>"` keeps the rerun off them.
+- Tasks 10, 11 and 17 crashed on the same two nodes (one of them twice);
+  `SBATCH_EXTRA="--exclude=<those nodes>"` keeps the rerun off them (they are
+  in site.env's `SBATCH_SITE_ARGS` since).
 - Rerun, natively (TensorFlow gets a 16 GB+ GPU by default now):
-  `SBATCH_EXTRA="--exclude=<node>,<node>" ENGINES=tensorflow
-  ARRAY=... SKIP_PREP=1 ./submit_all.sh sherlock`. The reruns' pipeline keeps
+  `SBATCH_EXTRA="--exclude=<nodes>" ENGINES=tensorflow ARRAY=... SKIP_PREP=1
+  ./submit_all.sh slurm`. The reruns' pipeline keeps
   both heads' contribution scores itself.
 
 **Why JAX ran fastest, then TensorFlow, then PyTorch** (median hours per
@@ -556,7 +592,7 @@ run: JAX 10.5, TF 19.7, PyTorch 25.8) is mostly not the engines:
 | jax | 10.5 h (n=20) | 9.8 h (n=11) | none (constrained to CC >= 7.5) |
 
 - **GPU and node assignment** (about 85% of the PyTorch-JAX gap): JAX was
-  constrained to compute capability >= 7.5, so it never ran on the old sh02
+  constrained to compute capability >= 7.5, so it never ran on the oldest
   nodes, whose CPUs also make MoDISco and the bigwig slower. TensorFlow
   looks faster than PyTorch only because it failed on every TITAN Xp, so
   more of its survivors ran on L40S.
@@ -581,7 +617,7 @@ runs.
 ## Outputs
 
 ```
-/path/to/workdir/chromatlas/test/chrombpnet-refactor-engines/
+${ENGINES_ROOT}/
   preprocess/<ASSAY>/<ENCID>/fold_N/negatives.bed.gz      shared nonpeaks
   <engine>/<ASSAY>/<ENCID>/fold_N/
     bias_model/  model/                                    the two pipelines
@@ -598,6 +634,8 @@ runs.
 
 About 5 GB per run, so ~300 GB for the sweep. `run_contribution.sh` adds
 `model/auxiliary/interpret_subsample/chrombpnet_nobias.counts_scores.h5`
-(~0.7 GB) and `chrombpnet_nobias.contribution.args.json` to a run. Logs:
-`sherlock/logs/engines_{prep,train,contribution,deepshap_seeds,original_retrain}.<job>_<task>.{out,err}` and
+(~0.7 GB) and `chrombpnet_nobias.contribution.args.json` to a run. Logs, in
+site.env's `LOG_DIR` (without one, the folder `sbatch` ran in: this one, for
+`submit_all.sh`'s jobs):
+`engines_{prep,train,contribution,deepshap_seeds,original_retrain}.<job>_<task>.{out,err}` and
 `engines_summarize.<job>.{out,err}`.

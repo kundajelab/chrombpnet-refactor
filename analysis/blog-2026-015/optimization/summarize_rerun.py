@@ -4,7 +4,7 @@ job), the median pred_bw time of each arm over every fold and round, and the
 speedups the blog tables quote. Runs are kept apart: arms are only compared
 within one job.
 
-    python summarize_rerun.py [ANALYSIS_DIR]
+    python summarize_rerun.py ANALYSIS_DIR      # the jobs' OUT_ROOT (site.env's OPTIMIZATION_OUT)
 
 Also prints each arm's median by its position in the round, so an order
 effect (the cold-cache problem this re-run exists to remove) would show, and
@@ -19,8 +19,9 @@ import statistics
 import sys
 from collections import defaultdict
 
-ROOT = sys.argv[1] if len(sys.argv) > 1 else \
-    "/path/to/workdir/chromatlas/test/chrombpnet-refactor-optimization/analysis-rerun"
+if len(sys.argv) < 2:
+    sys.exit("usage: python summarize_rerun.py ANALYSIS_DIR  (the jobs' OUT_ROOT: site.env's OPTIMIZATION_OUT)")
+ROOT = sys.argv[1]
 ARMS = ["original", "none", "kit", "ours", "both", "main", "kitfk", "fkonly", "fk", "mallocenv", "nomalloc",
         "stock", "stockdet", "stockmalloc", "exact", "fast",   # run_kit_modes.sh
         "evaluate", "attribute", "marginalize",         # run_cherimoya.sh

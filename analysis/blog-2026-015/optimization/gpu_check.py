@@ -5,9 +5,9 @@
 TensorFlow 2.8 without its CUDA libraries runs on the CPU without an error,
 which would time the original package on the CPU. PyTorch is also checked for
 running its own cuDNN: cuDNN 9 looks for its sub-libraries on LD_LIBRARY_PATH
-before its own directory, so another cuDNN 9 there can get mixed in (on
-Sherlock, 2026-10-21, the kit env's torch reported cuDNN 9.4, not its own 9.1,
-and the kit's exact mode died loading cuDNN).
+before its own directory, so another cuDNN 9 there can get mixed in (on a
+cluster node, 2026-10-21, the kit env's torch reported cuDNN 9.4, not its own
+9.1, and the kit's exact mode died loading cuDNN).
 Prints the CUDA libraries the process loaded, for the log.
 """
 
