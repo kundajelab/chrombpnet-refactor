@@ -26,7 +26,8 @@
 #
 # Usage: run_section4.sh [CLUSTER]
 #   env: ROUNDS (3), ROUNDS_GC (2: the old matching takes ~10 min), STAGES
-#        (gc,shared,bigwig,cast,h5), PT_ENV, CODE_MAIN, RUN_TAG, OUT_ROOT (site.env's
+#        (gc,shared,bigwig,cast,h5), PT_ENV, CODE_MAIN, RUN_KIND (section4: the run tag's
+#        suffix), RUN_TAG, OUT_ROOT (site.env's
 #        OPTIMIZATION_OUT), ALLOW_BUSY_GPU
 #   site.env: ORIGINAL_REPO, GENOME, CHROM_SIZES, REFERENCE_DIR, REFACTOR_MODELS,
 #        OPTIMIZATION_OUT (unless OUT_ROOT is set); optional PT_ENV_GLIBC217 and the hook
@@ -54,7 +55,7 @@ variants () {
     shared) echo "unshared shared" ;;
     bigwig) echo "list numpy fixed" ;;
     cast) echo "legacy batched" ;;
-    h5) echo "gzip4 gzip9 gzip9threads" ;;
+    h5) echo "gzip4 gzip9 gzip9threads gzip4threads" ;;
     *) echo "unknown stage '$1' (expected gc, shared, bigwig, cast, h5)" >&2; return 2 ;;
   esac
 }
@@ -88,7 +89,7 @@ export PYTHONNOUSERSITE=1
 select_gpu
 ARCH="cuda-${GPU_CC//./}"
 GPU_SLUG="$(echo "${GPU_NAME}" | tr -cs '[:alnum:]' '-' | sed 's/^-*//; s/-*$//')"
-RUN_TAG="${RUN_TAG:-${GPU_SLUG}_${ARCH}_section4$(host_suffix)}"
+RUN_TAG="${RUN_TAG:-${GPU_SLUG}_${ARCH}_${RUN_KIND:-section4}$(host_suffix)}"
 start_results "${OUT_ROOT}/${RUN_TAG}/fold_${FOLD_NUM}"
 mkdir -p "${WORK}/cwd"
 RESULTS="${WORK}/results.jsonl"

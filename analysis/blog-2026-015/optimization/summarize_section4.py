@@ -39,18 +39,28 @@ ROWS = [
 ]
 
 
+# The HDF5 stage alone at the original's filters (submit_h5_gzip4.sh: run_section4.sh
+# STAGES=h5 RUN_KIND=h5-gzip4), its own job: its variants are compared only with each
+# other, and it is left out of the rows above.
+H5_GZIP4_ROWS = [
+    ("HDF5 on threads at the original's filters (--h5-gzip-level 4 --no-h5-shuffle) vs gzip 4",
+     "h5", "gzip4", "gzip4threads", "size"),
+    ("HDF5 on threads at gzip 9 + shuffle (the default) vs gzip 4", "h5", "gzip4", "gzip9threads", "size"),
+]
+
+
 def gpu_of(tag):
     return "H200" if "H200" in tag else "L40S" if "L40S" in tag else None
 
 
-def load():
+def load(runs="*_section4*", kit_fused=True):
     stats = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))   # gpu -> stage -> variant -> rows
-    for path in glob.glob(os.path.join(ROOT, "*_section4*", "fold_*", "results.jsonl")):
+    for path in glob.glob(os.path.join(ROOT, runs, "fold_*", "results.jsonl")):
         gpu = gpu_of(path.split(os.sep)[-3])
         for line in open(path):
             row = json.loads(line)
             stats[gpu][row["stage"]][row["variant"]].append(row)
-    for path in glob.glob(os.path.join(ROOT, "*_kit-fused", "fold_*", "timings.tsv")):
+    for path in glob.glob(os.path.join(ROOT, "*_kit-fused", "fold_*", "timings.tsv")) if kit_fused else ():
         gpu = gpu_of(path.split(os.sep)[-3])
         for row in csv.DictReader(open(path), delimiter="\t"):
             if row["status"] == "ok" and row["seconds"]:
@@ -99,6 +109,11 @@ def main():
         sys.exit("no *_section4*/fold_*/results.jsonl or *_kit-fused/fold_*/timings.tsv under " + ROOT)
     for row, stage, old, new, note in ROWS:
         print("%-72s %s" % (row, cell(stats, stage, old, new, note)))
+    gzip4 = load("*_h5-gzip4*", kit_fused=False)
+    if gzip4:
+        print("\n## the HDF5 stage at the original's filters (*_h5-gzip4, one job)")
+        for row, stage, old, new, note in H5_GZIP4_ROWS:
+            print("%-72s %s" % (row, cell(gzip4, stage, old, new, note)))
 
 
 if __name__ == "__main__":

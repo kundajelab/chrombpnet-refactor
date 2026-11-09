@@ -1,1 +1,3 @@
 site.env
+# the older checkouts some benchmark arms run (README: Code snapshots)
+optimization/code-*/

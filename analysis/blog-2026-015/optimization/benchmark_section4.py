@@ -27,11 +27,13 @@ Stages; WORKDIR/inputs.json names their inputs (run_section4.sh writes it):
                                 PredictionAdapter._predict_legacy (the whole
                                 input cast to float32 up front) | predict (cast
                                 per batch into a preallocated output)
-  h5      gzip4 | gzip9 | gzip9threads
+  h5      gzip4 | gzip9 | gzip9threads | gzip4threads
                                 one model's *_predictions.h5: h5py's default
                                 gzip, as the original and 693d162 (that file,
                                 by path) | gzip 9 + shuffle on one thread
-                                (faee27f) | the same filters on threads
+                                (faee27f) | the same filters on threads | the
+                                threaded writer at the original's filters
+                                (--h5-gzip-level 4 --no-h5-shuffle)
 """
 
 import argparse
@@ -168,6 +170,10 @@ def stage_h5(variant, inputs, work):
                 compression.THREADED_MIN_BYTES = 1 << 62     # faee27f's single-threaded writer
         elif not hasattr(compression, "create_dataset"):
             sys.exit("benchmark_section4: this checkout has no threaded HDF5 writer")
+        if variant == "gzip4threads":
+            if not hasattr(compression, "configure"):
+                sys.exit("benchmark_section4: this checkout has no --h5-gzip-level (chrombpnet.compression.configure)")
+            compression.configure(4, False)                  # what --h5-gzip-level 4 --no-h5-shuffle sets
     profs, logcts, coords = predictions(inputs)
     prefix = os.path.join(work, "h5_" + variant)
     return ((lambda: module.write_predictions_h5py(prefix, profs, logcts, coords, include_peak_flag=False)),
