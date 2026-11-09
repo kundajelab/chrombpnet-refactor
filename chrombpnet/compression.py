@@ -6,6 +6,10 @@ bytes of each value so floats compress far better; strings get gzip only.
 Scalars and empty datasets cannot be chunked, so they stay as they are. Any
 HDF5 reader decompresses these transparently, PyTables included.
 
+``--h5-gzip-level`` and ``--no-h5-shuffle`` change both for one command
+(``configure_from_args``); ``--h5-gzip-level 4 --no-h5-shuffle`` is how
+chrombpnet 1.x compressed them. The values are the same at every setting.
+
 ``create_dataset`` writes a dataset that way. Large numeric ones are filtered
 chunk by chunk on a thread pool (the optimization kit's ``h5_writer``, at this
 package's level and filters): gzip level 9 on one thread took ~35 s per
@@ -28,6 +32,9 @@ import numpy as np
 
 GZIP_LEVEL = 9
 
+#: Numeric datasets go behind the byte-shuffle filter.
+SHUFFLE = True
+
 #: Numeric datasets at least this large are compressed on threads; below it,
 #: thread start-up costs more than it saves.
 THREADED_MIN_BYTES = 8 << 20
@@ -37,13 +44,33 @@ THREADED_MIN_BYTES = 8 << 20
 MAX_THREADS = 8
 
 
+def configure(gzip_level=None, shuffle=None):
+    """Set the gzip level (1-9) and whether numeric datasets are shuffled, for
+    every HDF5 file this process -- and any process it forks -- writes from
+    now on. ``None`` leaves a setting as it is."""
+    global GZIP_LEVEL, SHUFFLE
+    if gzip_level is not None:
+        if isinstance(gzip_level, bool) or int(gzip_level) != gzip_level or not 1 <= gzip_level <= 9:
+            raise ValueError(f"gzip level must be an integer from 1 to 9, not {gzip_level!r}")
+        GZIP_LEVEL = int(gzip_level)
+    if shuffle is not None:
+        SHUFFLE = bool(shuffle)
+
+
+def configure_from_args(args):
+    """Apply ``--h5-gzip-level`` and ``--no-h5-shuffle``. A command without
+    them, or that was not given them, keeps gzip 9 with shuffle."""
+    configure(getattr(args, "h5_gzip_level", None), getattr(args, "h5_shuffle", None))
+
+
 def h5_filters(data, dtype=None):
-    """Keyword arguments for ``create_dataset``: gzip 9, plus shuffle for numbers."""
+    """Keyword arguments for ``create_dataset``: gzip at ``GZIP_LEVEL``, plus
+    shuffle for numbers unless ``SHUFFLE`` is off."""
     array = np.asarray(data) if dtype is None else np.asarray(data, dtype=dtype)
     if array.ndim == 0 or array.size == 0:
         return {}
     filters = {"compression": "gzip", "compression_opts": GZIP_LEVEL}
-    if array.dtype.kind in "biuf":
+    if SHUFFLE and array.dtype.kind in "biuf":
         filters["shuffle"] = True
     return filters
 

@@ -352,7 +352,9 @@ changes, `args.json` and checkpoints included.
   write and smaller, so their bytes differ from the original's.
 - **HDF5 outputs** are gzip level 9 behind the byte-shuffle filter (about
   1.2x smaller than the original's level 4), with large datasets' chunks
-  compressed on a thread pool.
+  compressed on a thread pool. `--h5-gzip-level` and `--no-h5-shuffle`
+  change that; `--h5-gzip-level 4 --no-h5-shuffle` compresses as the
+  original does.
 - **Start-up and shutdown**: heavy imports are started in the background, and
   the CLI exits without interpreter teardown once every output is verified
   and synced to disk.

@@ -259,6 +259,26 @@
     "required": true,
     "type": "str"
   },
+  "bias pipeline h5_gzip_level": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--h5-gzip-level"
+    ],
+    "required": false,
+    "type": "gzip_level"
+  },
+  "bias pipeline h5_shuffle": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--no-h5-shuffle"
+    ],
+    "required": false,
+    "type": "None"
+  },
   "bias pipeline help": {
     "choices": null,
     "default": "'==SUPPRESS=='",
@@ -752,6 +772,26 @@
     ],
     "required": true,
     "type": "str"
+  },
+  "bias qc h5_gzip_level": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--h5-gzip-level"
+    ],
+    "required": false,
+    "type": "gzip_level"
+  },
+  "bias qc h5_shuffle": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--no-h5-shuffle"
+    ],
+    "required": false,
+    "type": "None"
   },
   "bias qc help": {
     "choices": null,
@@ -1498,6 +1538,26 @@
     "required": true,
     "type": "str"
   },
+  "contribs_bw h5_gzip_level": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--h5-gzip-level"
+    ],
+    "required": false,
+    "type": "gzip_level"
+  },
+  "contribs_bw h5_shuffle": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--no-h5-shuffle"
+    ],
+    "required": false,
+    "type": "None"
+  },
   "contribs_bw help": {
     "choices": null,
     "default": "'==SUPPRESS=='",
@@ -2018,6 +2078,26 @@
     "required": true,
     "type": "str"
   },
+  "footprints h5_gzip_level": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--h5-gzip-level"
+    ],
+    "required": false,
+    "type": "gzip_level"
+  },
+  "footprints h5_shuffle": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--no-h5-shuffle"
+    ],
+    "required": false,
+    "type": "None"
+  },
   "footprints help": {
     "choices": null,
     "default": "'==SUPPRESS=='",
@@ -2103,6 +2183,26 @@
     "options": [
       "--help",
       "-h"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "modisco_motifs h5_gzip_level": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--h5-gzip-level"
+    ],
+    "required": false,
+    "type": "gzip_level"
+  },
+  "modisco_motifs h5_shuffle": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--no-h5-shuffle"
     ],
     "required": false,
     "type": "None"
@@ -2432,6 +2532,26 @@
     ],
     "required": true,
     "type": "str"
+  },
+  "pipeline h5_gzip_level": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--h5-gzip-level"
+    ],
+    "required": false,
+    "type": "gzip_level"
+  },
+  "pipeline h5_shuffle": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--no-h5-shuffle"
+    ],
+    "required": false,
+    "type": "None"
   },
   "pipeline help": {
     "choices": null,
@@ -2905,6 +3025,26 @@
     "required": true,
     "type": "str"
   },
+  "pred_bw h5_gzip_level": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--h5-gzip-level"
+    ],
+    "required": false,
+    "type": "gzip_level"
+  },
+  "pred_bw h5_shuffle": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--no-h5-shuffle"
+    ],
+    "required": false,
+    "type": "None"
+  },
   "pred_bw help": {
     "choices": null,
     "default": "'==SUPPRESS=='",
@@ -3117,6 +3257,26 @@
     ],
     "required": true,
     "type": "str"
+  },
+  "predict h5_gzip_level": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--h5-gzip-level"
+    ],
+    "required": false,
+    "type": "gzip_level"
+  },
+  "predict h5_shuffle": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--no-h5-shuffle"
+    ],
+    "required": false,
+    "type": "None"
   },
   "predict help": {
     "choices": null,
@@ -3793,6 +3953,26 @@
     "required": true,
     "type": "str"
   },
+  "qc h5_gzip_level": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--h5-gzip-level"
+    ],
+    "required": false,
+    "type": "gzip_level"
+  },
+  "qc h5_shuffle": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--no-h5-shuffle"
+    ],
+    "required": false,
+    "type": "None"
+  },
   "qc help": {
     "choices": null,
     "default": "'==SUPPRESS=='",
@@ -4151,6 +4331,26 @@
     ],
     "required": true,
     "type": "str"
+  },
+  "train h5_gzip_level": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--h5-gzip-level"
+    ],
+    "required": false,
+    "type": "gzip_level"
+  },
+  "train h5_shuffle": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--no-h5-shuffle"
+    ],
+    "required": false,
+    "type": "None"
   },
   "train help": {
     "choices": null,

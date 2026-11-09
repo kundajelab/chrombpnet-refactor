@@ -1,5 +1,25 @@
 # Changelog
 
+## `--h5-gzip-level` and `--no-h5-shuffle`: the HDF5 files' compression
+
+- **New options; defaults unchanged.** Every command that writes HDF5
+  (`pipeline`, `train`, `qc`, `bias pipeline`, `bias qc`, `pred_bw`,
+  `contribs_bw`, `footprints`, `modisco_motifs`, `predict`) takes
+  `--h5-gzip-level LEVEL` (1-9; default 9) and `--no-h5-shuffle` (the
+  byte-shuffle filter on numeric datasets is on by default). They apply to
+  the predictions, contribution scores, footprints and TF-MoDISco's
+  results, on the threaded writes too. `--h5-gzip-level 4 --no-h5-shuffle`
+  is how chrombpnet 1.x compressed them. The values are the same at every
+  setting; lower levels write faster and larger files.
+- Not given, neither option is recorded in `args.json`, so a run without
+  them records what it did before (`parsers.ABSENT_WHEN_OMITTED`). The
+  setting (`chrombpnet.compression.configure`) is per process, set before
+  any work starts, so `pred_bw`'s forked finish workers inherit it.
+- Why: blog 2026-015 times `pred_bw` against the original at the
+  original's compression. That arm patched the module's level and filters
+  (`analysis/blog-2026-015/optimization/refactor_gzip4.py`); now it is the
+  package's own command line, and anyone can choose speed over file size.
+
 ## `--predict-fused-kernel-fast` (the kit's TF32 kernels) beside `--predict-fused-kernel-exact`
 
 - **New option; defaults unchanged.** The fused Triton forward now comes in

@@ -316,7 +316,8 @@ REPORT_OPTIONS = ("tomtom_lite", "interpret_subsample", "modisco_max_seqlets",
 #: Other options removed from ``args`` when not given, so ``args.json``
 #: records exactly what it did before they existed.
 ABSENT_WHEN_OMITTED = ("dnase_convention", "reproducibility", "reproducibility_max",
-                       "input_bigwig", "contribs_profile_stopgrad")
+                       "input_bigwig", "contribs_profile_stopgrad",
+                       "h5_gzip_level", "h5_shuffle")
 
 
 def drop_absent(args):
@@ -325,6 +326,24 @@ def drop_absent(args):
     for name in REPORT_OPTIONS + ABSENT_WHEN_OMITTED:
         if hasattr(args, name) and getattr(args, name) is None:
             delattr(args, name)
+
+
+def gzip_level(text):
+    """argparse type for --h5-gzip-level: an integer from 1 to 9."""
+    try:
+        level = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected an integer from 1 to 9, got {text!r}")
+    if not 1 <= level <= 9:
+        raise argparse.ArgumentTypeError(f"expected an integer from 1 to 9, got {level}")
+    return level
+
+
+def _add_h5_compression(optional):
+    """The HDF5 files' compression, for each command that writes them
+    (chrombpnet.compression)."""
+    optional.add_argument("--h5-gzip-level", type=gzip_level, default=None, metavar="LEVEL", help="gzip level, 1-9, of the HDF5 files this command writes: predictions, contribution scores, footprints and TF-MoDISco's results (default 9, the smallest files; chrombpnet 1.x wrote 4). The values are the same at every level; lower levels write faster and larger files")
+    optional.add_argument("--no-h5-shuffle", dest="h5_shuffle", action="store_false", default=None, help="Write the numeric HDF5 datasets without the byte-shuffle filter, which groups the bytes of each value so they compress better (on by default). With --h5-gzip-level 4, the files are compressed as chrombpnet 1.x compressed them")
 
 
 def _add_contribs_profile_stopgrad(optional):
@@ -380,6 +399,7 @@ def _add_qc_arguments(parser, model_arguments):
     _add_device(optional)
     _add_predict_fused_kernel(optional)
     _add_report_options(optional)
+    _add_h5_compression(optional)
 
 
 def _add_chrombpnet_training_arguments(parser, reports=False):
@@ -397,6 +417,8 @@ def _add_chrombpnet_training_arguments(parser, reports=False):
     _add_jax_training_options(optional)
     if reports:
         _add_report_options(optional)
+    # train writes the bias model check's predictions too.
+    _add_h5_compression(optional)
 
 
 def _add_bias_training_arguments(parser, reports=False):
@@ -417,6 +439,8 @@ def _add_bias_training_arguments(parser, reports=False):
     _add_jax_training_options(optional)
     if reports:
         _add_report_options(optional)
+        # bias train stops after training and writes no HDF5.
+        _add_h5_compression(optional)
 
 
 def build_parser():
@@ -522,6 +546,7 @@ def build_parser():
                                      "already in the environment are left as they are")
     _add_device(optional_preds)
     _add_predict_fused_kernel(optional_preds)
+    _add_h5_compression(optional_preds)
 
     # Make contribution score bigwigs
     required_contribs, optional_contribs = _required_optional(contribs_parser)
@@ -541,6 +566,7 @@ def build_parser():
     optional_contribs.add_argument('--num-shuffles', type=int, default=20)
     optional_contribs.add_argument('--seed', type=int, default=DEFAULT_SEED)
     _add_contribs_profile_stopgrad(optional_contribs)
+    _add_h5_compression(optional_contribs)
 
     # Get marginal footprints
     required_ftps, optional_ftps = _required_optional(footprints_parser)
@@ -553,6 +579,7 @@ def build_parser():
     optional_ftps.add_argument("-bs", "--batch-size", type=int, default=64, help="batch size to use for prediction")
     _add_device(optional_ftps)
     _add_predict_fused_kernel(optional_ftps)
+    _add_h5_compression(optional_ftps)
     optional_ftps.add_argument("--ylim", default=None, type=ylim_pair, required=False, help="lower and upper y-limits for plotting the motif footprint, in the form of a tuple i.e. \
         (0,0.8). If this is set to None, ylim will be autodetermined.")
 
@@ -565,6 +592,7 @@ def build_parser():
     optional_tfm.add_argument("-w", "--window", type=int, default=500, help="Centered contribution-score window used for discovery (must be even).")
     optional_tfm.add_argument("-v", "--verbose", action="store_true", default=False)
     _add_report_options(optional_tfm, interpretation=False)
+    _add_h5_compression(optional_tfm)
 
     return parser
 
@@ -670,6 +698,7 @@ def _add_predict_arguments(parser):
     _add_data_aug(optional)
     _add_device(optional)
     _add_predict_fused_kernel(optional)
+    _add_h5_compression(optional)
 
 
 def read_parser(argv=None):

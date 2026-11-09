@@ -1,5 +1,5 @@
 import chrombpnet.parsers as parsers
-from chrombpnet import engines, exit_fast, fused_kernels, malloc_tuning
+from chrombpnet import compression, engines, exit_fast, fused_kernels, malloc_tuning
 import os
 from chrombpnet.data import DefaultDataFile, get_default_data_path
 import chrombpnet.pipelines as pipelines
@@ -84,6 +84,9 @@ def main():
 	# Before any work starts: PredictionAdapter reads this several frames
 	# below, in code shared with training.
 	fused_kernels.configure_from_args(args)
+	# Likewise the HDF5 files' compression; pred_bw's finish workers are forked
+	# later, so they inherit it.
+	compression.configure_from_args(args)
 	# Likewise the deep-learning engine, and before any output directory is
 	# created, so an engine this environment cannot import fails cleanly.
 	try:
