@@ -114,9 +114,16 @@ def lag_profile(a, b, lags=range(-4, 5)):
 
 
 def datasets(ids, selected):
+    # By header name: the ids table has grown columns since this was written.
+    lines = ids.read_text().splitlines()
+    header = lines[0].split("\t")
+    column = {name: header.index(name) for name in ("ASSAY", "ENCID", "BAM_PATH")}
     rows, seen = [], set()
-    for line in ids.read_text().splitlines()[1:]:
-        assay, encid, bam, _peaks, _fold = line.split("\t")
+    for line in lines[1:]:
+        if not line.strip():
+            continue
+        fields = line.split("\t")
+        assay, encid, bam = (fields[column[name]] for name in ("ASSAY", "ENCID", "BAM_PATH"))
         if encid in seen or (selected and encid not in selected):
             continue
         seen.add(encid)
