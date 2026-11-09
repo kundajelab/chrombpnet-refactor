@@ -31,16 +31,16 @@ share one. Create the ones you need from the repository root:
 
 | Engine | Create the environment | Then | Python and framework |
 |---|---|---|---|
-| PyTorch (default) | `conda env create -f envs/chrombpnet-pytorch.yml` | `conda activate chrombpnet-pytorch` | Python 3.12, PyTorch 2.14 |
-| TensorFlow | `conda env create -f envs/chrombpnet-tensorflow.yml` | `conda activate chrombpnet-tensorflow` | Python 3.12, TensorFlow 2.21 (Keras 3.15 for `--engine tensorflow`; tf-keras 2.21 for `--engine tensorflow-old`) |
-| JAX | `conda env create -f envs/chrombpnet-jax.yml` | `conda activate chrombpnet-jax` | Python 3.12, JAX 0.11 (Keras 3.15) |
-| PyTorch on glibc 2.17 (e.g. CentOS 7) | see `envs/chrombpnet-pytorch-glibc.yml` | `conda activate chrombpnet-pytorch-glibc` | Python 3.11, PyTorch 2.5.1 |
-| TensorFlow on glibc 2.17 (e.g. CentOS 7) | see `envs/chrombpnet-tensorflow-glibc.yml` | `conda activate chrombpnet-tensorflow-glibc` | Python 3.11, TensorFlow 2.20 (tf-keras 2.20, Keras 3.15) |
+| PyTorch _(default)_ | `conda env create -f envs/chrombpnet-pytorch.yml` | `conda activate chrombpnet-pytorch` | PyTorch 2.14 (Python 3.12) |
+| TensorFlow | `conda env create -f envs/chrombpnet-tensorflow.yml` | `conda activate chrombpnet-tensorflow` | TensorFlow 2.21 (Python 3.12; Keras 3.15) |
+| JAX | `conda env create -f envs/chrombpnet-jax.yml` | `conda activate chrombpnet-jax` | JAX 0.11 (Keras 3.15; Python 3.12) |
 
-- Each file installs this package in editable mode with its engine's extra,
-  plus the command-line tools preprocessing uses (`bedtools`, `samtools`,
-  `bedGraphToBigWig`), MEME's `tomtom` and the Pango/Cairo stack for the PDF
-  reports.
+_For older glibc <=2.17 (e.g. CentOS 7): PyTorch: see `envs/chrombpnet-pytorch-glibc.yml` (PyTorch 2.5.1; Python 3.11). TensorFlow: see `envs/chrombpnet-tensorflow-glibc.yml` (TensorFlow 2.20; Python 3.11)_
+
+- Each file installs this package in editable mode with its engine's extra
+  (the glibc files without it), plus the command-line tools preprocessing
+  uses (`bedtools`, `samtools`, `bedGraphToBigWig`), MEME's `tomtom` and the
+  Pango/Cairo stack for the PDF reports.
 - GPUs need a CUDA 12 driver (525 or newer), and the framework wheels need
   glibc 2.28 (PyTorch) or 2.27 (TensorFlow, JAX) or newer: on older systems
   (e.g. CentOS 7) use the glibc 2.17 PyTorch or TensorFlow file above, or run
@@ -151,7 +151,9 @@ chrombpnet pipeline \
 
 The inputs are step 1's, except that `-b` is now the bias model checkpoint.
 Use `chrombpnet train` instead of `pipeline` to stop after training and its
-report, skipping evaluation, contribution scoring and motif discovery.
+report, skipping evaluation, contribution scoring and motif discovery. Both
+first score the bias model on the peaks and stop if its counts Pearson r is
+-0.5 or lower; `--ignore-bias-flag` makes that a warning.
 
 #### Making the bigwig once
 
@@ -229,9 +231,9 @@ evaluation/
     chrombpnet_predictions.h5
     chrombpnet_only_peaks.counts_pearsonr.png
     chrombpnet_only_peaks.profile_jsd.png
-    chrombpnet_nobias.<motif>.footprint.png    one per motif in the table
+    chrombpnet_nobias.<motif>.footprint.png    one per motif in the table, plus control
     chrombpnet_nobias_max_bias_response.txt
-    modisco_profile/               motif report (HTML, PNG logos, TSV)
+    modisco_profile/               motif report (motifs.html, PNG logos)
     chrombpnet_nobias_profile.pdf
 ```
 
@@ -278,7 +280,7 @@ chrombpnet pred_bw           prediction bigwigs (and metrics, given -bw)
 chrombpnet contribs_bw       contribution-score bigwigs
 chrombpnet modisco_motifs    motif discovery from contribution scores
 chrombpnet footprints        marginal footprints for given motifs
-chrombpnet export            a JAX-engine model in the original's .h5 layout
+chrombpnet export            a Keras 3 (JAX or TensorFlow) model in the original's .h5 layout
 chrombpnet distill           one bias-free model from several (PyTorch engine)
 ```
 
@@ -311,13 +313,14 @@ changes, `args.json` and checkpoints included.
   and the bias reports have profile metrics and motifs only.
 - `distill -t <chrombpnet_nobias.pt ...>`: train one bias-free student on
   several models' averaged predictions -- the mean of their profile
-  probabilities times the mean of their predicted totals, and the mean of
+  probabilities times `expm1` of their mean log counts, and the mean of
   their log counts -- with ChromBPNet's own loss, on the same jittered and
-  reverse-complemented batches the teachers see. It takes the training
-  commands' data arguments and writes a `chrombpnet_nobias` checkpoint,
-  `<prefix>.pt`, which `predict`, `contribs_bw` and `footprints` read as they
-  read a trained model's. `--all-chromosomes` trains on every chromosome of
-  the fold file for exactly `--epochs` epochs.
+  reverse-complemented batches the teachers see. It takes an observed bigwig
+  (`-bw`) with `-g`, `-p`, `-n`, `-fl` and `-d`, and writes a
+  `chrombpnet_nobias` checkpoint, `<prefix>.pt`, which `predict`,
+  `contribs_bw` and `footprints` read as they read a trained model's.
+  `--all-chromosomes` trains on every chromosome of the fold file for
+  exactly `--epochs` epochs.
 
 ## Optimizations
 
@@ -355,23 +358,24 @@ changes, `args.json` and checkpoints included.
   compressed on a thread pool. `--h5-gzip-level` and `--no-h5-shuffle`
   change that; `--h5-gzip-level 4 --no-h5-shuffle` compresses as the
   original does.
-- **Start-up and shutdown**: heavy imports are started in the background, and
-  the CLI exits without interpreter teardown once every output is verified
-  and synced to disk.
+- **Start-up and shutdown** (`pred_bw`): its metrics worker imports SciPy and
+  Matplotlib while the model predicts, and it exits without interpreter
+  teardown once every output is verified and synced to disk.
 - **Memory allocator** (`pred_bw`; `--no-malloc-env` turns it off): glibc keeps
   freed memory for reuse instead of returning it to the system, serves large
   arrays from that heap and grows it 512 MiB at a time. On a GPU `pred_bw` is
   1.07-1.12x faster for about 9% more peak RAM; a CPU-only run holds about
   twice the RAM. GPU memory and outputs are unaffected.
-- **Fused Triton forward** (`--predict-fused-kernel-exact`, optional; on
-  `pred_bw`, `footprints`, `qc` and `bias qc`): fp32-exact kernels in place
-  of the eager TF32 convolutions, so predictions move by about 1e-5 (closer
-  to an fp64 reference). On any CUDA GPU: the kit's measured tile on
-  H100/H200, L40S and A100, one chosen from the GPU's shared memory elsewhere
-  (checked against the default forward first). It buys accuracy, not speed:
-  on an H200 and an L40S it was slower end to end. `--predict-fused-kernel-fast`
-  runs the kit's TF32 kernels instead. Not on `contribs_bw`, whose DeepLIFT
-  needs autograd and hooks a fused kernel cannot provide.
+- **Fused Triton forward** (`--predict-fused-kernel-exact`, optional, PyTorch
+  engine only; on `predict`, `pred_bw`, `footprints`, `qc` and `bias qc`):
+  fp32-exact kernels in place of the eager TF32 convolutions, so predictions
+  move by about 1e-5 (closer to an fp64 reference). On any CUDA GPU: the
+  kit's measured tile on H100/H200, L40S and A100, one chosen from the GPU's
+  shared memory elsewhere (checked against the default forward first). It
+  buys accuracy, not speed: on an H200 and an L40S it was slower end to end.
+  `--predict-fused-kernel-fast` runs the kit's TF32 kernels instead. Not on
+  `contribs_bw`, whose DeepLIFT needs autograd and hooks a fused kernel
+  cannot provide.
 
 The memory-mapped reads, the lookup-table one-hot, the vectorized metrics,
 the worker-process writer, the background imports, the fast exit, the
@@ -410,8 +414,8 @@ Preprocessing is seeded too: the enzyme shift is estimated from a sample of
 
 ### Randomized seeds
 
-Every command that draws anything at random takes `-s/--seed` (default 1234)
-and draws all of it from that one seed:
+Every command that draws anything at random takes `--seed` (`-s` on all but
+`contribs_bw`; default 1234) and draws all of it from that one seed:
 
 | Command | What `--seed` draws |
 |---|---|
@@ -419,6 +423,7 @@ and draws all of it from that one seed:
 | `qc`, `bias qc` | the test set's nonpeaks, the profile-metrics shuffle, the contribution-score peak subsample, DeepSHAP's references |
 | `predict`, `pred_bw` | the profile-metrics shuffle; `predict` also the test set's nonpeaks |
 | `contribs_bw` | DeepSHAP's references |
+| `distill` | the student's training (initial weights, batch order, jitter, reverse complements, negatives) |
 | `prep nonpeaks`, `prep bigwig` | the GC-matched negatives; the shift-estimation read sample |
 
 `prep splits`, `footprints` and `export` draw nothing at random. Two notes:
