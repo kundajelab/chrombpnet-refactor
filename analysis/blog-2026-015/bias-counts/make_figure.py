@@ -77,7 +77,7 @@ def main():
                          "axes.labelsize": 10})
     figure = plt.figure(figsize=(10, 9.7), facecolor=SURFACE)
     grid = figure.add_gridspec(2, 1, height_ratios=[1, 1.02], hspace=0.62, left=0.075, right=0.975,
-                               top=0.885, bottom=0.135)
+                               top=0.868, bottom=0.135)
 
     # 1. Bias models' counts head on held-out chromosomes.
     top = grid[0].subgridspec(1, 3, wspace=0.28)
@@ -120,12 +120,13 @@ def main():
             ax.text(0.88, y, nonpeaks, transform=ax.transAxes, va="center", ha="right", fontsize=8.6,
                     color=BLUE if row else INK_2, zorder=4,
                     bbox=dict(facecolor=SURFACE, edgecolor="none", pad=1.5))  # over the dashed diagonal
-        ax.text(0.04, 0.95 - 0.07 * 3, "non-peaks r = %.2f" % means["non-peaks"][2], transform=ax.transAxes,
+        ax.text(0.04, 0.95 - 0.07 * 3, "Pearson r (non-peaks) = %.2f" % means["non-peaks"][2], transform=ax.transAxes,
                 va="center", fontsize=8.6, color=INK, zorder=4)
         ax.set_xlim(low, high)
         ax.set_ylim(low, high)
         ax.set_aspect("equal")
-        ax.set_title("%s bias (%s)\n%s  |  fold-1 bias of %d models" % (label, assay, biosample, users),
+        # Three lines: one line is wider than a panel.
+        ax.set_title("Bias model of %d %s\nChromBPNet models:\nFrom %s (%s)." % (users, assay, label, biosample),
                      fontsize=9.4, color=INK, loc="left")
         ax.set_xlabel("observed log counts")
         if column == 0:
@@ -135,19 +136,17 @@ def main():
     frame = totals(data_dir)
     figure.text(0.02, 0.475, "2. Total predicted counts with and without the bias model, per ChromBPNet model",
                 fontsize=13, weight="bold")
-    figure.text(0.02, 0.451, "ENCODE portal prediction bigWigs (mean over 5 folds, selected peak regions): "
-                "\"predicted signal profile\" (with bias) vs \"bias-corrected\" (without)", fontsize=8.6, color=INK_2)
+    figure.text(0.02, 0.451, "Predicted signal with bias vs. Predicted signal without bias, across all 1,512 ENCODE "
+                "GRAMMAR ChromBPNet models", fontsize=8.6, color=INK_2)
 
-    # One square panel; its equal aspect centres it in the row.
+    # One square panel at the row's left, under the first panel above; the table beside it.
     ax = figure.add_subplot(grid[1])
+    ax.set_anchor("W")
     style(ax)
     for assay, colour in ASSAY_COLOURS.items():
         subset = frame[frame.assay == assay]
         ax.scatter(subset.without_bias_sum, subset.with_bias_sum, s=9, color=colour, alpha=0.75, linewidths=0,
                    label="%s (%d)" % (assay, len(subset)), zorder=3)
-    for _, row in frame[frame.difference < 0].iterrows():
-        ax.annotate(row.experiment, (row.without_bias_sum, row.with_bias_sum), xytext=(0, -7),
-                    textcoords="offset points", ha="center", va="top", fontsize=8, color=INK_2)
     ax.set_xscale("log")
     ax.set_yscale("log")
     low = 10 ** np.floor(np.log10(min(frame.without_bias_sum.min(), frame.with_bias_sum.min())))
@@ -164,14 +163,31 @@ def main():
     valid = frame[frame.difference >= 0]
     mean, sd = valid.difference.mean(), valid.difference.std()
     share_mean, share_sd, share_median = valid.share.mean(), valid.share.std(), valid.share.median()
-    # Beside the square panel, in the row's empty right half.
-    ax.text(1.06, 0.55, "with - without bias, per model:\nmedian %.1f%% of the with-bias total\nmean %.1f ± %.1f%%\n"
-            "%.1f ± %.1f million counts\n(%d models)" % (share_median, share_mean, share_sd, mean / 1e6, sd / 1e6,
-                                                     len(valid)),
-            transform=ax.transAxes, ha="left", va="center", fontsize=9, color=INK, linespacing=1.5, clip_on=False)
+    # Beside the square panel: each total's median ± SD across models, in counts and as a share of
+    # the with-bias total (the with-bias column's share is 100% by definition).
+    ax.apply_aspect()
+    box = ax.get_position()
+    columns = [("Predict\nwith bias", valid.with_bias_sum, None),
+               ("Predict\nwithout bias", valid.without_bias_sum, 100 - valid.share),
+               ("Predicted\nbias", valid.difference, valid.share)]
+    left, centres = box.x1 + 0.065, [box.x1 + 0.265, box.x1 + 0.39, box.x1 + 0.515]
+    middle = box.y0 + 0.5 * box.height
+    figure.text(left, middle + 0.085, "Per model, median ± SD (%s models)" % format(len(valid), ","), fontsize=9.4,
+                color=INK, va="center")
+    figure.add_artist(plt.Line2D([left, centres[-1] + 0.06], [middle + 0.006] * 2, transform=figure.transFigure,
+                                 color=GRID, lw=0.8))
+    for centre, (header, counts, share) in zip(centres, columns):
+        figure.text(centre, middle + 0.035, header, fontsize=9, color=INK_2, ha="center", va="center",
+                    linespacing=1.3)
+        figure.text(centre, middle - 0.02, "%.1f ± %.1f" % (counts.median() / 1e6, counts.std() / 1e6), fontsize=9,
+                    color=INK, ha="center", va="center")
+        figure.text(centre, middle - 0.055, "100" if share is None else "%.1f ± %.1f" % (share.median(), share.std()),
+                    fontsize=9, color=INK, ha="center", va="center")
+    figure.text(left, middle - 0.02, "million counts", fontsize=9, color=INK_2, va="center")
+    figure.text(left, middle - 0.055, "% of with-bias total", fontsize=9, color=INK_2, va="center")
 
     excluded = 1512 - len(valid)
-    note = ("Share = (with - without) / with. Each total is over the positions both bigWigs cover: from the file "
+    note = ("Predicted bias = with - without, per model. Each total is over the positions both bigWigs cover: from the file "
             "header, or position by position where the two files differ in coverage or hold NaN values.")
     lower = sorted(frame[frame.difference < 0].experiment)
     if lower:
