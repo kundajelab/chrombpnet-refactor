@@ -1,5 +1,16 @@
 # Changelog
 
+## `--ignore-bias-flag` is the default
+
+- **Behaviour change.** `pipeline` and `train` no longer stop on a bias
+  model whose counts Pearson r on the peaks is -0.5 or lower: they print the
+  warning banner and train on. `--no-ignore-bias-flag` restores the stop;
+  `--ignore-bias-flag` is still accepted and changes nothing.
+- `args.json` records `"ignore_bias_flag": true` for a run without either
+  flag (was `false`). Library callers get the same default:
+  `stages.check_bias_model_quality(layout)` warns, and an options namespace
+  without the attribute counts as ignoring.
+
 ## `--h5-gzip-level` and `--no-h5-shuffle`: the HDF5 files' compression
 
 - **New options; defaults unchanged.** Every command that writes HDF5
@@ -43,9 +54,7 @@
   help entry. The setting (`chrombpnet.fused_kernels`) is now a mode: None,
   "exact" or "fast"; `configure(True)` still means exact.
 - Why: blog 2026-015 compares chrombpnet-refactor's inference against the
-  kit's `fast` mode, and the TF32 kernels are what that mode runs. On an
-  H200 the kit's TF32 forward took 9.5 s for 20,000 regions, against 13.4 s
-  for its fp32 forward and 5.9 s for this package's eager PyTorch forward.
+  kit's `fast` mode, and the TF32 kernels are what that mode runs.
 
 
 ## A failed bigWig preprocessing pipeline no longer leaves its processes behind
@@ -1469,8 +1478,8 @@
   can be replayed per phase: `python -m tests.regression.harness against
   --ref main --optimize none`.
 - Wall clock on an L40S for that workload: 55.7s at `none`, 42.8s at `1`,
-  38.2s at `3`, 29.6s at `1,3`. Phase 2 is 53.0s warm and pays a one-time
-  JIT per machine on its first run.
+  38.2s at `3`, 29.6s at `1,3`. Phase 2 pays a one-time JIT per machine on
+  its first run.
 
 ## Test suite - libstdc++ preload no longer depends on collection order
 

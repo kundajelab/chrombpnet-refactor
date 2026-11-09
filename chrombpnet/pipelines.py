@@ -55,7 +55,7 @@ def chrombpnet_train_pipeline(options):
         model_path=options.bias_model_path,
         peaks=filtered_peaks, nonpeaks="None")
     stages.check_bias_model_quality(
-        layout, ignore=getattr(options, "ignore_bias_flag", False))
+        layout, ignore=getattr(options, "ignore_bias_flag", True))
 
     # Separate models and params from the auxiliary scratch directory.
     layout.move("auxiliary", "models", f"bias_model_scaled{sfx}")

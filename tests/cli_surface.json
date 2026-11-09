@@ -2577,10 +2577,11 @@
   },
   "pipeline ignore_bias_flag": {
     "choices": null,
-    "default": "False",
+    "default": "True",
     "nargs": "0",
     "options": [
-      "--ignore-bias-flag"
+      "--ignore-bias-flag",
+      "--no-ignore-bias-flag"
     ],
     "required": false,
     "type": "None"
@@ -4376,10 +4377,11 @@
   },
   "train ignore_bias_flag": {
     "choices": null,
-    "default": "False",
+    "default": "True",
     "nargs": "0",
     "options": [
-      "--ignore-bias-flag"
+      "--ignore-bias-flag",
+      "--no-ignore-bias-flag"
     ],
     "required": false,
     "type": "None"

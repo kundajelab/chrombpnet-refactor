@@ -110,22 +110,22 @@ def find_hyperparameters(options, layout, finder):
     finder.main(as_options(options).step(output_prefix=layout.aux()))
 
 
-def check_bias_model_quality(layout, ignore=False):
-    """Reject a bias model that anti-correlates with observed peak counts.
+def check_bias_model_quality(layout, ignore=True):
+    """Flag a bias model that anti-correlates with observed peak counts.
 
     A bias model whose predicted counts run *opposite* to observed counts in
-    peaks is not describing sequence bias, and subtracting it makes the
-    accessibility model worse rather than better -- so this refuses by
-    default and the refusal is worth heeding.
+    peaks is not describing sequence bias, and subtracting it can make the
+    accessibility model worse rather than better.
 
-    ``ignore`` downgrades it to a warning, for the case where the check is
-    known to be measuring the data rather than the model: where peak and
-    background counts overlap so heavily that no threshold can select a
-    representative low-count nonpeak set, the bias model is fitted to a
-    truncated tail and anti-correlates for reasons that no amount of
-    retraining will fix. Proceeding then is a deliberate choice to study a
-    sample the pipeline was not designed for, and the resulting model's
-    bias correction should not be trusted quantitatively.
+    With ``ignore`` (the default, ``--ignore-bias-flag``) that is a loud
+    warning and training goes on; ``ignore=False``
+    (``--no-ignore-bias-flag``) refuses instead. The check often measures
+    the data rather than the model: where peak and background counts overlap
+    so heavily that no threshold can select a representative low-count
+    nonpeak set, the bias model is fitted to a truncated tail and
+    anti-correlates for reasons that no amount of retraining will fix. The
+    bias correction of a model trained past the warning should not be
+    trusted quantitatively.
     """
     metrics_path = layout.unprefixed("evaluation", "bias_metrics.json")
     bias_metrics = json.load(open(metrics_path))
@@ -148,7 +148,7 @@ def check_bias_model_quality(layout, ignore=False):
     # middle of a two-day job's log is a warning nobody reads.
     banner = "!" * 78
     print(f"\n{banner}\n!! WARNING: {message}\n"
-          "!! --ignore-bias-flag was given, so training continues anyway.\n"
+          "!! Training continues anyway (--no-ignore-bias-flag stops here).\n"
           "!! The bias correction in this model is not trustworthy; treat its\n"
           "!! scores as descriptive, not comparable with runs that passed.\n"
           f"{banner}\n", flush=True)

@@ -92,18 +92,18 @@ def test_an_acceptable_bias_model_passes_either_way(tmp_path, pearsonr):
 
 
 @pytest.mark.parametrize("pearsonr", [-0.5, -0.6, -0.95])
-def test_an_anticorrelated_bias_model_is_refused_by_default(tmp_path, pearsonr):
-    """Subtracting a bias model that runs opposite to the observed counts
-    makes the accessibility model worse, so the default must be a hard stop
-    -- the number is in the message so the log says how bad it was."""
+def test_an_anticorrelated_bias_model_is_refused_when_asked(tmp_path, pearsonr):
+    """--no-ignore-bias-flag makes the check a hard stop -- the number is in
+    the message so the log says how bad it was."""
     from chrombpnet import stages
 
     with pytest.raises(ValueError, match="strongly negative peak count"):
-        stages.check_bias_model_quality(_bias_layout(tmp_path, pearsonr))
+        stages.check_bias_model_quality(_bias_layout(tmp_path, pearsonr),
+                                        ignore=False)
 
 
-def test_ignore_bias_flag_downgrades_it_to_a_warning(tmp_path):
-    """Opting out has to be audible: a silent bypass of this check would let
+def test_by_default_a_failing_check_only_warns(tmp_path):
+    """Going on has to be audible: a silent bypass of this check would let
     an untrustworthy bias correction reach the results unnoticed."""
     import warnings
 
@@ -111,16 +111,15 @@ def test_ignore_bias_flag_downgrades_it_to_a_warning(tmp_path):
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        stages.check_bias_model_quality(_bias_layout(tmp_path, -0.6),
-                                        ignore=True)
+        stages.check_bias_model_quality(_bias_layout(tmp_path, -0.6))
     assert any(issubclass(w.category, RuntimeWarning)
                and "strongly negative peak count" in str(w.message)
-               for w in caught), "opting out must still warn"
+               for w in caught), "going on must still warn"
 
 
 def test_the_flag_reaches_the_check_from_the_command_line():
     """`pipelines.chrombpnet_train_pipeline` reads it off its options, so a
-    namespace without the attribute must behave as the strict default."""
+    namespace without the attribute must behave as the default (warn)."""
     import inspect
     from types import SimpleNamespace
 
@@ -128,10 +127,11 @@ def test_the_flag_reaches_the_check_from_the_command_line():
     from chrombpnet.parsers import read_parser
 
     source = inspect.getsource(pipelines.chrombpnet_train_pipeline)
-    assert 'getattr(options, "ignore_bias_flag", False)' in source
-    assert getattr(SimpleNamespace(), "ignore_bias_flag", False) is False
+    assert 'getattr(options, "ignore_bias_flag", True)' in source
+    assert getattr(SimpleNamespace(), "ignore_bias_flag", True) is True
 
     base = ["pipeline", "-ibam", "b", "-d", "DNASE", "-g", "g", "-c", "c",
             "-p", "p", "-n", "n", "-fl", "f", "-b", "b", "-o", "o"]
-    assert read_parser(base).ignore_bias_flag is False
+    assert read_parser(base).ignore_bias_flag is True
     assert read_parser(base + ["--ignore-bias-flag"]).ignore_bias_flag is True
+    assert read_parser(base + ["--no-ignore-bias-flag"]).ignore_bias_flag is False

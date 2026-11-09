@@ -152,8 +152,8 @@ chrombpnet pipeline \
 The inputs are step 1's, except that `-b` is now the bias model checkpoint.
 Use `chrombpnet train` instead of `pipeline` to stop after training and its
 report, skipping evaluation, contribution scoring and motif discovery. Both
-first score the bias model on the peaks and stop if its counts Pearson r is
--0.5 or lower; `--ignore-bias-flag` makes that a warning.
+first score the bias model on the peaks and warn if its counts Pearson r is
+-0.5 or lower; `--no-ignore-bias-flag` makes that stop the run.
 
 #### Making the bigwig once
 
@@ -371,8 +371,7 @@ changes, `args.json` and checkpoints included.
   fp32-exact kernels in place of the eager TF32 convolutions, so predictions
   move by about 1e-5 (closer to an fp64 reference). On any CUDA GPU: the
   kit's measured tile on H100/H200, L40S and A100, one chosen from the GPU's
-  shared memory elsewhere (checked against the default forward first). It
-  buys accuracy, not speed: on an H200 and an L40S it was slower end to end.
+  shared memory elsewhere (checked against the default forward first).
   `--predict-fused-kernel-fast` runs the kit's TF32 kernels instead. Not on
   `contribs_bw`, whose DeepLIFT needs autograd and hooks a fused kernel
   cannot provide.

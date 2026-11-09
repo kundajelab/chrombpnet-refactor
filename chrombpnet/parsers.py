@@ -187,19 +187,17 @@ def _add_ignore_bias_flag(optional):
     Only ``pipeline`` and ``train`` reach
     ``stages.check_bias_model_quality``; ``bias pipeline`` trains a bias
     model but never gates on its peak-count correlation, so offering the
-    flag there would imply a check that does not happen.
+    flag there would imply a check that does not happen. On by default;
+    ``--no-ignore-bias-flag`` turns it off.
     """
     optional.add_argument(
-        "--ignore-bias-flag", action="store_true",
-        help="Downgrade the bias-model quality check from an error to a "
-             "warning. By default a bias model whose predicted counts "
-             "anti-correlate with observed peak counts (Pearson r <= -0.5) "
-             "stops the run, because subtracting it makes the accessibility "
-             "model worse. Use this only when the check is known to be "
-             "measuring the data rather than the model -- e.g. a sample "
-             "whose peak and background counts overlap so much that no "
-             "threshold can select a representative nonpeak set. The bias "
-             "correction in the resulting model is not trustworthy.")
+        "--ignore-bias-flag", action=argparse.BooleanOptionalAction, default=True,
+        help="Whether a failing bias-model quality check only warns (the "
+             "default) or stops the run (--no-ignore-bias-flag). The check "
+             "fails on a bias model whose predicted counts anti-correlate "
+             "with observed peak counts (Pearson r <= -0.5); subtracting it "
+             "can make the accessibility model worse, so the bias correction "
+             "of a model trained past the warning is not trustworthy.")
 
 
 def _add_bias_profile_only(optional):
@@ -268,9 +266,7 @@ def _add_predict_fused_kernel(optional):
              "(its `exact` mode's forward), instead of the eager graph. Each "
              "convolution is one fp32 FMA chain where the default runs TF32, so "
              "the output is closer to an fp64 reference (1.0e-05 against "
-             "1.1e-03) but moves: the profile head shifts by ~1e-5. Slower than "
-             "the default where TF32 tensor cores are fast (2.3x on an H200), "
-             "about as fast on an L40S.")
+             "1.1e-03) but moves: the profile head shifts by ~1e-5.")
     group.add_argument(
         "--predict-fused-kernel-fast", dest="predict_fused_kernel",
         action="store_const", const="fast", default=False,
@@ -354,7 +350,7 @@ def _add_report_options(optional, interpretation=True):
     """``interpretation``: the settings of the contribution scoring and motif
     discovery that the report is built from. Not for modisco_motifs, which is
     given its scores and has its own --max-seqlets and --window."""
-    optional.add_argument("--tomtom-lite", action="store_true", default=None, help="Match the TF-MoDISco motifs with TOMTOM-lite (memelite) instead of MEME's tomtom: MEME is not needed, and the report gives uncorrected p-values (pval0..2) instead of q-values. Needs TF-MoDISco 2.5 or later, so not in the TensorFlow environment")
+    optional.add_argument("--tomtom-lite", action="store_true", default=None, help="Match the TF-MoDISco motifs with TOMTOM-lite (memelite) instead of MEME's tomtom: MEME is not needed, and the report gives uncorrected p-values (pval0..2) instead of q-values. Needs TF-MoDISco 2.5 or later, which every environment file installs")
     if not interpretation:
         return
     optional.add_argument("--interpret-subsample", type=positive_int, default=None, help="Number of peaks, sampled with --seed, whose contribution scores the TF-MoDISco motif reports are built from (default 30000; all peaks if there are fewer). The sample is written to auxiliary/30K_subsample_peaks.bed whatever its size")
@@ -446,7 +442,7 @@ def _add_bias_training_arguments(parser, reports=False):
 def build_parser():
     """Build the whole command tree without consuming argv."""
     parser = argparse.ArgumentParser(description=desc, formatter_class=RawTextHelpFormatter)
-    subparsers = parser.add_subparsers(help="Must be eithier 'pipeline', 'train', 'qc', 'bias', 'prep', 'pred_bw', 'contribs_bw', 'modisco_motifs', or 'footprints'.", required=True, dest='cmd')
+    subparsers = parser.add_subparsers(help="One of 'pipeline', 'train', 'qc', 'bias', 'prep', 'predict', 'pred_bw', 'contribs_bw', 'modisco_motifs', 'footprints', 'export' or 'distill'.", required=True, dest='cmd')
 
     # main parsers
     pipeline_parser = subparsers.add_parser("pipeline", help="End-to-end pipline with train, quality check and test for bias factorized ChromBPNet model")
@@ -455,14 +451,14 @@ def build_parser():
 
     # bias parsers
     bias_parser_full = subparsers.add_parser("bias", help="Tools to train, quality check and test bias model")
-    bias_parser_sub = bias_parser_full.add_subparsers(help="Must be eithier 'pipeline'  'train', 'qc'.", required=True, dest='cmd_bias')
+    bias_parser_sub = bias_parser_full.add_subparsers(help="One of 'pipeline', 'train' or 'qc'.", required=True, dest='cmd_bias')
     bias_parser = bias_parser_sub.add_parser("pipeline", help="End-to-end pipline with train, quality check and test for bias model")
     bias_parser_train = bias_parser_sub.add_parser("train", help="Train bias model")
     bias_parser_qc = bias_parser_sub.add_parser("qc", help="Do quality checks and get test metrics for the bias model")
 
     # helper parsers
     prep_parser_full = subparsers.add_parser("prep", help="Tools to generate preprocessing data for chrombpnet")
-    prep_parser_sub = prep_parser_full.add_subparsers(help="Must be eithier 'nonpeaks', 'splits' or 'bigwig'.", required=True, dest='cmd_prep')
+    prep_parser_sub = prep_parser_full.add_subparsers(help="One of 'nonpeaks', 'splits' or 'bigwig'.", required=True, dest='cmd_prep')
     nonpeaks_parser = prep_parser_sub.add_parser("nonpeaks", help="Generate non-peak background regions given peaks")
     splits_parser = prep_parser_sub.add_parser("splits", help="Generate chromosome splits")
     bigwig_parser = prep_parser_sub.add_parser("bigwig", help="Convert reads to the shifted, unstranded bigwig that the training commands take with -ibw")
@@ -473,7 +469,7 @@ def build_parser():
     motifs_parser = subparsers.add_parser("modisco_motifs", help="Discover motifs from contribution scores with TF-MoDISco 2.6")
     footprints_parser = subparsers.add_parser("footprints", help="Get marginal footprinting for given model and given motifs")
     predict_parser = subparsers.add_parser("predict", help="Score one model on a fold's test split and write metrics")
-    export_parser = subparsers.add_parser("export", help="Export a JAX-engine model for TF-Keras 2.x readers (the TensorFlow engine, chrombpnet 1.x, variant-scorer, bpnet-lite)")
+    export_parser = subparsers.add_parser("export", help="Export a Keras 3 (jax or tensorflow engine) model for TF-Keras 2.x readers (--engine tensorflow-old, chrombpnet 1.x, variant-scorer, bpnet-lite)")
     distill_parser = subparsers.add_parser("distill", help="Distill several bias-free models (e.g. one per fold) into one bias-free student (PyTorch engine)")
 
     # Generate non-peak regions from peak-regions
@@ -541,8 +537,8 @@ def build_parser():
                                      "optimization kit's three (malloc_env): freed memory is kept for reuse instead of "
                                      "returned to the system, large arrays come from that heap, and the heap grows "
                                      "512 MiB at a time. Outputs are identical; on a GPU pred_bw runs 1.07-1.12x faster "
-                                     "for about 9%% more peak RAM, and a CPU-only run about twice as fast for about "
-                                     "twice the RAM. MALLOC_MMAP_MAX_, MALLOC_TRIM_THRESHOLD_ or MALLOC_TOP_PAD_ "
+                                     "for about 9%% more peak RAM, and a CPU-only run 1.2-1.5x faster for 1.6-1.8x "
+                                     "the RAM. MALLOC_MMAP_MAX_, MALLOC_TRIM_THRESHOLD_ or MALLOC_TOP_PAD_ "
                                      "already in the environment are left as they are")
     _add_device(optional_preds)
     _add_predict_fused_kernel(optional_preds)
