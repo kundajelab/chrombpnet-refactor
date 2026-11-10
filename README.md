@@ -453,6 +453,39 @@ Every command that draws anything at random takes `--seed` (`-s` on all but
   unseeded draw sets. It also moves every other draw to 1, where 1.x used
   1234.
 
+### Distillation
+
+A ChromBPNet model is usually reported as the mean of its five fold models.
+`chrombpnet distill` (PyTorch engine) trains one bias-free student on that
+ensemble's averaged predictions, so a single model stands in for the five:
+
+```bash
+chrombpnet distill -t fold_{0,1,2,3,4}/models/chrombpnet_nobias.pt \
+    -bw fold_0/auxiliary/data_unstranded.bw -g hg38.fa -d ATAC \
+    -p fold_0/auxiliary/filtered.peaks.bed -n fold_0/auxiliary/filtered.nonpeaks.bed \
+    -fl folds/fold_0.json -op student/chrombpnet_nobias \
+    --all-chromosomes --epochs 20
+```
+
+The student (`student/chrombpnet_nobias.pt`) is read by `predict`,
+`contribs_bw` and `footprints` like any `chrombpnet_nobias` checkpoint.
+Without `--all-chromosomes` it trains on the fold file's training chromosomes
+and stops early on its validation ones; [the experimental options](#experimental-pytorch-engine-only)
+describe the targets and loss.
+
+> [!NOTE]
+> More analysis on reproducibility of the 5 fold mean ensemble model still pending.
+
+### The blog's analysis
+
+The runs behind the reproducibility results of
+[blog 2026-015](analysis/blog-2026-015/README.md) (the PyTorch / TensorFlow /
+JAX sweep, the DNase-seq cut-site arms, the updated arm and distillation) are
+in `analysis/blog-2026-015/`. Copy its `site.env.example` to `site.env` and
+fill in your paths and cluster options, then submit from each folder, e.g.
+`cd analysis/blog-2026-015/engines && ./submit_all.sh slurm`; its README maps
+every figure and table to its commands.
+
 ## Python API
 
 ```python
