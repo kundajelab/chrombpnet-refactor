@@ -19,15 +19,32 @@ The setting is process-global for the same reason the old one was:
 shared with training, so threading a flag down would mean changing signatures
 that have nothing else to do with it. :func:`configure_from_args` is called
 once, from ``CHROMBPNET.main``, before any work starts.
+
+When the kernels cannot run -- no CUDA device, no usable Triton, a kernel that
+does not compile or disagrees with the eager forward on this GPU, or a model
+they cannot serve -- prediction falls back to the eager forward, with a
+warning (:func:`fall_back`): the standard PyTorch forward, TF32 convolutions,
+as without the flag. A failure of the host turns the mode off for the rest of
+the process, so later models do not try again.
 """
 
 from __future__ import annotations
+
+import sys
+import warnings
 
 #: The modes, and the Triton dot precision each runs its convolutions in.
 PRECISIONS = {"exact": "ieee", "fast": "tf32"}
 
 #: Set by `configure`: None (the eager forward), "exact" or "fast".
 _MODE = None
+
+#: Every fallback so far, as (flag, reason, whole process?), for whoever
+#: needs to know the fused route did not engage (benchmarks, tests).
+FALLBACKS = []
+
+#: In every fallback warning, so a log can be searched for it.
+FALLBACK_MARKER = "fused Triton kernels did not engage"
 
 
 def configure(mode):
@@ -66,6 +83,30 @@ def precision():
 def flag(mode_name=None):
     """The command-line flag of a mode (the current one by default)."""
     return f"--predict-fused-kernel-{mode_name or _MODE}"
+
+
+def fall_back(reason, whole_process=True):
+    """The fused kernels cannot serve this prediction: say so, loudly, and
+    let the caller use the eager forward.
+
+    ``whole_process``: the reason is the host (device, Triton, the kernels on
+    this GPU), so the mode is turned off for every later model too; otherwise
+    it is this model alone (``TritonModelRefused``) and later models try
+    again.
+    """
+    global _MODE
+    current = flag()
+    FALLBACKS.append((current, str(reason), whole_process))
+    message = f"{current}: the {FALLBACK_MARKER}: {reason}"
+    banner = "!" * 78
+    scope = "every model of this run" if whole_process else "this model"
+    print(f"\n{banner}\n!! WARNING: {message}\n"
+          f"!! Predicting {scope} with the standard PyTorch forward instead\n"
+          "!! (TF32 convolutions, as without the flag).\n"
+          f"{banner}\n", file=sys.stderr, flush=True)
+    warnings.warn(message, RuntimeWarning, stacklevel=2)
+    if whole_process:
+        _MODE = None
 
 
 def configure_from_args(args):

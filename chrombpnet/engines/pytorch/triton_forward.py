@@ -8,7 +8,8 @@ ChromBPNet optimization kit at
 github.com/anthropics/uplifting-biomolecular-modeling (Apache-2.0). They are
 the forwards of the kit's `exact` and `fast` modes. This module is the local
 half: it presents a `BPNet` to those kernels, picks the per-architecture tile,
-and refuses when any of the kernels' assumptions does not hold.
+checks that they run on this GPU, and refuses when any of the kernels'
+assumptions does not hold.
 
 **GPUs.** Any CUDA GPU Triton supports. The tile comes from the kit's
 `arch_tiles.json` where it lists the GPU's architecture (H100/H200, L40S,
@@ -16,9 +17,9 @@ A100), and otherwise from the device's opt-in shared memory, as the kit's
 own `forward.select_tile` chooses it. The kit's table also names a default
 *route* per card -- whether the kit uses these kernels or stock TensorFlow
 by default, chosen for bitwise equality with stock's output -- which an
-opt-in flag here has no use for. On an architecture the table does not list,
-`build` checks the kernels against the eager forward and refuses if they
-disagree or do not compile.
+opt-in flag here has no use for. On every architecture, listed or not,
+`build` runs the kernels on a small batch and refuses if they do not compile
+or run, or disagree with the eager forward.
 
 **Numerics, exact (precision "ieee").** The kernels are fp32-exact -- each
 convolution output is one serial FMA chain, the order cuDNN's IMPLICIT_GEMM
@@ -39,13 +40,15 @@ the eager path's own precision class, but not its summation order, so the
 output moves by about TF32's error. Its tile is the kit's `tc_tile` for the
 architecture where `arch_tiles.json` lists one (H100/H200, A100) and
 `kernels_tc`'s default otherwise (the L40S has none: the kit never runs these
-kernels there), and the route is always checked against the eager forward
-(TF32 on) when it is built.
+kernels there), and the route is checked against the eager forward (TF32 on)
+when it is built.
 
-**Refusals, not fallbacks.** Every unmet precondition raises
-`TritonRouteRefused` naming the check. Two of the kernels' constraints fail
-*silently* if ignored rather than erroring -- see `filters` below -- so a
-quiet fallback would be worse than useless here.
+**Refusals here, a loud fallback above.** Every unmet precondition raises
+`TritonRouteRefused` naming the check (`TritonModelRefused` when it is the
+model's, not the host's). Two of the kernels' constraints fail *silently* if
+ignored rather than erroring -- see `filters` below -- so nothing is ever
+attempted past a refusal. `PredictionAdapter` catches it and predicts on the
+eager forward instead, after a warning (`chrombpnet.fused_kernels.fall_back`).
 """
 
 from __future__ import annotations
@@ -77,8 +80,9 @@ MAX_ELEMENTS = 2 ** 31
 UNLISTED_LARGE_TILE = ("64x512x16x16x3", 133120)     # (tile, shared memory, bytes)
 UNLISTED_SMALL_TILE = "64x256x16x8x3"
 
-#: How far the kernels may stray from the eager forward (TF32 off) before an
-#: unlisted architecture is refused. Far above the measured differences
+#: How far the exact kernels may stray from the eager forward (TF32 off)
+#: before they are refused (the name is from when only architectures the
+#: kit's table does not list were checked). Far above the measured differences
 #: (profile ~2e-5, log-counts bitwise; see the module docstring) and far
 #: below what a wrong kernel produces.
 UNLISTED_CHECK_ATOL = 1e-3
@@ -96,6 +100,10 @@ LEAVE_OUT = "leave out --predict-fused-kernel-exact / --predict-fused-kernel-fas
 
 class TritonRouteRefused(RuntimeError):
     """The Triton forward cannot serve this model, device or stack."""
+
+
+class TritonModelRefused(TritonRouteRefused):
+    """The Triton forward cannot serve this model (on any host)."""
 
 
 def _load_arch_tiles():
@@ -191,46 +199,46 @@ def _require_model(model):
     elif isinstance(model, BPNet):
         submodels = [model]
     else:
-        raise TritonRouteRefused(
+        raise TritonModelRefused(
             f"{type(model).__name__} is not a BPNet or ChromBPNet")
 
     for submodel in submodels:
         config = submodel.config
         if config.filters not in SUPPORTED_FILTERS:
-            raise TritonRouteRefused(
+            raise TritonModelRefused(
                 f"filters={config.filters} is unsupported; the counts head's "
                 f"dense kernel needs C in {SUPPORTED_FILTERS} (it computes "
                 f"C // 16 lanes and halves a power-of-two group, and produces "
                 f"wrong values silently otherwise)")
         if submodel.first_conv.in_channels != 4 or submodel.first_conv.kernel_size[0] != 21:
-            raise TritonRouteRefused("the first convolution must be 4 -> C, width 21")
+            raise TritonModelRefused("the first convolution must be 4 -> C, width 21")
         for conv in submodel.dilated_convs:
             if conv.kernel_size[0] != 3:
-                raise TritonRouteRefused(
+                raise TritonModelRefused(
                     "every dilated convolution must have width 3; it is a "
                     "constant in the kernels' residual epilogue")
             if conv.in_channels != conv.out_channels:
-                raise TritonRouteRefused(
+                raise TritonModelRefused(
                     "dilated convolutions must preserve width for the residual add")
         if submodel.profile_conv.out_channels != 1:
-            raise TritonRouteRefused("the profile head must have one output channel")
+            raise TritonModelRefused("the profile head must have one output channel")
         for conv in [submodel.first_conv, *submodel.dilated_convs, submodel.profile_conv]:
             if conv.padding[0] != 0 or conv.stride[0] != 1 or conv.bias is None:
-                raise TritonRouteRefused(
+                raise TritonModelRefused(
                     "convolutions must be unpadded, unstrided and biased")
         if submodel.count_dense is None:
-            raise TritonRouteRefused(
+            raise TritonModelRefused(
                 f"a model without a counts head (a profile-only bias model) is "
                 f"not supported by the fused kernels; {LEAVE_OUT}")
         if submodel.count_dense.bias is None:
-            raise TritonRouteRefused("the counts head must be biased")
+            raise TritonModelRefused("the counts head must be biased")
 
         # K1BPNetV3 crops the profile with (Lp - out_len) // 2, which would
         # crop off-centre rather than raise where _center_crop raises.
         profile_length = _profile_length(config)
         margin = profile_length - config.output_length
         if margin < 0 or margin % 2:
-            raise TritonRouteRefused(
+            raise TritonModelRefused(
                 f"the profile crop is not symmetric ({profile_length} -> "
                 f"{config.output_length}); the kernels would crop off-centre")
 
@@ -328,21 +336,22 @@ def build(model, device=None, counts="exact", precision="ieee"):
     forward.tile = tile
     forward.precision = precision
     forward.tc_tile = tc_tile
-    # The fast route is new to this package and the kit lists no TF32 tile
-    # for every card it lists, so it is checked on every build.
     forward.measured = entry["measured"] and (precision == "ieee" or bool(entry.get("tc_tile")))
+    # Checked on every build, the kit's measured architectures included: a
+    # listed GPU still needs a Triton that compiles there (a C compiler for
+    # the launchers, a driver new enough), and this is where that shows,
+    # before any output is written.
     if precision == "tf32":
         _check_against_eager(forward, model, device, arch, tc_tile, tf32=True)
-    elif not entry["measured"]:
+    else:
         _check_against_eager(forward, model, device, arch, tile)
     return forward
 
 
 def _check_against_eager(forward, model, device, arch, tile, tf32=False):
     """Refuse unless the kernels compile, run and agree with the eager
-    forward on a small batch: for the exact kernels on an architecture the
-    kit's table does not list (TF32 off, `UNLISTED_CHECK_ATOL`), and for the
-    fast kernels always (TF32 on, `TF32_CHECK_RTOL`)."""
+    forward on a small batch: the exact kernels with TF32 off
+    (`UNLISTED_CHECK_ATOL`), the fast kernels with TF32 on (`TF32_CHECK_RTOL`)."""
     import torch
 
     length = int(model.config.input_length)

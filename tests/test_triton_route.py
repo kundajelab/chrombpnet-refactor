@@ -9,6 +9,7 @@ import hashlib
 import pathlib
 import sys
 
+import numpy as np
 import pytest
 # PyTorch-engine tests: skipped in the TensorFlow and JAX environments.
 torch = pytest.importorskip("torch")
@@ -195,10 +196,10 @@ def test_the_fast_route_runs_the_tensor_core_kernels_at_the_kits_tile(monkeypatc
     assert forward.measured is bool(tc_tile)
     assert checks == [True]
 
-    # exact stays on kernels.py, unchecked on a listed architecture
+    # exact stays on kernels.py, and is checked too (TF32 off), listed architecture or not
     checks.clear()
     forward = triton_forward.build(_production(filters=128).eval(), "cpu", precision="ieee")
-    assert forward.precision == "ieee" and forward.tc_tile is None and checks == []
+    assert forward.precision == "ieee" and forward.tc_tile is None and checks == [False]
 
 
 def test_an_unknown_precision_is_refused():
@@ -367,3 +368,75 @@ def test_the_adapter_uses_the_route_only_under_predict_fused_kernel(predict_fuse
     assert PredictionAdapter(model, device="cuda")._forward is model
     predict_fused_kernel(True)
     assert PredictionAdapter(model, device="cuda")._forward is not model
+
+
+# ------------------------------------------------- the fallback (CPU-only)
+
+def _eager_predictions(model, x):
+    from chrombpnet.model import PredictionAdapter
+    return PredictionAdapter(model, device="cpu").predict(x, batch_size=2)
+
+
+@pytest.mark.parametrize("mode", ["fast", "exact"])
+def test_the_adapter_falls_back_to_the_eager_forward_where_the_kernels_cannot_run(
+        predict_fused_kernel, mode):
+    """No CUDA here: the route is refused, and prediction goes on, on the
+    eager forward, after a warning; the mode is off for later models."""
+    from chrombpnet.model import PredictionAdapter
+    torch.manual_seed(0)
+    model = BPNet(ModelConfig(206, 100, filters=128, n_dilation_layers=2)).eval()
+    x = torch.nn.functional.one_hot(torch.randint(0, 4, (3, 206)), 4).float().numpy()
+    expected = _eager_predictions(model, x)
+    predict_fused_kernel(mode)
+    before = len(fused_kernels.FALLBACKS)
+    with pytest.warns(RuntimeWarning, match=fused_kernels.FALLBACK_MARKER):
+        adapter = PredictionAdapter(model, device="cpu")
+    assert adapter._forward is model and adapter.fused_route is None
+    assert not fused_kernels.enabled()
+    flag, reason, whole = fused_kernels.FALLBACKS[before]
+    assert flag == f"--predict-fused-kernel-{mode}" and "CUDA" in reason and whole
+    for got, want in zip(adapter.predict(x, batch_size=2), expected):
+        np.testing.assert_array_equal(got, want)
+
+
+def test_a_model_the_kernels_cannot_serve_falls_back_alone(predict_fused_kernel, monkeypatch, capsys):
+    """A model refusal (here, as for a profile-only bias) leaves the mode on,
+    so the run's other models still try the kernels."""
+    from chrombpnet.model import PredictionAdapter
+
+    def refuse(model, device, precision):
+        raise triton_forward.TritonModelRefused("a model without a counts head")
+
+    monkeypatch.setattr(triton_forward, "build", refuse)
+    predict_fused_kernel("fast")
+    with pytest.warns(RuntimeWarning, match="counts head"):
+        adapter = PredictionAdapter(_production(filters=128).eval(), device="cpu")
+    assert adapter.fused_route is None and fused_kernels.enabled()
+    assert fused_kernels.FALLBACKS[-1][2] is False
+    assert "Predicting this model with the standard PyTorch forward" in capsys.readouterr().err
+
+
+def test_a_kernel_that_does_not_run_here_falls_back_for_the_whole_run(predict_fused_kernel, monkeypatch):
+    from chrombpnet.model import PredictionAdapter
+
+    def refuse(model, device, precision):
+        raise triton_forward.TritonRouteRefused("the fused kernels do not run on cuda-89")
+
+    monkeypatch.setattr(triton_forward, "build", refuse)
+    predict_fused_kernel("exact")
+    with pytest.warns(RuntimeWarning, match="do not run"):
+        PredictionAdapter(_production(filters=128).eval(), device="cpu")
+    assert not fused_kernels.enabled()
+    # A later model does not try again, and says nothing.
+    calls = []
+    monkeypatch.setattr(triton_forward, "build", lambda *a, **k: calls.append(1))
+    assert PredictionAdapter(_production(filters=128).eval(), device="cpu").fused_route is None
+    assert calls == []
+
+
+def test_model_refusals_are_their_own_kind():
+    model = ChromBPNet(ModelConfig(2114, 1000, filters=64, n_dilation_layers=8),
+                       BiasModel(ModelConfig(2114, 1000, filters=128, n_dilation_layers=4)))
+    with pytest.raises(triton_forward.TritonModelRefused):
+        triton_forward._require_model(model)
+    assert issubclass(triton_forward.TritonModelRefused, triton_forward.TritonRouteRefused)

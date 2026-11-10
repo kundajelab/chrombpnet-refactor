@@ -1,5 +1,31 @@
 # Changelog
 
+## The fused Triton kernels fall back to the default forward where they cannot run
+
+- **Behaviour change, `--predict-fused-kernel-exact` / `-fast` only.** Where
+  the kernels cannot run -- no CUDA device, Triton missing or outside the
+  verified window, a kernel that does not compile or disagrees with the
+  eager forward on this GPU -- the command stopped (`TritonRouteRefused`).
+  It now prints a `!! WARNING` banner naming the reason (and raises a
+  `RuntimeWarning`) and predicts with the default forward: eager PyTorch,
+  TF32 convolutions, as without the flag. A failure of the host turns the
+  mode off for the rest of the process. A model the kernels cannot serve
+  (`TritonModelRefused`, a subclass: a profile-only bias, filters other
+  than 128 or 512) falls back alone, and the run's other models still try
+  the kernels.
+- **The check runs on every build.** The exact kernels were compared with
+  the eager forward only on GPUs the kit's table does not list; they are now
+  compiled, run on two sequences and compared (TF32 off, within 1e-3) on
+  every GPU, as the fast ones were (TF32 on, within 1e-2 of the output's
+  scale). So a listed GPU whose Triton cannot build its kernels there (a
+  host whose C compiler is too old for Triton's launchers, such as gcc 4.8)
+  falls back before any output is written instead of failing in the first
+  batch.
+- `PredictionAdapter.fused_route` is the fused forward, or None after a
+  fallback; `chrombpnet.fused_kernels.FALLBACKS` records each fallback, and
+  every warning contains `fused_kernels.FALLBACK_MARKER`. Without either flag
+  nothing changes.
+
 ## `bias pretrain` and `--pretrained-bias`: a profile-only bias transferred from other datasets
 
 - **New command and option; defaults unchanged.** PyTorch engine only, from

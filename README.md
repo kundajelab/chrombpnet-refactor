@@ -383,10 +383,13 @@ changes, `args.json` and checkpoints included.
   fp32-exact kernels in place of the eager TF32 convolutions, so predictions
   move by about 1e-5 (closer to an fp64 reference). On any CUDA GPU: the
   kit's measured tile on H100/H200, L40S and A100, one chosen from the GPU's
-  shared memory elsewhere (checked against the default forward first).
-  `--predict-fused-kernel-fast` runs the kit's TF32 kernels instead. Not on
-  `contribs_bw`, whose DeepLIFT needs autograd and hooks a fused kernel
-  cannot provide.
+  shared memory elsewhere. `--predict-fused-kernel-fast` runs the kit's TF32
+  kernels instead. Before predicting, the kernels are compiled, run on a small
+  batch and checked against the default forward; where they cannot run (no
+  CUDA GPU or Triton, a kernel that does not compile or agree on this GPU, a
+  model they cannot serve), the command warns and predicts with the default
+  forward, TF32 convolutions, instead. Not on `contribs_bw`, whose DeepLIFT
+  needs autograd and hooks a fused kernel cannot provide.
 
 The memory-mapped reads, the lookup-table one-hot, the vectorized metrics,
 the worker-process writer, the background imports, the fast exit, the

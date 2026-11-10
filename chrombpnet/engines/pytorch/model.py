@@ -421,13 +421,20 @@ class PredictionAdapter:
                              (None, 1) if config.counts_head else None]
         # --predict-fused-kernel-exact / -fast. Built after .to(device): the kernels snapshot and
         # transpose the weights at construction, so the module has to be on
-        # its final device first. Refusals propagate -- the route is opt-in
-        # and silently falling back would hide that it did not engage.
+        # its final device first. build() checks that the kernels compile,
+        # run and agree with the eager forward on this device; when they
+        # cannot, prediction falls back to the eager forward with a warning
+        # (fused_kernels.fall_back), and fused_route stays None.
         self._forward = self.model
+        self.fused_route = None
         if fused_kernels.enabled():
             from chrombpnet.engines.pytorch import triton_forward
-            self._forward = triton_forward.build(
-                self.model, self.device, precision=fused_kernels.precision())
+            try:
+                self._forward = self.fused_route = triton_forward.build(
+                    self.model, self.device, precision=fused_kernels.precision())
+            except triton_forward.TritonRouteRefused as refusal:
+                fused_kernels.fall_back(
+                    refusal, whole_process=not isinstance(refusal, triton_forward.TritonModelRefused))
 
     def summary(self) -> None:
         print(self.model)
