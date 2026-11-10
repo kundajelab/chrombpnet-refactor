@@ -101,7 +101,13 @@ def test_mixed_input_models_go_to_the_engine_that_reads_them_all():
 
 def test_input_models_from_two_engines_are_refused():
     with pytest.raises(ValueError, match="different engines"):
-        engines.resolve_name(Namespace(bias_model="b.pt", chrombpnet_model="c.h5"))
+        engines.resolve_name(Namespace(bias_model="b.pt", chrombpnet_model="c.keras"))
+
+
+def test_a_pt_and_an_original_h5_go_to_pytorch():
+    """The PyTorch engine reads chrombpnet 1.x's .h5 models too (keras_h5)."""
+    assert engines.resolve_name(Namespace(bias_model="b.h5", chrombpnet_model="c.pt")) == "pytorch"
+    assert engines.resolve_name(Namespace(engine="pytorch", chrombpnet_model="c.h5")) == "pytorch"
 
 
 def test_an_omitted_engine_leaves_no_trace_in_the_namespace():
@@ -191,7 +197,8 @@ def test_the_configured_engine_loads_what_it_can_read():
     assert engines.for_model("original_bias.h5").name == "tensorflow"
     assert engines.for_model("bias.keras").name == "tensorflow"
     engines.configure("pytorch")
-    assert engines.for_model("original_bias.h5").name == "tensorflow-old"
+    assert engines.for_model("original_bias.h5").name == "pytorch"
+    assert engines.for_model("bias.keras").name == engines.keras3_engine()
 
 
 def _jax_installed():

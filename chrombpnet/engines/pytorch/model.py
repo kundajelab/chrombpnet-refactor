@@ -378,6 +378,15 @@ def _load_payload(path: Union[str, Path], map_location: Any) -> Dict[str, Any]:
 def load_model(
     path: Union[str, Path], map_location: Any = "cpu"
 ) -> nn.Module:
+    """A checkpoint this package wrote (``.pt``), or a chrombpnet 1.x TF-Keras
+    model (``.h5``/``.hdf5``, converted on load: ``keras_h5.load_keras_h5``)."""
+    if str(path).lower().endswith((".h5", ".hdf5")):
+        from chrombpnet.engines.pytorch.keras_h5 import load_keras_h5
+
+        model = load_keras_h5(path)
+        if isinstance(map_location, (str, torch.device)):
+            model.to(map_location)
+        return model.eval()
     payload = _load_payload(path, map_location)
     if int(payload.get("format_version", -1)) != CHECKPOINT_VERSION:
         raise ValueError(f"Unsupported checkpoint format: {payload.get('format_version')}")

@@ -83,17 +83,23 @@ chrombpnet pred_bw -cm models/chrombpnet.h5 ...  # engine inferred: tensorflow-o
 is omitted the input models' checkpoint suffixes decide (`.pt` PyTorch, `.h5`
 tensorflow-old, `.keras` the installed Keras 3 engine: JAX where it is
 installed, else `tensorflow`), else PyTorch. An explicit `--engine` must be
-able to read every input model: `--engine jax` and `--engine tensorflow` also
-read the original's `.h5` models, so `chrombpnet pipeline --engine tensorflow -b
-original_bias.h5 ...` works, and inputs in both formats (`-bm bias.h5 -cm
-chrombpnet.keras`) go to the installed Keras 3 engine. The two Keras 3 engines
-read each other's `.keras` files. `prep` and `modisco_motifs` never touch a
+able to read every input model: `--engine jax`, `--engine tensorflow` and
+`--engine pytorch` also read the original's `.h5` models (bias, full and
+no-bias), so `chrombpnet pipeline --engine pytorch -b original_bias.h5 ...` or
+`chrombpnet pred_bw --engine pytorch -cm model.chrombpnet.fold_0.<ENCID>.h5 ...`
+works, and inputs in two formats (`-bm bias.h5 -cm chrombpnet.keras`, or `-bm
+bias.h5 -cm chrombpnet.pt`) go to an installed engine that reads both. PyTorch
+converts the weights on load (`chrombpnet/engines/pytorch/keras_h5.py`: the same
+arrays as bpnet-lite's `BPNet.from_chrombpnet`, the lengths read from the file);
+in Python, `load_model("model.chrombpnet.fold_0.<ENCID>.h5")` returns the
+`ChromBPNet` and `save_model` keeps it as a `.pt`. The two Keras 3 engines read
+each other's `.keras` files. `prep` and `modisco_motifs` never touch a
 model, take no `--engine`, and run in any of the environments.
 
 | | PyTorch | tensorflow | JAX | tensorflow-old |
 |---|---|---|---|---|
 | environment | `chrombpnet-pytorch` (Python 3.12, PyTorch 2.14) | `chrombpnet-tensorflow` (Python 3.12, TF 2.21, Keras 3.15) | `chrombpnet-jax` (Python 3.12, Keras 3.15, JAX 0.11) | `chrombpnet-tensorflow` (Python 3.12, TF 2.21, tf-keras) |
-| checkpoints | `.pt` | `.keras`, the JAX engine's format; also reads `.h5` | `.keras` (Keras 3); also reads `.h5` | `.h5` (Keras 2, readable by chrombpnet 1.x) |
+| checkpoints | `.pt`; also reads `.h5` | `.keras`, the JAX engine's format; also reads `.h5` | `.keras` (Keras 3); also reads `.h5` | `.h5` (Keras 2, readable by chrombpnet 1.x) |
 | DeepLIFT/DeepSHAP | Tangermeme | the JAX engine's rules, ported to TensorFlow | native JAX (ChromBPNet 2.0) | the kundajelab `shap` fork's, vendored |
 | TF-MoDISco | git checkout (2.6 API) | git checkout | git checkout | git checkout |
 | status | default | within float32 tolerances of the original | within float32 tolerances of the original | within float tolerance of the original |

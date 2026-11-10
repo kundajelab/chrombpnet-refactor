@@ -513,6 +513,11 @@ The model has two heads: `profile_logits` over `output_length` positions, and a
 single `logcounts` value per region, which is `log(1 + total counts)`. The
 bias branch is frozen and stays in eval mode.
 
+`load_model` also reads the original ChromBPNet's TensorFlow `.h5` models
+(`bias_scaled.h5`, `chrombpnet.h5`, `chrombpnet_nobias.h5`), converting the
+weights on load, as every command does under `--engine pytorch`; see
+[Engines and environments](envs/README.md).
+
 Historical scripts and paper-analysis assets that the CLI does not reach are
 isolated under [`legacy/`](legacy/README.md). They are kept for provenance and
 are not installed with the package.

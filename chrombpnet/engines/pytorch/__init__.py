@@ -34,6 +34,8 @@ def adjust_bias_model_logcounts(bias_model, seqs, cts):
 class PyTorchEngine(Engine):
     name = "pytorch"
     checkpoint_suffix = ".pt"
+    #: chrombpnet 1.x's TF-Keras models too, converted on load (keras_h5).
+    readable_suffixes = (".pt", ".h5", ".hdf5")
     environment = "chrombpnet-pytorch"
 
     def require(self):

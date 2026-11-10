@@ -1,5 +1,32 @@
 # Changelog
 
+## The PyTorch engine reads chrombpnet 1.x's `.h5` models
+
+- **New input format; defaults unchanged.** `load_model` (and so every
+  command under `--engine pytorch`: `pred_bw`, `contribs_bw`, `footprints`,
+  `qc`, `predict`, `distill`, and the training commands' `-b`) reads the
+  original ChromBPNet's TF-Keras `.h5` files: `bias.h5` / `bias_scaled.h5`
+  as a `BiasModel`, `chrombpnet_nobias.h5` as a `BPNet`, and the full
+  `chrombpnet.h5`, whose two towers are nested in it, as a `ChromBPNet`
+  (`chrombpnet/engines/pytorch/keras_h5.py`). The input and output lengths,
+  filters and dilation layers come from the file's model config, and an
+  architecture other than 1.x's (another kernel width, dilation or padding,
+  an asymmetric profile crop) is refused rather than partly loaded.
+- The mapping is the one `--reproducibility-max` already uses
+  (`assign_keras_layout_weights`), with 1.x's layer names; bpnet-lite's
+  `BPNet.from_chrombpnet` (github.com/jmschrei/bpnet-lite, MIT) reads the
+  same names into its own classes. On ENCODE's ENCSR868FGK fold 0 models the
+  two give identical tensors (bias, no-bias, and both towers of the full
+  model), and `pred_bw --engine pytorch` on the `.h5` files is within
+  ~4e-5 of the maximum signal of `--engine tensorflow-old` (float32
+  convolution order). Loading takes ~0.14 s for the no-bias model, against
+  bpnet-lite's ~0.12 s (it does not read the config or validate), and
+  ~0.16 s for the full model from its one file.
+- Engine choice: a plain `.h5` still goes to `tensorflow-old`; `--engine
+  pytorch` reads it, and a `.pt` with an original `.h5` (e.g. `-bm bias.h5
+  -cm chrombpnet.pt`), which was refused as two engines' models, now goes to
+  PyTorch.
+
 ## `BPNet` computes its profile length instead of probing for it
 
 - **No output change.** The constructor ran a forward pass on a zero
