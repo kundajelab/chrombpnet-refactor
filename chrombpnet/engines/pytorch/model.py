@@ -102,10 +102,11 @@ class BPNet(nn.Module):
         self.profile_conv = nn.Conv1d(channels, 1, kernel_size=75, padding=0)
         self.count_dense = nn.Linear(channels, 1) if self.config.counts_head else None
 
-        with torch.no_grad():
-            probe = torch.zeros(1, 4, self.config.input_length)
-            feature = self._features(probe)
-            profile_length = self.profile_conv(feature).shape[-1]
+        # The profile's length out of the layers above, from their widths:
+        # unpadded convolutions of width 21, 3 (dilation 2**layer) and 75.
+        # (A forward pass on a zero probe gave the same number, at ~0.1 s a model.)
+        profile_length = self.config.input_length - 20 - sum(
+            2 * 2**layer for layer in range(1, self.config.n_dilation_layers + 1)) - 74
         if profile_length < self.config.output_length:
             raise ValueError(
                 "Architecture receptive field leaves profile shorter than output_length: "

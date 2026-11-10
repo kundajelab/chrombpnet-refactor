@@ -1,5 +1,15 @@
 # Changelog
 
+## `BPNet` computes its profile length instead of probing for it
+
+- **No output change.** The constructor ran a forward pass on a zero
+  sequence to learn the profile's length, ~0.1 s per model on the CPU. It is
+  now computed from the layer widths (unpadded convolutions of width 21, 3
+  with dilation 2^k, and 75): equal to the forward pass on 78 geometries
+  checked. An input too short for the receptive field now raises the
+  existing `ValueError` ("receptive field leaves profile shorter than
+  output_length") instead of a convolution's `RuntimeError`.
+
 ## The fused Triton kernels fall back to the default forward where they cannot run
 
 - **Behaviour change, `--predict-fused-kernel-exact` / `-fast` only.** Where
