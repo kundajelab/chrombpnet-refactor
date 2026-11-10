@@ -201,7 +201,8 @@ def _add_ignore_bias_flag(optional):
 
 
 def _add_bias_profile_only(optional):
-    """``--bias-profile-only`` on ``bias pipeline`` / ``bias train``.
+    """``--bias-profile-only`` and ``--pretrained-bias`` on ``bias
+    pipeline`` / ``bias train``.
 
     ``pipeline`` and ``train`` need no flag: they read off the bias
     checkpoint whether it has a counts head.
@@ -215,6 +216,14 @@ def _add_bias_profile_only(optional):
              "chrombpnet_nobias's counts are not bias-corrected. The bias "
              "rescaling step and the peak count correlation check do not "
              "apply, and the bias reports carry profile metrics and motifs only")
+    optional.add_argument(
+        "--pretrained-bias", type=str, default=None,
+        help="PyTorch engine only; implies --bias-profile-only. Start from a "
+             "`chrombpnet bias pretrain` checkpoint, pretrained on other "
+             "datasets of this assay with this run's fold file: its "
+             "convolutions are copied and frozen, and only a new profile head "
+             "is trained, on this dataset's nonpeaks. -il, -ol, -fil and -dil "
+             "must be the checkpoint's")
 
 
 def _add_device(optional):
@@ -439,6 +448,33 @@ def _add_bias_training_arguments(parser, reports=False):
         _add_h5_compression(optional)
 
 
+def _add_bias_pretrain_arguments(parser):
+    """``bias pretrain`` (:mod:`chrombpnet.engines.pytorch.bias_pretrain`):
+    one profile-only bias trunk for ``bias pipeline --pretrained-bias``.
+    PyTorch only, so it takes ``--device`` but no ``--engine``; each
+    dataset's nonpeaks are filtered as ``bias pipeline``'s, with the same
+    options."""
+    required, optional = _required_optional(parser)
+    required.add_argument("-m", "--manifest", type=str, required=True, help="TSV with a header and one row per pretraining dataset (two or more, all of -d's assay): dataset (a name of letters, digits, - and _), bigwig (shifted and unstranded, as `chrombpnet prep bigwig` writes), peaks, nonpeaks. Relative paths are relative to the TSV")
+    required.add_argument('-g', '--genome', required=True, type=str, help="reference genome fasta file")
+    required.add_argument('-d', '--data-type', required=True, type=str, choices=['ATAC', 'DNASE'], help="assay type")
+    required.add_argument("-fl", "--chr-fold-path", type=str, required=True, help="Fold information - dictionary with test,valid and train keys and values with corresponding chromosomes. A bias model adapted from the checkpoint must use the same file")
+    required.add_argument("-b", "--bias-threshold-factor", type=float, required=True, help="A threshold is applied on maximum count of non-peak region for training bias model, which is set as this threshold x min(count over peak regions). Recommended start value 0.5 for ATAC and 0.8 for DNase.")
+    required.add_argument('-o', '--output-dir', type=str, required=True, help="Output dir: models/multitask_bias.pt, logs/multitask_bias.log (losses per epoch, overall and per dataset) and logs/multitask_bias.args.json, auxiliary/<dataset>/ (its filtered nonpeaks and parameters)")
+    optional.add_argument("-oth", "--outlier-threshold", type=float, default=0.9999, help="threshold to use to filter outlies")
+    optional.add_argument("-il", "--inputlen", type=int, default=2114, help="Sequence input length")
+    optional.add_argument("-ol", "--outputlen", type=int, default=1000, help="Prediction output length")
+    optional.add_argument("-s", "--seed", type=int, default=DEFAULT_SEED, help="seed for the initial weights, batch order and reverse complements")
+    optional.add_argument("-e", "--epochs", type=int, default=50, help="Maximum epochs to train")
+    optional.add_argument("-es", "--early-stop", type=int, default=5, help="Early stop limit on the mean of the datasets' validation losses")
+    optional.add_argument("-l", "--learning-rate", type=float, default=0.001, help="Learning rate for model training")
+    optional.add_argument("-bs", "--batch-size", type=int, default=64, help="batch size per dataset: each step takes one batch of every dataset")
+    _add_architecture_options(optional, filters=128, dilations=4, jitter=0)
+    add_reproducibility_arguments(optional)
+    _add_data_aug(optional)
+    optional.add_argument('--device', default=None, help="Device to run the model on: cpu, cuda or cuda:N (default: a GPU when available)")
+
+
 def build_parser():
     """Build the whole command tree without consuming argv."""
     parser = argparse.ArgumentParser(description=desc, formatter_class=RawTextHelpFormatter)
@@ -451,10 +487,11 @@ def build_parser():
 
     # bias parsers
     bias_parser_full = subparsers.add_parser("bias", help="Tools to train, quality check and test bias model")
-    bias_parser_sub = bias_parser_full.add_subparsers(help="One of 'pipeline', 'train' or 'qc'.", required=True, dest='cmd_bias')
+    bias_parser_sub = bias_parser_full.add_subparsers(help="One of 'pipeline', 'train', 'qc' or 'pretrain'.", required=True, dest='cmd_bias')
     bias_parser = bias_parser_sub.add_parser("pipeline", help="End-to-end pipline with train, quality check and test for bias model")
     bias_parser_train = bias_parser_sub.add_parser("train", help="Train bias model")
     bias_parser_qc = bias_parser_sub.add_parser("qc", help="Do quality checks and get test metrics for the bias model")
+    bias_parser_pretrain = bias_parser_sub.add_parser("pretrain", help="Pretrain one profile-only bias trunk on several datasets of an assay, for bias pipeline --pretrained-bias (PyTorch engine)")
 
     # helper parsers
     prep_parser_full = subparsers.add_parser("prep", help="Tools to generate preprocessing data for chrombpnet")
@@ -508,6 +545,7 @@ def build_parser():
 
     _add_bias_training_arguments(bias_parser, reports=True)
     _add_bias_training_arguments(bias_parser_train)
+    _add_bias_pretrain_arguments(bias_parser_pretrain)
 
     _add_qc_arguments(bias_parser_qc, [
         (("-bm", "--bias-model"), "Path to bias model checkpoint (.pt PyTorch, .h5 TensorFlow)"),

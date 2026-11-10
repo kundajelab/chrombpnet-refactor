@@ -1,5 +1,33 @@
 # Changelog
 
+## `bias pretrain` and `--pretrained-bias`: a profile-only bias transferred from other datasets
+
+- **New command and option; defaults unchanged.** PyTorch engine only, from
+  the chrombpnet-bias experiment's `pre-finetune` mode.
+  - `chrombpnet bias pretrain -m <datasets.tsv> -g -d -fl -b -o` trains one
+    bias trunk (the bias architecture's convolutions; `-fil 128 -dil 4` by
+    default) shared by two or more datasets of one assay, with a profile
+    head each, on the profile loss. The TSV has the columns `dataset`,
+    `bigwig`, `peaks`, `nonpeaks`; each dataset's nonpeaks are filtered as
+    `bias pipeline` filters them. Every optimizer step takes one batch of
+    every dataset, cycling the shorter ones, so each dataset weighs the same;
+    epochs are kept on the mean of the datasets' validation losses. It
+    writes `models/multitask_bias.pt` (model type `multitask_bias`, with its
+    datasets, assay and fold file), `logs/multitask_bias.log` (losses
+    overall and per dataset) and `auxiliary/<dataset>/`.
+  - `bias pipeline` / `bias train --pretrained-bias <multitask_bias.pt>`
+    (implies `--bias-profile-only`) copies that trunk into a new
+    profile-only bias model, frozen, under a zero-initialized profile head,
+    the only part that trains, on this dataset's nonpeaks. It refuses a
+    checkpoint pretrained on another assay, another fold file (its trunk may
+    have trained on this run's test chromosomes) or another `-il`, `-ol`,
+    `-fil` or `-dil`. The result is an ordinary profile-only bias
+    checkpoint: `pipeline` trains on it, adding it to the profile only.
+- Prediction commands refuse a `multitask_bias` checkpoint.
+  `train.get_model` applies `--pretrained-bias` after any architecture's
+  builder, so a custom `-a` must build a profile-only bias model.
+- Not given, `--pretrained-bias` is not recorded in `args.json`.
+
 ## `--ignore-bias-flag` is the default
 
 - **Behaviour change.** `pipeline` and `train` no longer stop on a bias

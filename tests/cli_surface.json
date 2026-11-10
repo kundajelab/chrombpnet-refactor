@@ -555,6 +555,16 @@
     "required": false,
     "type": "str"
   },
+  "bias pipeline pretrained_bias": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--pretrained-bias"
+    ],
+    "required": false,
+    "type": "str"
+  },
   "bias pipeline reproducibility": {
     "choices": null,
     "default": "None",
@@ -616,6 +626,267 @@
     ],
     "required": false,
     "type": "None"
+  },
+  "bias pretrain batch_size": {
+    "choices": null,
+    "default": "64",
+    "nargs": "None",
+    "options": [
+      "--batch-size",
+      "-bs"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias pretrain bias_threshold_factor": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--bias-threshold-factor",
+      "-b"
+    ],
+    "required": true,
+    "type": "float"
+  },
+  "bias pretrain chr_fold_path": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--chr-fold-path",
+      "-fl"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "bias pretrain data_aug": {
+    "choices": [
+      "augment",
+      "forward-only",
+      "revcomp-only"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--data-aug"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "bias pretrain data_type": {
+    "choices": [
+      "ATAC",
+      "DNASE"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--data-type",
+      "-d"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "bias pretrain device": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--device"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "bias pretrain dnase_convention": {
+    "choices": [
+      "both-full",
+      "both-half",
+      "left",
+      "right",
+      "right-deprecated"
+    ],
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--dnase-convention"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "bias pretrain early_stop": {
+    "choices": null,
+    "default": "5",
+    "nargs": "None",
+    "options": [
+      "--early-stop",
+      "-es"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias pretrain epochs": {
+    "choices": null,
+    "default": "50",
+    "nargs": "None",
+    "options": [
+      "--epochs",
+      "-e"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias pretrain filters": {
+    "choices": null,
+    "default": "128",
+    "nargs": "None",
+    "options": [
+      "--filters",
+      "-fil"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias pretrain genome": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--genome",
+      "-g"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "bias pretrain help": {
+    "choices": null,
+    "default": "'==SUPPRESS=='",
+    "nargs": "0",
+    "options": [
+      "--help",
+      "-h"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "bias pretrain inputlen": {
+    "choices": null,
+    "default": "2114",
+    "nargs": "None",
+    "options": [
+      "--inputlen",
+      "-il"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias pretrain learning_rate": {
+    "choices": null,
+    "default": "0.001",
+    "nargs": "None",
+    "options": [
+      "--learning-rate",
+      "-l"
+    ],
+    "required": false,
+    "type": "float"
+  },
+  "bias pretrain manifest": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--manifest",
+      "-m"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "bias pretrain max_jitter": {
+    "choices": null,
+    "default": "0",
+    "nargs": "None",
+    "options": [
+      "--max-jitter",
+      "-j"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias pretrain n_dilation_layers": {
+    "choices": null,
+    "default": "4",
+    "nargs": "None",
+    "options": [
+      "--n-dilation-layers",
+      "-dil"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias pretrain outlier_threshold": {
+    "choices": null,
+    "default": "0.9999",
+    "nargs": "None",
+    "options": [
+      "--outlier-threshold",
+      "-oth"
+    ],
+    "required": false,
+    "type": "float"
+  },
+  "bias pretrain output_dir": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--output-dir",
+      "-o"
+    ],
+    "required": true,
+    "type": "str"
+  },
+  "bias pretrain outputlen": {
+    "choices": null,
+    "default": "1000",
+    "nargs": "None",
+    "options": [
+      "--outputlen",
+      "-ol"
+    ],
+    "required": false,
+    "type": "int"
+  },
+  "bias pretrain reproducibility": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--reproducibility"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "bias pretrain reproducibility_max": {
+    "choices": null,
+    "default": "None",
+    "nargs": "0",
+    "options": [
+      "--reproducibility-max"
+    ],
+    "required": false,
+    "type": "None"
+  },
+  "bias pretrain seed": {
+    "choices": null,
+    "default": "1234",
+    "nargs": "None",
+    "options": [
+      "--seed",
+      "-s"
+    ],
+    "required": false,
+    "type": "int"
   },
   "bias qc batch_size": {
     "choices": null,
@@ -1404,6 +1675,16 @@
     "nargs": "None",
     "options": [
       "--precision"
+    ],
+    "required": false,
+    "type": "str"
+  },
+  "bias train pretrained_bias": {
+    "choices": null,
+    "default": "None",
+    "nargs": "None",
+    "options": [
+      "--pretrained-bias"
     ],
     "required": false,
     "type": "str"

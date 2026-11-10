@@ -120,6 +120,10 @@ def main():
 			RunLayout.from_args(args).create_qc_dirs()
 			pipelines.bias_model_qc(args)
 
+		elif args.cmd_bias == "pretrain":
+			from chrombpnet.engines.pytorch import bias_pretrain
+			bias_pretrain.main(args)
+
 		else:
 			print("Command not found")
 

@@ -272,6 +272,7 @@ chrombpnet qc                evaluate an already-trained model
 chrombpnet bias pipeline     train a bias model, then evaluate it
 chrombpnet bias train        train a bias model only
 chrombpnet bias qc           evaluate an already-trained bias model
+chrombpnet bias pretrain     one profile-only bias trunk from several datasets (PyTorch engine)
 chrombpnet prep nonpeaks     GC-matched background regions from peaks
 chrombpnet prep splits       chromosome train/valid/test split JSON
 chrombpnet prep bigwig       shifted, unstranded bigwig from reads (for -ibw)
@@ -301,7 +302,7 @@ Four options control them, all off by default:
 
 #### Experimental: PyTorch engine only
 
-Two opt-in changes, refused by the other engines. Without them nothing
+Three opt-in changes, refused by the other engines. Without them nothing
 changes, `args.json` and checkpoints included.
 
 - `bias pipeline` / `bias train --bias-profile-only`: a bias model with a
@@ -311,6 +312,17 @@ changes, `args.json` and checkpoints included.
   counts are no longer bias-corrected. `pipeline` and `train` read this off
   the checkpoint; the bias rescaling and the peak-count check are skipped,
   and the bias reports have profile metrics and motifs only.
+- `bias pretrain -m <datasets.tsv>`, then `bias pipeline` / `bias train
+  --pretrained-bias models/multitask_bias.pt`: a profile-only bias whose
+  convolutions are learned from other datasets of the same assay.
+  `bias pretrain` trains one trunk shared by every dataset of the TSV
+  (columns `dataset`, `bigwig`, `peaks`, `nonpeaks`), with a profile head
+  each, on their filtered nonpeaks; every step takes one batch of every
+  dataset. `--pretrained-bias` copies that trunk into a new profile-only
+  bias model, frozen, and trains only a new profile head on this dataset's
+  nonpeaks. It refuses a checkpoint pretrained on another assay, fold file
+  or architecture; `pipeline` then trains on the bias as on any
+  profile-only one.
 - `distill -t <chrombpnet_nobias.pt ...>`: train one bias-free student on
   several models' averaged predictions -- the mean of their profile
   probabilities times `expm1` of their mean log counts, and the mean of
@@ -423,6 +435,7 @@ Every command that draws anything at random takes `--seed` (`-s` on all but
 | `predict`, `pred_bw` | the profile-metrics shuffle; `predict` also the test set's nonpeaks |
 | `contribs_bw` | DeepSHAP's references |
 | `distill` | the student's training (initial weights, batch order, jitter, reverse complements, negatives) |
+| `bias pretrain` | the multitask trunk's training (initial weights, batch order, reverse complements) |
 | `prep nonpeaks`, `prep bigwig` | the GC-matched negatives; the shift-estimation read sample |
 
 `prep splits`, `footprints` and `export` draw nothing at random. Two notes:

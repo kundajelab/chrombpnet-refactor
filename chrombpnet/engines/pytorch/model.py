@@ -6,7 +6,7 @@ File/data adapters at the edge of the package accept the historical NLC layout.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Tuple, Union
 
@@ -153,6 +153,45 @@ class BiasModel(BPNet):
     """Semantic name for the background enzyme-bias model."""
 
 
+class MultitaskBias(nn.Module):
+    """One profile-only bias trunk shared by several datasets of an assay,
+    with a profile head each (``chrombpnet bias pretrain``).
+
+    The trunk is a profile-only :class:`BiasModel` without its head, so its
+    parameters have a bias model's names: ``bias pipeline --pretrained-bias``
+    copies them into a new bias model and trains only that model's head.
+    ``fold`` is the fold file the trunk was trained on, which the target
+    run's must match.
+    """
+
+    def __init__(self, config: Union[ModelConfig, Mapping[str, Any]], tasks, assay: str,
+                 fold: Optional[Mapping[str, Any]] = None) -> None:
+        super().__init__()
+        config = config if isinstance(config, ModelConfig) else ModelConfig.from_mapping(config)
+        self.config = replace(config, counts_head=False)
+        self.tasks = [str(task) for task in tasks]
+        if len(self.tasks) < 2 or len(set(self.tasks)) != len(self.tasks):
+            raise ValueError("A multitask bias needs two or more distinct datasets")
+        if any(not task or "." in task for task in self.tasks):
+            raise ValueError("Dataset names must be nonempty and contain no dots")
+        if assay not in ("ATAC", "DNASE"):
+            raise ValueError(f"assay must be ATAC or DNASE, not {assay!r}")
+        self.assay = assay
+        self.fold = dict(fold) if fold is not None else None
+        self.trunk = BiasModel(self.config)
+        del self.trunk.profile_conv
+        self.heads = nn.ModuleDict({
+            task: nn.Conv1d(self.config.filters, 1, kernel_size=75, padding=0)
+            for task in self.tasks})
+
+    def forward(self, sequence: Tensor, task: str) -> Tensor:
+        """Profile logits of ``task``'s head."""
+        if sequence.ndim != 3 or sequence.shape[1:] != (4, self.config.input_length):
+            raise ValueError(f"sequence must have shape (batch, 4, {self.config.input_length})")
+        features = self.trunk._features(sequence.float())
+        return _center_crop(self.heads[task](features), self.config.output_length)[:, 0, :]
+
+
 def assign_keras_layout_weights(model: BPNet, values: Mapping[str, np.ndarray]) -> None:
     """Assign Keras-layout BPNet arrays to the corresponding PyTorch layers."""
     with torch.no_grad():
@@ -280,6 +319,8 @@ class ChromBPNet(nn.Module):
 
 
 def model_type(model: nn.Module) -> str:
+    if isinstance(model, MultitaskBias):
+        return "multitask_bias"
     if isinstance(model, ChromBPNet):
         return "chrombpnet"
     if isinstance(model, BiasModel):
@@ -311,6 +352,8 @@ def checkpoint_payload(
     if isinstance(model, ChromBPNet):
         # Bias and TF branches normally have different filter/dilation counts.
         payload["bias_config"] = asdict(model.bias_model.config)
+    if isinstance(model, MultitaskBias):
+        payload.update(tasks=list(model.tasks), assay=model.assay, fold=model.fold)
     return payload
 
 
@@ -346,6 +389,8 @@ def load_model(
     elif kind == "chrombpnet":
         bias = BiasModel(ModelConfig.from_mapping(payload.get("bias_config", payload["config"])))
         model = ChromBPNet(config, bias)
+    elif kind == "multitask_bias":
+        model = MultitaskBias(config, payload["tasks"], payload["assay"], payload.get("fold"))
     else:
         raise ValueError(f"Unknown model_type {kind!r}")
     model.load_state_dict(payload["state_dict"])
@@ -361,6 +406,11 @@ class PredictionAdapter:
     """Small Keras-like adapter used by the retained genomics utilities."""
 
     def __init__(self, model: nn.Module, device: Union[str, torch.device] = "cpu") -> None:
+        if isinstance(model, MultitaskBias):
+            raise ValueError(
+                "This is a multitask bias from `chrombpnet bias pretrain`, with one profile "
+                "head per pretraining dataset; train a bias model from it with "
+                "`bias pipeline --pretrained-bias` and predict with that")
         self.model = model.to(device).eval()
         self.device = torch.device(device)
         config = model.config

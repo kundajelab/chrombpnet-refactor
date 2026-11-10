@@ -35,7 +35,19 @@ def get_model(args, parameters):
     if builder is None:
         raise AttributeError("Architecture must define build_model(args, parameters)")
 
-    # Seed before construction so --seed controls every trainable parameter.
+    seed_for_construction(args)
+    model = builder(args, parameters)
+    if getattr(args, "pretrained_bias", None):
+        # bias pipeline --pretrained-bias: the trunk of a `bias pretrain`
+        # checkpoint, frozen, under a new profile head.
+        from chrombpnet.engines.pytorch.bias_pretrain import adapt
+        adapt(model, args.pretrained_bias, args)
+    return model, architecture
+
+
+def seed_for_construction(args):
+    """Seed before a model is built, so --seed controls every trainable
+    parameter, and select deterministic kernels when the run asks for them."""
     torch.manual_seed(args.seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
@@ -49,8 +61,6 @@ def get_model(args, parameters):
             torch.backends.cudnn.allow_tf32 = False
         if torch.cuda.is_available():
             torch.backends.cuda.matmul.allow_tf32 = False
-    model = builder(args, parameters)
-    return model, architecture
 
 
 def _tensor_batch(batch, device):
