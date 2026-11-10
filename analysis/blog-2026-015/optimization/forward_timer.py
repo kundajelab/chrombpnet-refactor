@@ -47,6 +47,11 @@ def main():
     fused_kernels.configure(None if mode == "eager" else mode)
     started = time.perf_counter()
     model = load_prediction_model(model_pt, device=device)
+    if mode != "eager" and getattr(model, "fused_route", None) is None:
+        # The kernels could not run here, and the adapter fell back to the
+        # eager forward (the warning above): timing that would mislabel it.
+        print("REFUSED: the fused kernels fell back to the eager forward", flush=True)
+        sys.exit(3)
     model.predict(seqs[:batch], batch_size=batch)
     synchronize()
     setup = time.perf_counter() - started

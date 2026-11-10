@@ -183,6 +183,12 @@ sys.exit(0 if p.startswith(os.path.realpath('${code}')) else 'wrong chrombpnet: 
     python "${HERE}/headtohead.py" "${slice}" ${rest}
     rc=$?
     t1=$(date +%s.%N)
+    # A fused-kernel arm whose kernels could not run fell back to the eager
+    # forward (chrombpnet.fused_kernels.FALLBACK_MARKER): it timed the wrong route.
+    if [[ ${rc} -eq 0 && "${arm}" == *_fast ]] &&
+       grep -q "fused Triton kernels did not engage" "${out}/run.log"; then
+      echo "REFUSED: the fused kernels fell back to the eager forward (warning above)"; rc=3
+    fi
     echo "${rc} ${t0} ${t1}" > "${out}/time"
     exit ${rc}
   ) > "${out}/run.log" 2>&1 && rc=0 || rc=$?

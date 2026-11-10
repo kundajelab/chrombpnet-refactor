@@ -280,7 +280,13 @@ sys.exit(0 if p.startswith(os.path.realpath('${code}')) else 'wrong chrombpnet: 
         t0=$(date +%s.%N)
         # shellcheck disable=SC2086
         ${peak} ${cli} pred_bw -cm "${PT_MODEL}/models/chrombpnet.pt" ${io} --device "${DEVICE}" ${extra}
-        rc=$? ;;
+        rc=$?
+        # A fused-kernel arm whose kernels could not run fell back to the eager
+        # forward (chrombpnet.fused_kernels.FALLBACK_MARKER): it timed the wrong route.
+        if [[ ${rc} -eq 0 && ( "${arm}" == *_fast || "${arm}" == *_exact ) ]] &&
+           grep -q "fused Triton kernels did not engage" "${out}/run.log"; then
+          echo "REFUSED: the fused kernels fell back to the eager forward (warning above)"; rc=3
+        fi ;;
       forward_eager|forward_fast|forward_exact)
         setup_pt
         cd "${NEUTRAL}"
