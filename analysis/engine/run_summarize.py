@@ -25,7 +25,7 @@ results.tsv
     Test-set metrics, one row per (source, engine, dataset, fold, metric),
     as the metrics JSONs give them, except that --jsd-base-e LABEL ... puts
     those runs' median_jsd from base e (chrombpnet 1.x, and this package
-    before eff8b48) into base 2, the current runs' unit (x 1/sqrt(ln 2),
+    before e4f6460) into base 2, the current runs' unit (x 1/sqrt(ln 2),
     exact for medians too). Mixing the two without it understates the
     current runs' 1 - JSD by ~0.09. median_norm_jsd does not depend on the
     base, and agreement.tsv computes its own JSDs, on one scale. Sources:
@@ -75,7 +75,7 @@ contributions.tsv
            original's weighting, the profile target's stop-gradient ignored
       on   the pipeline's own chrombpnet_nobias.profile_scores.h5, which in
            this sweep honour it (every run predates the midpoint default,
-           fcccade)
+           83adc8f)
     and the last column, profile_scores, says which (stopgrad-off or
     stopgrad-on; "pipeline" for the counts head, which does not depend on it).
 
@@ -422,7 +422,7 @@ BASE_E_TO_2 = 1 / math.sqrt(math.log(2))
 
 def metric_rows(path, source, engine, assay, biosample, encid, fold, jsd_base_e=False):
     """One row per number in a metrics JSON. With ``jsd_base_e`` the file's
-    median_jsd is in base e (chrombpnet 1.x, and this package before eff8b48)
+    median_jsd is in base e (chrombpnet 1.x, and this package before e4f6460)
     and is written in base 2, as current runs report it."""
     try:
         with open(path) as fh:
@@ -849,7 +849,7 @@ def main(argv=None):
                          "is the headline's reference")
     ap.add_argument("--jsd-base-e", nargs="+", default=[], metavar="LABEL",
                     help="runs whose metrics JSONs report median_jsd in base e (chrombpnet 1.x -- "
-                         f"{ORIGINAL}, {RETRAINED} -- and this package before eff8b48, e.g. the engines "
+                         f"{ORIGINAL}, {RETRAINED} -- and this package before e4f6460, e.g. the engines "
                          "sweep): their median_jsd is written in base 2, as current runs report it, "
                          "so all runs share one scale. Default: none, every file as written")
     ap.add_argument("--versus", nargs="+", default=[], metavar="LABEL=REFERENCE",

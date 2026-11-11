@@ -9,7 +9,7 @@
 #              One job, ~25 min. Run tag *_kit-malloc.
 #   refactor   run_pred_bw_kit_fused.sh, ARMS=nomalloc,main: pred_bw with glibc's
 #              default allocator (--no-malloc-env) and as shipped, which since
-#              d407ca8 applies malloc_env itself; 5 folds x 3 rounds; the bracketed
+#              fa45de5 applies malloc_env itself; 5 folds x 3 rounds; the bracketed
 #              chrombpnet-refactor numbers and the peak memory in the "Applied?"
 #              cell. Array 0-4, ~15 min a task. Run tag *_kit-fused-malloc.
 #

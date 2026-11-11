@@ -45,10 +45,10 @@
 #              (--h5-gzip-level 4 --no-h5-shuffle): Section 4
 #   refactor4_fast   refactor4 with --predict-fused-kernel-fast (the kit's TF32 kernels)
 #   refactor4_nomalloc  refactor4 with --no-malloc-env: glibc's default allocator
-#   refactor4_prev  refactor4 at d407ca8 (code-d407ca8/, an export of that commit,
+#   refactor4_prev  refactor4 at fa45de5 (code-fa45de5/, an export of that commit,
 #              which predates --h5-gzip-level: the same filters via refactor_gzip4.py):
 #              before within-model streaming, the incremental bigWig writer and the
-#              faster observed read (da8536e..032cf80), so prev -> refactor4 is their
+#              faster observed read (dfaa33b..8b07542), so prev -> refactor4 is their
 #              effect in this job
 #   forward_eager / forward_fast / forward_exact  chrombpnet-refactor's forward alone
 #              over the regions on each route (forward_timer.py, 3 repeats a run):
@@ -109,7 +109,7 @@ SITE_NEEDS=(ORIGINAL_REPO KIT_ROOT KIT_HOME GENOME CHROM_SIZES REFACTOR_MODELS O
 [[ -n "${OUT_ROOT:-}" ]] || SITE_NEEDS+=(OPTIMIZATION_OUT)
 require_site "${SITE_NEEDS[@]}"
 CODE_MAIN="${CHROMBPNET_REPO}"
-CODE_PREV="${CHROMBPNET_PREV_REPO:-${HERE}/code-d407ca8}"
+CODE_PREV="${CHROMBPNET_PREV_REPO:-${HERE}/code-fa45de5}"
 TF_REPO="${ORIGINAL_REPO}"
 KIT="${KIT_ROOT}/chrombpnet"
 KIT_ENV="${KIT_ENV:-chrombpnet-kit}"
@@ -266,7 +266,7 @@ run_arm () {  # arm regions outdir
 sys.exit(0 if p.startswith(os.path.realpath('${code}')) else 'wrong chrombpnet: ' + p)" || exit 3
         cli="python -m chrombpnet.CHROMBPNET"; extra=""
         if [[ "${arm}" == refactor4_prev ]]; then
-          # d407ca8 predates --h5-gzip-level; refactor_gzip4.py sets the same filters.
+          # fa45de5 predates --h5-gzip-level; refactor_gzip4.py sets the same filters.
           cli="python ${HERE}/refactor_gzip4.py"
         elif [[ "${arm}" == refactor4* ]]; then
           # The original's HDF5 compression: gzip 4, no byte-shuffle.

@@ -118,7 +118,7 @@ def main():
             if arm in med:
                 print("  Section 4, overall (1.x -> chrombpnet-refactor, %s): stock -> %s  %s" % (label, arm, speedup(med.get("stock"), med.get(arm))))
         if "refactor4_prev" in med:
-            print("  Streaming, incremental bigWig writer, faster observed read (d407ca8 -> HEAD): refactor4_prev -> refactor4  %s" % speedup(med.get("refactor4_prev"), med.get("refactor4")))
+            print("  Streaming, incremental bigWig writer, faster observed read (fa45de5 -> HEAD): refactor4_prev -> refactor4  %s" % speedup(med.get("refactor4_prev"), med.get("refactor4")))
         for nomalloc, tuned in (("refactor4_nomalloc", "refactor4"), ("refactor_nomalloc", "refactor")):
             if nomalloc in med:
                 print("  malloc_env in chrombpnet-refactor: %s -> %s  %s; peak %s -> %s GB" % (

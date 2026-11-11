@@ -20,7 +20,7 @@ Stages; WORKDIR/inputs.json names their inputs (run_section4.sh writes it):
                                 regions, observed counts): computed per model
                                 (a fresh _SharedInputs each, as before) | once
   bigwig  list | numpy | fixed  one model's bigWig over the 20,000 regions, at
-                                693d162 (PYTHONPATH): pyBigWig given Python
+                                4962484 (PYTHONPATH): pyBigWig given Python
                                 lists, as the original | NumPy arrays |
                                 fixed-step sections (main's form)
   cast    legacy | batched      the forward over the 20,000 regions:
@@ -29,9 +29,9 @@ Stages; WORKDIR/inputs.json names their inputs (run_section4.sh writes it):
                                 per batch into a preallocated output)
   h5      gzip4 | gzip9 | gzip9threads | gzip4threads
                                 one model's *_predictions.h5: h5py's default
-                                gzip, as the original and 693d162 (that file,
+                                gzip, as the original and 4962484 (that file,
                                 by path) | gzip 9 + shuffle on one thread
-                                (faee27f) | the same filters on threads | the
+                                (fcdf752) | the same filters on threads | the
                                 threaded writer at the original's filters
                                 (--h5-gzip-level 4 --no-h5-shuffle)
 """
@@ -83,7 +83,7 @@ def stage_gc(variant, inputs, work):
     prefix = os.path.join(work, "gc_" + variant)
     args = argparse.Namespace(candidate_negatives=inputs["candidates"], foreground_gc_bed=inputs["foreground_gc"],
                               output_prefix=prefix, chr_fold_path=inputs["fold_json"],
-                              # 1.x's split, 2/2/1 per peak (since 4f91f65 main reads each
+                              # 1.x's split, 2/2/1 per peak (since 79f9423 main reads each
                               # fold's ratio; 1.x's script reads only the train one)
                               neg_to_pos_ratio_train=2, neg_to_pos_ratio_val=2, neg_to_pos_ratio_test=1,
                               seed=1234)
@@ -122,7 +122,7 @@ def stage_bigwig(variant, inputs, work):
     from chrombpnet import optimize
     from chrombpnet.evaluation.make_bigwigs import bigwig_helper
     if not hasattr(optimize, "_ACTIVE"):
-        sys.exit("benchmark_section4: the bigwig stage runs at 693d162 (PYTHONPATH=code-693d162)")
+        sys.exit("benchmark_section4: the bigwig stage runs at 4962484 (PYTHONPATH=code-4962484)")
     if variant == "numpy" and not bigwig_helper._PYBIGWIG_NUMPY:
         sys.exit("benchmark_section4: this pyBigWig has no NumPy support; the numpy form would fall back to lists")
 
@@ -162,12 +162,12 @@ def stage_cast(variant, inputs, work):
 
 def stage_h5(variant, inputs, work):
     if variant == "gzip4":
-        module = load_by_path("predictions_693d162", inputs["old_predictions_py"])
+        module = load_by_path("predictions_4962484", inputs["old_predictions_py"])
     else:
         from chrombpnet import compression, predictions as module
         if variant == "gzip9":
             if hasattr(compression, "THREADED_MIN_BYTES"):
-                compression.THREADED_MIN_BYTES = 1 << 62     # faee27f's single-threaded writer
+                compression.THREADED_MIN_BYTES = 1 << 62     # fcdf752's single-threaded writer
         elif not hasattr(compression, "create_dataset"):
             sys.exit("benchmark_section4: this checkout has no threaded HDF5 writer")
         if variant == "gzip4threads":

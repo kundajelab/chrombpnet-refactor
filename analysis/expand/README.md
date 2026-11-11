@@ -29,17 +29,17 @@ current checkout cannot rerun them.
   spans 0.7649-0.7666 and the mean 1 - JSD 0.4436-0.4440 in base 2
   (0.5368-0.5371 as that sweep reported it, in base e). A difference smaller
   than that is not evidence either way.
-- **JSD units.** The default runs' metrics (written at 352b1d7), the original's
+- **JSD units.** The default runs' metrics (written at bc27899), the original's
   and the retrained original's report median JSD in base e; the current code
-  reports base 2 (eff8b48). Base-2 JSD = base-e JSD / sqrt(ln 2), medians
+  reports base 2 (e4f6460). Base-2 JSD = base-e JSD / sqrt(ln 2), medians
   included, so `run_summarize.py --jsd-base-e "chrombpnet-refactor (default)" original
   original_retrained` puts every run on base 2. Without it, 1 - JSD looks
   ~0.09 worse for the updated runs and the students than for the default ones. The two originals'
   DNase JSD stays off even then: they predict chrombpnet 1.x's 0/+1 cut
   convention, every other run `both-half`, a smoother target.
 - **One input differs: the updated runs' ChromBPNet training negatives.** The default runs'
-  code (352b1d7) drew them from the outlier-filtered nonpeaks with a fixed
-  `random_state=1`; since 24dee61 the draw takes `--seed` (1234), so the updated runs
+  code (bc27899) drew them from the outlier-filtered nonpeaks with a fixed
+  `random_state=1`; since 3a5b893 the draw takes `--seed` (1234), so the updated runs
   draws another subset of the same pool (`inputs.tsv` flags
   `filtered.nonpeaks.bed` for every row; in the smoke test 94,333 of
   152,052 lines are shared, the test-chromosome negatives among them).

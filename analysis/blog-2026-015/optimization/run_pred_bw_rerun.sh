@@ -26,10 +26,10 @@
 #
 # Arms (pred_bw with -bw, three models: bias, ChromBPNet, no-bias):
 #   original  chrombpnet 1.x, TensorFlow 2.8 (env `chrombpnet`), the fold's TF models
-#   none      chrombpnet-refactor at 693d162, --optimize none (no optimizations)
-#   kit       693d162 --optimize 1     (the optimization kit's changes, no Triton)
-#   ours      693d162 --optimize 3     (this package's own changes)
-#   both      693d162 --optimize 1,3   (the default at 693d162)
+#   none      chrombpnet-refactor at 4962484, --optimize none (no optimizations)
+#   kit       4962484 --optimize 1     (the optimization kit's changes, no Triton)
+#   ours      4962484 --optimize 3     (this package's own changes)
+#   both      4962484 --optimize 1,3   (the default at 4962484)
 #   main      current main, default    (should match `both`)
 #   fk        current main, --predict-fk (refused on cards with no route, e.g. L40S)
 # The refactor arms run the fold's PyTorch models, all in PT_ENV (default
@@ -64,7 +64,7 @@ HERE="${BLOG_SCRIPTS}/optimization"
 SITE_NEEDS=(ORIGINAL_REPO GENOME CHROM_SIZES REFACTOR_MODELS ORIGINAL_MODELS)
 [[ -n "${OUT_ROOT:-}" ]] || SITE_NEEDS+=(OPTIMIZATION_OUT)
 require_site "${SITE_NEEDS[@]}"
-CODE_OLD="${HERE}/code-693d162"            # git archive 693d162 (no git worktree needed)
+CODE_OLD="${HERE}/code-4962484"            # git archive 4962484 (no git worktree needed)
 CODE_MAIN="${CHROMBPNET_REPO}"
 TF_REPO="${ORIGINAL_REPO}"
 PT_MODEL="${REFACTOR_MODELS}/ATAC/ENCSR868FGK/fold_${FOLD_NUM}/model"

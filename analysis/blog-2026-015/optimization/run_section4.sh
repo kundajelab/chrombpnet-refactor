@@ -20,7 +20,7 @@
 #   python summarize_section4.py <OPTIMIZATION_OUT>   # also reads the kit-fused jobs' pred_bw totals
 #
 # Checkouts: CODE_MAIN (CHROMBPNET_REPO: chrombpnet-refactor) for the new forms,
-# code-693d162 for the bigWig writer forms and the old predictions writer,
+# code-4962484 for the bigWig writer forms and the old predictions writer,
 # the original package (ORIGINAL_REPO) for the old GC matching. CPU-only
 # stages time the node's CPUs, so L40S and H200 nodes can differ there too.
 #
@@ -64,7 +64,7 @@ for stage in ${STAGES_ARG//,/ }; do variants "${stage}" > /dev/null; done
 SITE_NEEDS=(ORIGINAL_REPO GENOME CHROM_SIZES REFERENCE_DIR REFACTOR_MODELS)
 [[ -n "${OUT_ROOT:-}" ]] || SITE_NEEDS+=(OPTIMIZATION_OUT)
 require_site "${SITE_NEEDS[@]}"
-CODE_OLD="${HERE}/code-693d162"
+CODE_OLD="${HERE}/code-4962484"
 CODE_MAIN="${CODE_MAIN:-${CHROMBPNET_REPO}}"
 ORIGINAL="${ORIGINAL_REPO}"
 FOLD="${REFACTOR_MODELS}/ATAC/ENCSR868FGK/fold_${FOLD_NUM}"

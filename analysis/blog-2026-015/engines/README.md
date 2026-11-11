@@ -185,7 +185,7 @@ a stop-gradient. chrombpnet 1.x, whose genome-wide scores are the `original`
 here, leaves the stop-gradient off (its shap fork has the handler commented
 out), so each logit is weighted by the midpoint of the input's and the
 reference's softmax. Every run of this sweep used code from after 2026-10-02
-(`provenance.txt`: 352b1d7, 43701aa, 168ac35), which honoured the
+(`provenance.txt`: bc27899, 66b64e3, b874bde), which honoured the
 stop-gradient in all three engines, so the pipeline's
 `chrombpnet_nobias.profile_scores.h5` are stop-gradient scores. Since
 2026-10-10 chrombpnet's default is the original's midpoint weighting
@@ -360,7 +360,7 @@ How each reaches a GPU (`activate_engine` in `_common.sh`):
   package). `TF_FORCE_GPU_ALLOW_GROWTH=true`, because
   the engine's DeepSHAP runs in a spawned child process that needs GPU
   memory while the parent still holds what it trained with (the engine sets
-  it itself since commit 636394d; the script keeps it). On GPUs newer
+  it itself since commit be83abc; the script keeps it). On GPUs newer
   than TF 2.8 knows (L40S, H100) it JIT-compiles from PTX at start-up: slow
   to start, then fine. For the same second process the GPU must not be in
   Exclusive_Process compute mode, Sherlock's default: the first sweep's
@@ -370,7 +370,7 @@ How each reaches a GPU (`activate_engine` in `_common.sh`):
   `--gpu_cmode=shared`, its own sbatch option), and the TensorFlow preflight
   refuses an exclusive-mode GPU at the start of a task.
 - **jax**: `jax[cuda12]==0.11.2`, CUDA 12.9 and cuDNN 9 as pip wheels --
-  the repository's default since commit 352b1d7 (it was `jax[cuda13]`).
+  the repository's default since commit bc27899 (it was `jax[cuda13]`).
   CUDA 13 dropped Pascal and Volta GPUs (the dnase-rc jobs landed on TITAN
   Xp nodes, compute capability 6.1) and needs driver >= 580, while CUDA 12
   supports both and needs only a CUDA 12 driver (>= 525). The env's
@@ -378,7 +378,7 @@ How each reaches a GPU (`activate_engine` in `_common.sh`):
   The wheels are found by RUNPATH, which LD_LIBRARY_PATH outranks: on
   the lab GPU host, ~/.bashrc puts CUDA 12.4 there, which made JAX fall back to the
   CPU. The job drops CUDA/cuDNN entries from LD_LIBRARY_PATH, and since
-  commit e460daf the engine also loads its bundled libraries first when it
+  commit 81d7170 the engine also loads its bundled libraries first when it
   finds namesakes there.
 
 Every training task first runs a convolution on the GPU in its framework
@@ -392,7 +392,7 @@ in its first minute instead of hours in.
 
 ### Sherlock's glibc
 
-**Since 2026-10-19 (chrombpnet-refactor commits 04ef088 and 8e95d39)** the
+**Since 2026-10-19 (chrombpnet-refactor commits 16a49f6 and ec46931)** the
 envs are newer than this section describes, and none runs natively on a
 glibc-2.17 node. `chrombpnet-pytorch` (PyTorch 2.14, numba 0.68) needs glibc
 2.28: `envs/glibc_scan.py` finds GLIBC_2.28 in torch and igraph, and 2.27 in

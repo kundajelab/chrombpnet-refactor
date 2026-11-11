@@ -11,7 +11,7 @@
 #
 # What the fused kernels cost without this package's own optimizations: the
 # kit's changes with and without its Triton forward (--optimize 1 vs 1,2 at
-# 693d162), against the unoptimized and default runs of the same job. Same
+# 4962484), against the unoptimized and default runs of the same job. Same
 # method as run_pred_bw_rerun.sh (a copy of it, with two more arms and its own
 # run tag, so it never touches that job's results):
 #
@@ -42,16 +42,16 @@
 #
 # Arms (pred_bw with -bw, three models: bias, ChromBPNet, no-bias):
 #   original  chrombpnet 1.x, TensorFlow 2.8 (env `chrombpnet`), the fold's TF models
-#   none      chrombpnet-refactor at 693d162, --optimize none (no optimizations)
-#   kit       693d162 --optimize 1     (the optimization kit's changes, no Triton)
-#   ours      693d162 --optimize 3     (this package's own changes)
-#   both      693d162 --optimize 1,3   (the default at 693d162)
-#   kitfk     693d162 --optimize 1,2   (the kit's changes with its Triton forward)
-#   fkonly    693d162 --optimize 2     (the Triton forward alone)
+#   none      chrombpnet-refactor at 4962484, --optimize none (no optimizations)
+#   kit       4962484 --optimize 1     (the optimization kit's changes, no Triton)
+#   ours      4962484 --optimize 3     (this package's own changes)
+#   both      4962484 --optimize 1,3   (the default at 4962484)
+#   kitfk     4962484 --optimize 1,2   (the kit's changes with its Triton forward)
+#   fkonly    4962484 --optimize 2     (the Triton forward alone)
 #   main      current main, default    (should match `both`)
 #   fk        current main, --predict-fused-kernel (everything plus the fused kernels)
 #   nomalloc  current main with --no-malloc-env: glibc's default allocator (since
-#             d407ca8 the default applies malloc_env itself, so `main` is tuned)
+#             fa45de5 the default applies malloc_env itself, so `main` is tuned)
 #   mallocenv current main, default, with the kit's malloc_env lever: glibc never
 #             mmaps or trims the heap, and pads it by 512 MiB (MALLOC_MMAP_MAX_=0,
 #             MALLOC_TRIM_THRESHOLD_=-1, MALLOC_TOP_PAD_=536870912, which the
@@ -119,7 +119,7 @@ FOLD_NUM="${FOLDS}"
 SITE_NEEDS=(ORIGINAL_REPO GENOME CHROM_SIZES REFACTOR_MODELS ORIGINAL_MODELS)
 [[ -n "${OUT_ROOT:-}" ]] || SITE_NEEDS+=(OPTIMIZATION_OUT)
 require_site "${SITE_NEEDS[@]}"
-CODE_OLD="${HERE}/code-693d162"            # git archive 693d162 (no git worktree needed)
+CODE_OLD="${HERE}/code-4962484"            # git archive 4962484 (no git worktree needed)
 CODE_MAIN="${CHROMBPNET_REPO}"
 TF_REPO="${ORIGINAL_REPO}"
 PT_MODEL="${REFACTOR_MODELS}/ATAC/ENCSR868FGK/fold_${FOLD_NUM}/model"

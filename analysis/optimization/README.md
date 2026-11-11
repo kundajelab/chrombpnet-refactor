@@ -7,17 +7,17 @@ no-bias), run several ways ("arms"):
 | arm | what runs |
 |---|---|
 | `original` | chrombpnet 1.x (TensorFlow 2.8) on the original's `.h5` models |
-| `none` | chrombpnet-refactor at commit `693d162`, `--optimize none`: no optimizations |
-| `kit` | `693d162`, `--optimize 1`: the [ChromBPNet optimization kit](https://github.com/anthropics/uplifting-biomolecular-modeling/tree/main/chrombpnet)'s changes, without its Triton forward |
-| `ours` | `693d162`, `--optimize 3`: this package's own changes |
-| `both` | `693d162`, `--optimize 1,3`: the default at that commit |
-| `kitfk` | `693d162`, `--optimize 1,2`: the kit's changes with its Triton forward |
-| `fkonly` | `693d162`, `--optimize 2`: the Triton forward alone |
+| `none` | chrombpnet-refactor at commit `4962484`, `--optimize none`: no optimizations |
+| `kit` | `4962484`, `--optimize 1`: the [ChromBPNet optimization kit](https://github.com/anthropics/uplifting-biomolecular-modeling/tree/main/chrombpnet)'s changes, without its Triton forward |
+| `ours` | `4962484`, `--optimize 3`: this package's own changes |
+| `both` | `4962484`, `--optimize 1,3`: the default at that commit |
+| `kitfk` | `4962484`, `--optimize 1,2`: the kit's changes with its Triton forward |
+| `fkonly` | `4962484`, `--optimize 2`: the Triton forward alone |
 | `main` | the current package, default (should match `both`) |
 | `fk` | the current package, `--predict-fused-kernel`: the kit's fused Triton kernels (refused without a CUDA GPU) |
 
 `--optimize` was removed once this measurement was made, so the phase
-arms run commit `693d162`. A first sweep always ran the unoptimized arm first,
+arms run commit `4962484`. A first sweep always ran the unoptimized arm first,
 on a cold file cache, and overstated it; `benchmark_pred_bw.py` removes that:
 the genome, bigWig and models are read once before anything is timed, every
 arm gets an untimed warm-up run, each round runs the arms in a different
@@ -36,11 +36,11 @@ timed.
   `train`), and for `original` the same three as `.h5` from chrombpnet 1.x.
   Its `auxiliary/filtered.peaks.bed` and `auxiliary/data_unstranded.bw` make
   good `--peaks` and `--observed-bigwig`.
-- **Code**: this repository for `main`/`fk`; commit `693d162` for the phase arms,
+- **Code**: this repository for `main`/`fk`; commit `4962484` for the phase arms,
   without touching your checkout:
 
   ```bash
-  mkdir code-693d162 && git -C /path/to/chrombpnet-refactor archive 693d162 | tar -x -C code-693d162
+  mkdir code-4962484 && git -C /path/to/chrombpnet-refactor archive 4962484 | tar -x -C code-4962484
   ```
 
   and for `original` a checkout of [kundajelab/chrombpnet](https://github.com/kundajelab/chrombpnet)
@@ -51,7 +51,7 @@ timed.
   anything its framework needs with `--env-original KEY=VALUE` /
   `--env-refactor KEY=VALUE` (TensorFlow 2.8 needs CUDA 11.2 and cuDNN 8 on
   `LD_LIBRARY_PATH`, for example). The published numbers used one torch 2.5.1
-  environment (NumPy 1.26) for every refactor arm; commit `693d162` predates
+  environment (NumPy 1.26) for every refactor arm; commit `4962484` predates
   this package's move to torch 2.14 and NumPy 2 and has not been run there.
 
 ## Run
@@ -71,7 +71,7 @@ python benchmark_pred_bw.py \
     --bias-pt $FOLD/models/bias_model_scaled.pt \
     --refactor-repo /path/to/chrombpnet-refactor \
     --refactor-python /path/to/envs/torch-env/bin/python \
-    --phase-repo code-693d162 \
+    --phase-repo code-4962484 \
     --chrombpnet-h5 $ORIG/models/chrombpnet.h5 \
     --nobias-h5 $ORIG/models/chrombpnet_nobias.h5 \
     --bias-h5 $ORIG/models/bias_model_scaled.h5 \

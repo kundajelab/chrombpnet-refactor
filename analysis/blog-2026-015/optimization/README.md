@@ -51,7 +51,7 @@ folder, after `source ../site.env` (or with the options written out);
 `-exact`) and removed from chrombpnet-refactor, on five trained folds
 (`${BENCHMARK_RUNS}/chrombpnet-refactor-<level>-cleanup/`) that are gone. Its saved
 results still summarize (`./summarize.sh "${OPTIMIZATION_ANALYSIS}"`). Re-running it would
-take an export of a commit that still has the flag (e.g. `693d162`) as the code, and the
+take an export of a commit that still has the flag (e.g. `4962484`) as the code, and the
 five ENCSR868FGK folds retrained. As it was run:
 
 ```bash
@@ -116,7 +116,7 @@ A preflight check, then three commands:
 > measurement is complete and recorded in the repository CHANGELOG (55.7s ->
 > 29.6s on `pred_bw`), and the flag has since been removed: phases 1 and 3
 > are simply how the package runs. To re-run the original sweep, check out
-> commit `693d162`. The text below that still says "phase" refers to that
+> commit `4962484`. The text below that still says "phase" refers to that
 > historical run.
 
 `footprints` uses `data_utils.get_seq`, which
@@ -200,7 +200,7 @@ against the same observed bigWig:
 | arm | what runs |
 |---|---|
 | `original` | chrombpnet 1.x (TF 2.8, env `chrombpnet`) on the fold's TF models |
-| `none`, `kit`, `ours`, `both` | `code-693d162/` (`git archive 693d162`) with `--optimize none`, `1`, `3`, `1,3` |
+| `none`, `kit`, `ours`, `both` | `code-4962484/` (`git archive 4962484`) with `--optimize none`, `1`, `3`, `1,3` |
 | `main`, `fk` | the current checkout, default and `--predict-fk` |
 
 ```bash
@@ -220,7 +220,7 @@ is needed.
 
 ### Kit changes with the fused kernels (`run_pred_bw_kit_fused.sh`)
 
-A copy of `run_pred_bw_rerun.sh` with two more arms from `code-693d162/`:
+A copy of `run_pred_bw_rerun.sh` with two more arms from `code-4962484/`:
 `kitfk` (`--optimize 1,2`: the kit's changes with its Triton forward, without
 this package's own) and `fkonly` (`--optimize 2`: the Triton forward alone),
 timed with `none`, `kit`, `both` and `fk` in the same job. It writes under its
@@ -329,7 +329,7 @@ rotating order, on ENCSR868FGK fold 0 (the 20,000 pred_bw peaks, the fold's
 models and GC-matching inputs). Stages: `gc` (prep nonpeaks' GC matching, the
 original package's against this one's), `shared` (pred_bw's per-model inputs
 for three models, per model against once), `bigwig` (list, NumPy-argument and
-fixed-step writes, at 693d162), `cast` (the legacy whole-input cast against the
+fixed-step writes, at 4962484), `cast` (the legacy whole-input cast against the
 batched one), `h5` (gzip 4, gzip 9 + shuffle, the same on threads).
 `summarize_section4.py` prints the blog cells, with the kit-fused jobs'
 pred_bw totals.

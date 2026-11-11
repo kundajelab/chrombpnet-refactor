@@ -1,7 +1,7 @@
 # expand: profile-only bias, Pearson/JSD selection, distillation
 
 Slurm wrappers for a chrombpnet-refactor checkout of branch `expand` at
-3ddb713 (the last commit with `--model-selection pearsonr-jsd`), compared with
+22d90cb (the last commit with `--model-selection pearsonr-jsd`), compared with
 the engines sweep's PyTorch runs. What is compared, and how to read it: that
 checkout's `analysis/expand/README.md`.
 

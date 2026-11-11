@@ -6,17 +6,17 @@ observed bigWig and the same three models (bias, ChromBPNet, no-bias):
 
 ==========  ==================================================================
 original    chrombpnet 1.x (TensorFlow 2.8), on the original's ``.h5`` models
-none        chrombpnet-refactor at commit 693d162, ``--optimize none``
-kit         693d162, ``--optimize 1``   (the optimization kit's changes, no Triton)
-ours        693d162, ``--optimize 3``   (this package's own changes)
-both        693d162, ``--optimize 1,3`` (the default at 693d162)
-kitfk       693d162, ``--optimize 1,2`` (the kit's changes with its Triton forward)
-fkonly      693d162, ``--optimize 2``   (the Triton forward alone)
+none        chrombpnet-refactor at commit 4962484, ``--optimize none``
+kit         4962484, ``--optimize 1``   (the optimization kit's changes, no Triton)
+ours        4962484, ``--optimize 3``   (this package's own changes)
+both        4962484, ``--optimize 1,3`` (the default at 4962484)
+kitfk       4962484, ``--optimize 1,2`` (the kit's changes with its Triton forward)
+fkonly      4962484, ``--optimize 2``   (the Triton forward alone)
 main        the current chrombpnet-refactor, default (should match ``both``)
 fk          the current chrombpnet-refactor, ``--predict-fused-kernel`` (fused kernels)
 ==========  ==================================================================
 
-``--optimize`` was removed after commit 693d162, so the phase arms need a
+``--optimize`` was removed after commit 4962484, so the phase arms need a
 checkout (or ``git archive``) of that commit. An arm runs only when its inputs
 are given; ``--arms`` picks a subset.
 
@@ -85,7 +85,7 @@ def parse_args(argv=None):
     code.add_argument("--refactor-repo", help="chrombpnet-refactor checkout for the main and fk arms")
     code.add_argument("--refactor-python", default=sys.executable,
                       help="interpreter for the refactor arms (default: this one)")
-    code.add_argument("--phase-repo", help="checkout or `git archive` of commit 693d162, for none/kit/ours/both")
+    code.add_argument("--phase-repo", help="checkout or `git archive` of commit 4962484, for none/kit/ours/both")
     code.add_argument("--phase-python", help="interpreter for the phase arms (default: --refactor-python)")
     code.add_argument("--original-repo", help="chrombpnet 1.x checkout (kundajelab/chrombpnet), for original")
     code.add_argument("--original-python", help="interpreter of the chrombpnet 1.x environment")
@@ -159,7 +159,7 @@ def available_arms(args):
         if arm == "original" and not (args.original_repo and args.original_python and h5):
             missing[arm] = "needs --original-repo, --original-python and the three .h5 models"
         elif arm in PHASE_FLAGS and not (args.phase_repo and pt):
-            missing[arm] = "needs --phase-repo (commit 693d162) and the three .pt models"
+            missing[arm] = "needs --phase-repo (commit 4962484) and the three .pt models"
         elif arm in ("main", "fk") and not (args.refactor_repo and pt):
             missing[arm] = "needs --refactor-repo and the three .pt models"
     return missing

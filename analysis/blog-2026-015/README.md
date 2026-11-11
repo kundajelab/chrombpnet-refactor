@@ -41,11 +41,11 @@ cp site.env.example site.env   # then fill in what the scripts you run need
 - **Code snapshots.** Two benchmark arms run an older chrombpnet-refactor from an export of
   one commit; create them first:
   ```bash
-  git archive 693d162 | tar -x -C optimization/code-693d162   # run_pred_bw_kit_fused.sh (the --optimize phases)
-  git archive d407ca8 | tar -x -C optimization/code-d407ca8   # run_sections34.sh refactor4_prev (before streaming)
+  git archive 4962484 | tar -x -C optimization/code-4962484   # run_pred_bw_kit_fused.sh (the --optimize phases)
+  git archive fa45de5 | tar -x -C optimization/code-fa45de5   # run_sections34.sh refactor4_prev (before streaming)
   ```
 - **The "updated" arm** (Section 6) was trained with `--model-selection pearsonr-jsd`, removed
-  in 21fef5b; `expand/` runs the checkout of `3ddb713` that `CHROMBPNET_EXPAND_REPO` names.
+  in 8d7082d; `expand/` runs the checkout of `22d90cb` that `CHROMBPNET_EXPAND_REPO` names.
 
 The blog's runs used a Slurm cluster's L40S and H200 nodes and two lab GPU hosts.
 

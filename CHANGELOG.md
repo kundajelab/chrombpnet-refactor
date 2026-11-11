@@ -515,7 +515,7 @@
 
 ## HDF5 outputs compressed on threads
 
-- **Same files, written faster.** Since faee27f every HDF5 output is gzip
+- **Same files, written faster.** Since fcdf752 every HDF5 output is gzip
   level 9 behind the byte-shuffle filter, and HDF5 ran that filter pipeline
   on one thread: one 20,000-region `*_predictions.h5` took 33.4 s to write,
   and `pred_bw`, which writes one per model, became 46 s slower on an L40S

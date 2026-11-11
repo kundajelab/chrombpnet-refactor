@@ -57,7 +57,7 @@
 #              package now runs) and 'fk' (--predict-fk, the fused Triton
 #              forward). The stepwise --optimize phase matrix this script
 #              used to sweep was removed from the CLI once its measurement
-#              was complete; to re-run that sweep, check out 693d162.
+#              was complete; to re-run that sweep, check out 4962484.
 #              (default "none,1,2,3,1|3,all"; '|' stands in for ',' within an
 #              element, so 1|3 means --optimize 1,3)
 #   env: CONDA_ENV, BENCHMARK_LEVEL (lite), ASSAY (ATAC), ENCID (ENCSR868FGK), N_CONTRIB

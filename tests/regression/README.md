@@ -178,7 +178,7 @@ the optional `[reports]` extra; they skip where it is absent.
 They used not to be. Neither command seeded the global `np.random` stream that
 draws the test set's 1:1 nonpeak subsample, so two identical runs reported
 different metrics (counts pearsonr `-0.0` in one, `-0.21` in the other).
-98bd410 made them reproducible. Since then `05_bias_qc` and `06_qc` are
+6afc934 made them reproducible. Since then `05_bias_qc` and `06_qc` are
 compared byte for byte like the other scenarios, and the `nondeterministic=`
 marker in `scenarios.py` is unused.
 

@@ -39,7 +39,7 @@ ENGINES="${ENGINES_SUMMARY}"
 EXPAND="${EXPAND_ANALYSIS}"
 PLOT="${CHROMBPNET_REPO}/analysis/engine/plot_summarize.py"
 
-# The engines sweep's metrics predate base-2 JSD (eff8b48); the expand summary converted its own.
+# The engines sweep's metrics predate base-2 JSD (e4f6460); the expand summary converted its own.
 "${PY}" "${HERE}/prepare_inputs.py" "${ENGINES}" "${WORK}/engines" --fill-original ENCSR868FGK:2 \
   --jsd-base-e pytorch tensorflow jax original original_retrained
 "${PY}" "${PLOT}" --dir "${WORK}/engines"

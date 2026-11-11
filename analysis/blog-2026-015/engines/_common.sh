@@ -359,7 +359,7 @@ prep_dir() { echo "${ROOT}/preprocess/${ASSAY}/${ENCID}/fold_${FOLD_NUM}"; }
 #               (TF_CUDA_DIRS). Memory growth is on, because
 #               DeepSHAP runs in a spawned child process that needs GPU
 #               memory while the parent still holds what it trained with.
-#               (The engine sets it itself since commit 636394d; set here
+#               (The engine sets it itself since commit be83abc; set here
 #               too, for checkouts before that.)
 #   jax         jax[cuda12] brings CUDA 12 and cuDNN 9 as pip wheels, found
 #               by RUNPATH -- which LD_LIBRARY_PATH outranks. A system CUDA 12
@@ -367,7 +367,7 @@ prep_dir() { echo "${ROOT}/preprocess/${ASSAY}/${ENCID}/fold_${FOLD_NUM}"; }
 #               CUDA module would too) shadows the wheels, JAX fails its version
 #               check and falls back to the CPU. So CUDA and cuDNN
 #               directories are dropped from LD_LIBRARY_PATH for this job.
-#               (Since commit e460daf the engine also loads the bundled
+#               (Since commit 81d7170 the engine also loads the bundled
 #               libraries first when it finds namesakes there.)
 #
 #   activate_engine <engine> <cluster> [<env> <checkout>]

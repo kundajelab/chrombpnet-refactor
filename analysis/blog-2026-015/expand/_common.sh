@@ -1,7 +1,7 @@
 # Shared by the expand scripts. Sourced, not executed.
 #
 # Three opt-in PyTorch changes in a chrombpnet-refactor checkout of the expand
-# branch (site.env's CHROMBPNET_EXPAND_REPO, at 3ddb713), compared against the
+# branch (site.env's CHROMBPNET_EXPAND_REPO, at 22d90cb), compared against the
 # engines sweep's default PyTorch runs:
 #
 #   new      bias pipeline --bias-profile-only, then pipeline

@@ -19,7 +19,7 @@ prints how many times each writer was skipped, and refuses (exit 3) if a
 writer it was meant to skip never ran, so a slice cannot silently measure
 something else.
 
-chrombpnet-refactor's pred_bw writes in forked worker processes since da8536e
+chrombpnet-refactor's pred_bw writes in forked worker processes since dfaa33b
 (chrombpnet/finish_stage.py) and its bigWig goes through
 bigwig_helper.BigWigWriter, not write_bigwig. So the skips are counted in a
 file every process appends to, and the writer stubbed there is BigWigWriter:
