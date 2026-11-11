@@ -30,7 +30,7 @@ dependencies = [
 
 [project.optional-dependencies]
 pytorch = [
-  "tangermeme @ git+https://github.com/jmschrei/tangermeme.git@f1464b40d62ad2b845ce67727335251489421ff1",
+  "tangermeme @ git+https://github.com/jmschrei/tangermeme.git@863bb4112895c70aeed836068b44e10ae731c748",
   "torch>=2.14,<2.15",
 ]
 # TensorFlow 2.21 with the Keras 2 API (tf-keras) for the tensorflow engine, and
@@ -44,7 +44,7 @@ tensorflow = [
 ]
 # Keras 3 on the JAX backend; needs Python >= 3.12 and NumPy >= 2.1.
 jax = ["jax>=0.11.2", "keras>=3.15.1,<4"]
-reports = ["modisco @ git+https://github.com/kundajelab/tfmodisco.git@28154f18ec422c0738d3e45316c8a2fc76e6c88f"]
+reports = ["modisco @ git+https://github.com/kundajelab/tfmodisco.git@48e0f87e08bcc6bff973d6cd6b08ad6a94f3eb51"]
 test = ["pytest>=8", "pytest-cov>=5", "pillow>=10"]
 
 [project.scripts]

@@ -23,7 +23,7 @@ deeplift==0.6.13.0
 weasyprint>=61
 
 # TF-MoDISco, the same commit as the PyTorch environment's.
-modisco @ git+https://github.com/kundajelab/tfmodisco.git@28154f18ec422c0738d3e45316c8a2fc76e6c88f
+modisco @ git+https://github.com/kundajelab/tfmodisco.git@48e0f87e08bcc6bff973d6cd6b08ad6a94f3eb51
 igraph>=0.11.9
 leidenalg>=0.10.2
 

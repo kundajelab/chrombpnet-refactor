@@ -1,5 +1,23 @@
 # Changelog
 
+## tangermeme 1.6.0 and TF-MoDISco `48e0f87`
+
+- Every environment file (the glibc ones included) and `pyproject.toml`'s
+  `[pytorch]` and `[reports]` extras pin tangermeme `863bb411` (1.6.0; was
+  `f1464b40`, 1.5.0) and TF-MoDISco `48e0f87` (was `28154f18`), the two
+  repositories' latest. tangermeme 1.6.0 fixes annotations on multi-output
+  models, the softmax rule under bf16 and several utilities, and checks values
+  its tests did not; TF-MoDISco fixes an integer overflow in reconstructed
+  seqlet coordinates and the coordinates of centred-window seqlet FASTA
+  exports. Neither changes its dependencies.
+- **No output change on the regression fixture:** its 149 artifacts, captured
+  in an image with the old pins and compared in one with the new (the
+  PyTorch DeepSHAP scores and the TF-MoDISco results among them), are
+  identical. Built from scratch, the PyTorch, JAX and TensorFlow images pass
+  their suites (553, 121 and 71 passed). Existing environments keep their
+  versions until they are rebuilt (or the two commits are installed into
+  them).
+
 ## Containers for all three environments
 
 - **New:** `dockerfile` builds one image per environment
