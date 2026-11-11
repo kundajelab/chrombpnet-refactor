@@ -1,5 +1,26 @@
 # Changelog
 
+## Containers for all three environments
+
+- **New:** `dockerfile` builds one image per environment
+  (`--build-arg ENGINE=pytorch|jax|tensorflow`, the tensorflow image running
+  both TensorFlow engines), on a plain Ubuntu 24.04 conda base
+  (`condaforge/miniforge3:26.7.2-0`) in place of a PyTorch 2.12 / CUDA 13
+  image whose PyTorch the environment never used. The environment is on
+  `PATH` and `chrombpnet` is the entry point, so `apptainer exec image
+  chrombpnet ...` works as `docker run image ...` does; every file is
+  readable by any user, as Apptainer runs images as the host's user. The
+  `Docker Image` workflow builds and pushes all three (`:pytorch`, also
+  `:latest`; `:jax`; `:tensorflow`). `.dockerignore` keeps `analysis/` and
+  `.git` out.
+- Checked (the lab CPU host, no GPU): all three build (10.4, 12.9 and 13.6 GB); as a
+  non-root user, the PyTorch image passes the PyTorch environment's suite
+  (553 passed), the JAX image tests/jax_engine and test_engines (121), the
+  TensorFlow image tests/tensorflow_engine, test_engines and test_tensorflow
+  (71); and `pred_bw` on ENCSR868FGK fold 0's original `.h5` models, with no
+  `--engine`, writes bigWigs identical to the host environments' for the
+  same engine. GPU runs inside the images are not checked.
+
 ## tangermeme and TF-MoDISco pinned in the environments
 
 - **The environment files now build what was tested.** `tangermeme`

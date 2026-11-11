@@ -44,7 +44,9 @@ _For older glibc <=2.17 (e.g. CentOS 7): PyTorch: see `envs/chrombpnet-pytorch-g
 - GPUs need a CUDA 12 driver (525 or newer), and the framework wheels need
   glibc 2.28 (PyTorch) or 2.27 (TensorFlow, JAX) or newer: on older systems
   (e.g. CentOS 7) use the glibc 2.17 PyTorch or TensorFlow file above, or run
-  in a container.
+  in a container: `dockerfile` builds one image per environment
+  (`docker build --build-arg ENGINE=pytorch|jax|tensorflow .`; see
+  `envs/README.md`).
   Blackwell GPUs need a different PyTorch build (see `envs/README.md`).
 - Pick the engine with `--engine` (PyTorch when it is omitted, or where
   PyTorch is not installed the environment's own engine) and the device with

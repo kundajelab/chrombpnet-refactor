@@ -69,6 +69,30 @@ Notes on GPUs:
 - Every command accepts `--device cpu`, `--device cuda`, or a specific
   device such as `--device cuda:1`.
 
+## Containers
+
+`dockerfile` builds one image per environment, the environment on `PATH` and
+`chrombpnet` its entry point:
+
+```bash
+docker build --build-arg ENGINE=pytorch    -t chrombpnet-refactor:pytorch .
+docker build --build-arg ENGINE=jax        -t chrombpnet-refactor:jax .
+docker build --build-arg ENGINE=tensorflow -t chrombpnet-refactor:tensorflow .   # both TensorFlow engines
+
+docker run --rm --gpus all -v "$PWD":/data -w /data chrombpnet-refactor:pytorch pred_bw ...
+apptainer build chrombpnet-pytorch.sif docker-daemon://chrombpnet-refactor:pytorch
+apptainer exec --nv chrombpnet-pytorch.sif chrombpnet pred_bw ...
+```
+
+The base is a plain Ubuntu 24.04 conda image (`condaforge/miniforge3`); each
+environment brings its own CUDA libraries with its framework's wheels, so the
+host needs only a recent enough NVIDIA driver (above), and glibc 2.39 inside
+the image suits every wheel on hosts whose own glibc is too old for them. In
+the JAX and TensorFlow images an omitted `--engine` runs on that image's
+engine, with a notice. The GitHub workflow `Docker Image` builds and pushes
+all three (`:pytorch`, also `:latest`; `:jax`; `:tensorflow`) to the
+repository variable `DOCKER_IMAGE`.
+
 ## Choosing an engine
 
 ```bash

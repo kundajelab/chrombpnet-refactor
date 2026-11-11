@@ -1,0 +1,9 @@
+# What the images need is the package, its environments, its tests and the
+# archived legacy/ scripts the tests import.
+.git
+.github
+analysis
+**/__pycache__
+**/*.pyc
+**/*.sif
+**/.pytest_cache
