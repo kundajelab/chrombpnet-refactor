@@ -90,7 +90,9 @@ import types
 import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_ORIGINAL_REPO = "/path/to/workdir/software/chrombpnet"
+#: A checkout of the original (kundajelab/chrombpnet, ORIGINAL_COMMIT): beside this
+#: repository by default. Override with --original-repo or CHROMBPNET_ORIGINAL_REPO.
+DEFAULT_ORIGINAL_REPO = os.environ.get("CHROMBPNET_ORIGINAL_REPO", str(REPO_ROOT.parent / "chrombpnet"))
 #: The original's interpreter: its own conda environment, ``chrombpnet``, beside
 #: this one (Python 3.8, TF 2.8, the kundajelab shap fork). Override with
 #: --reference-python or CHROMBPNET_ORIGINAL_PYTHON.

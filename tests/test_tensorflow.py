@@ -19,10 +19,12 @@ import numpy as np
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_ORIGINAL_REPO = "/path/to/workdir/software/chrombpnet"
-DEFAULT_ORIGINAL_PYTHON = (
-    "/path/to/workdir/software/miniconda3/envs/chrombpnet/bin/python"
-)
+#: The original's checkout (beside this repository) and interpreter (its own conda
+#: environment, ``chrombpnet``, beside this one); override with --original-repo /
+#: --original-python or CHROMBPNET_ORIGINAL_REPO / CHROMBPNET_ORIGINAL_PYTHON.
+DEFAULT_ORIGINAL_REPO = os.environ.get("CHROMBPNET_ORIGINAL_REPO", str(REPO_ROOT.parent / "chrombpnet"))
+DEFAULT_ORIGINAL_PYTHON = os.environ.get(
+    "CHROMBPNET_ORIGINAL_PYTHON", str(Path(sys.prefix).parent / "chrombpnet" / "bin" / "python"))
 ATOL = 1e-6
 RTOL = 1e-5
 
