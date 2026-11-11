@@ -14,11 +14,12 @@ jax[cuda12]==0.11.2
 weasyprint==69.0
 pydyf==0.12.1
 
-# Shared with the PyTorch environment: TF-MoDISco and its pinned clustering
-# stack for motif discovery and the motif reports.
-igraph==0.11.9
-leidenalg==0.10.2
-modisco @ git+https://github.com/kundajelab/tfmodisco.git
+# Shared with the PyTorch environment: TF-MoDISco at the same commit, and its
+# clustering stack for motif discovery and the motif reports (modisco pins
+# leidenalg itself).
+igraph>=0.11.9
+leidenalg>=0.10.2
+modisco @ git+https://github.com/kundajelab/tfmodisco.git@28154f18ec422c0738d3e45316c8a2fc76e6c88f
 
 pytest>=8
 pytest-cov>=5

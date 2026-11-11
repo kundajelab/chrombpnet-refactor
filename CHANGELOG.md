@@ -1,5 +1,21 @@
 # Changelog
 
+## tangermeme and TF-MoDISco pinned in the environments
+
+- **The environment files now build what was tested.** `tangermeme`
+  (DeepLIFT/DeepSHAP for the PyTorch engine) and TF-MoDISco were installed
+  from their repositories' default branches, which have moved:
+  tangermeme 1.5.0 (`f1464b40`, in every PyTorch environment here) to 1.6.0,
+  TF-MoDISco `28154f18` (the PyTorch and TensorFlow environments) and
+  `5b37ef7` (the JAX one) to `48e0f87`, which pins `leidenalg==0.11.0`. That
+  made `envs/chrombpnet-jax.yml` fail to build from scratch (it pinned
+  `leidenalg==0.10.2`), and fresh PyTorch and TensorFlow environments get
+  untested code. The PyTorch, TensorFlow and JAX files, and `pyproject.toml`'s
+  `[pytorch]` and `[reports]` extras, now pin tangermeme `f1464b40` and
+  TF-MoDISco `28154f18`, as the glibc files already did; the JAX file's
+  clustering stack follows the PyTorch file's (`igraph>=0.11.9`,
+  `leidenalg>=0.10.2`). Existing environments are unaffected.
+
 ## `--engine` decides the engine, not the input models' suffixes
 
 - **Behaviour change, when `--engine` is omitted.** The engine was taken from

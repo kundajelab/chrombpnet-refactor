@@ -9,7 +9,10 @@ leidenalg>=0.10.2
 
 torch==2.14.1+cu126
 
-tangermeme @ git+https://github.com/jmschrei/tangermeme.git
-modisco @ git+https://github.com/kundajelab/tfmodisco.git
+# tangermeme (DeepLIFT/DeepSHAP) and TF-MoDISco at the commits every environment
+# here was built and tested with (also the glibc files'): their default
+# branches move, and a fresh environment would otherwise get untested code.
+tangermeme @ git+https://github.com/jmschrei/tangermeme.git@f1464b40d62ad2b845ce67727335251489421ff1
+modisco @ git+https://github.com/kundajelab/tfmodisco.git@28154f18ec422c0738d3e45316c8a2fc76e6c88f
 pytest>=8
 pytest-cov>=5
