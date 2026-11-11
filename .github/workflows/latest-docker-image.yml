@@ -1,19 +1,19 @@
 name: Docker Image
 
-# Publishing is manual. The previous version of this workflow never ran and
-# would have done the wrong thing if it had:
-#   * `on: push: branch:` -- the key is `branches`, so the filter was ignored
-#   * it targeted `master`; this repository's default branch is `main`
-#   * `if: GitHub.ref` -- expression contexts are case-sensitive, so this was
-#     never true
-#   * it pushed to `kundajelab/chrombpnet:latest`, the upstream TensorFlow
-#     image, which this PyTorch fork must not overwrite
+# Builds one image per engine environment (dockerfile, --build-arg ENGINE) and
+# publishes it to the GitHub Container Registry as
+# ghcr.io/<owner>/<repository>:pytorch (also :latest), :jax and :tensorflow.
 #
-# Set the DOCKER_IMAGE repository variable (for example
-# `myorg/chrombpnet-refactor`) before running it. It builds one image per
-# engine environment, tagged :pytorch (also :latest), :jax and :tensorflow.
+# Run it by hand: Actions -> Docker Image -> Run workflow. It needs no secrets:
+# the job's GITHUB_TOKEN may write this repository's packages. A new package is
+# private; make it public once, under the owner's Packages -> the package ->
+# Package settings -> Change visibility.
 on:
   workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   build-and-push:
@@ -26,27 +26,35 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Free disk space
-        # Each image holds a framework and its CUDA wheels (several GB).
-        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+        # Each image holds a framework and its CUDA wheels (10-14 GB), and the
+        # conda package cache takes as much again while the environment builds.
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache \
+            /usr/local/share/boost /usr/share/swift /usr/local/share/powershell /usr/local/share/chromium
+          docker image prune --all --force
+          df -h /
 
-      - name: Log in to Docker Hub
+      - name: Log in to the GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKER_USER }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
         env:
-          IMAGE: ${{ vars.DOCKER_IMAGE }}
           ENGINE: ${{ matrix.engine }}
+          SOURCE: ${{ github.server_url }}/${{ github.repository }}
         run: |
-          if [ -z "$IMAGE" ]; then
-            echo "Set the DOCKER_IMAGE repository variable first." >&2
-            exit 1
-          fi
-          docker build . --file dockerfile --build-arg ENGINE="$ENGINE" --tag "$IMAGE:$ENGINE"
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
+          # The source label links the package to this repository on GitHub.
+          docker build . --file dockerfile --build-arg ENGINE="$ENGINE" \
+            --label "org.opencontainers.image.source=$SOURCE" \
+            --label "org.opencontainers.image.description=ChromBPNet, the $ENGINE engine" \
+            --tag "$IMAGE:$ENGINE"
           docker push "$IMAGE:$ENGINE"
           if [ "$ENGINE" = pytorch ]; then
             docker tag "$IMAGE:$ENGINE" "$IMAGE:latest"
             docker push "$IMAGE:latest"
           fi
+          df -h /

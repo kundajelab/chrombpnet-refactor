@@ -1,5 +1,17 @@
 # Changelog
 
+## The container images go to the GitHub Container Registry
+
+- The `Docker Image` workflow publishes the three images to
+  `ghcr.io/kundajelab/chrombpnet-refactor` (`:pytorch`, also `:latest`;
+  `:jax`; `:tensorflow`) with the job's own token, in place of a Docker Hub
+  repository that needed an account, a variable and two secrets. It labels
+  each image with the repository (`org.opencontainers.image.source`), which
+  links the package to it, frees more of the runner's disk, and reports the
+  space left. `envs/README.md` gives the `docker pull` and `apptainer pull`
+  commands. Still run by hand; a new package is private until its visibility
+  is changed.
+
 ## tangermeme 1.6.0 and TF-MoDISco `48e0f87`
 
 - Every environment file (the glibc ones included) and `pyproject.toml`'s

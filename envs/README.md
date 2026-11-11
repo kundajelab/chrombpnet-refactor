@@ -89,9 +89,17 @@ environment brings its own CUDA libraries with its framework's wheels, so the
 host needs only a recent enough NVIDIA driver (above), and glibc 2.39 inside
 the image suits every wheel on hosts whose own glibc is too old for them. In
 the JAX and TensorFlow images an omitted `--engine` runs on that image's
-engine, with a notice. The GitHub workflow `Docker Image` builds and pushes
-all three (`:pytorch`, also `:latest`; `:jax`; `:tensorflow`) to the
-repository variable `DOCKER_IMAGE`.
+engine, with a notice.
+
+The GitHub workflow `Docker Image` (run by hand from the Actions tab) builds
+all three and publishes them to the GitHub Container Registry, where a cluster
+without Docker pulls them with Apptainer:
+
+```bash
+docker pull ghcr.io/kundajelab/chrombpnet-refactor:pytorch    # also :jax, :tensorflow
+apptainer pull docker://ghcr.io/kundajelab/chrombpnet-refactor:pytorch
+apptainer exec --nv chrombpnet-refactor_pytorch.sif chrombpnet pred_bw ...
+```
 
 ## Choosing an engine
 
