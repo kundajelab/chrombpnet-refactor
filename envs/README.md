@@ -76,24 +76,30 @@ chrombpnet pipeline --engine pytorch ...         # the default
 chrombpnet pipeline --engine tensorflow ...      # Keras 3, from the chrombpnet-tensorflow env
 chrombpnet pipeline --engine jax ...             # from the chrombpnet-jax env
 chrombpnet pipeline --engine tensorflow-old ...  # chrombpnet 1.x's Keras 2 code, from the chrombpnet-tensorflow env
-chrombpnet pred_bw -cm models/chrombpnet.h5 ...  # engine inferred: tensorflow-old
+chrombpnet pred_bw -cm models/chrombpnet.h5 ...  # the original's model, on PyTorch (the default)
 ```
 
-`--engine` is accepted by every command that builds or loads a model. When it
-is omitted the input models' checkpoint suffixes decide (`.pt` PyTorch, `.h5`
-tensorflow-old, `.keras` the installed Keras 3 engine: JAX where it is
-installed, else `tensorflow`), else PyTorch. An explicit `--engine` must be
-able to read every input model: `--engine jax`, `--engine tensorflow` and
-`--engine pytorch` also read the original's `.h5` models (bias, full and
-no-bias), so `chrombpnet pipeline --engine pytorch -b original_bias.h5 ...` or
-`chrombpnet pred_bw --engine pytorch -cm model.chrombpnet.fold_0.<ENCID>.h5 ...`
-works, and inputs in two formats (`-bm bias.h5 -cm chrombpnet.keras`, or `-bm
-bias.h5 -cm chrombpnet.pt`) go to an installed engine that reads both. PyTorch
-converts the weights on load (`chrombpnet/engines/pytorch/keras_h5.py`: the same
-arrays as bpnet-lite's `BPNet.from_chrombpnet`, the lengths read from the file);
-in Python, `load_model("model.chrombpnet.fold_0.<ENCID>.h5")` returns the
-`ChromBPNet` and `save_model` keeps it as a `.pt`. The two Keras 3 engines read
-each other's `.keras` files. `prep` and `modisco_motifs` never touch a
+`--engine` is accepted by every command that builds or loads a model, and it
+decides the engine whatever the input models' suffixes; omitted, it is
+PyTorch. PyTorch reads the original's `.h5` models (bias, full and no-bias)
+as well as its own `.pt`, so `chrombpnet pred_bw -cm
+model.chrombpnet.fold_0.<ENCID>.h5 ...` and `chrombpnet pipeline -b
+original_bias.h5 ...` run on PyTorch, as does a mix (`-bm bias.h5 -cm
+chrombpnet.pt`); it converts the weights on load
+(`chrombpnet/engines/pytorch/keras_h5.py`: the same arrays as bpnet-lite's
+`BPNet.from_chrombpnet`, the lengths read from the file). In Python,
+`load_model("model.chrombpnet.fold_0.<ENCID>.h5")` returns the `ChromBPNet` and
+`save_model` keeps it as a `.pt`. The Keras 3 engines (`--engine jax`,
+`--engine tensorflow`) read `.h5` and each other's `.keras` files; a model the
+engine cannot read (`.keras` under PyTorch, `.pt` under the Keras engines) is
+refused before anything runs.
+
+Where PyTorch is not installed (the `chrombpnet-jax` and
+`chrombpnet-tensorflow` environments), an omitted `--engine` runs on the
+environment's own engine -- `jax`; `tensorflow` (Keras 3) in the TensorFlow
+environment, where `tensorflow-old` runs only when named -- and says so. An
+engine named with `--engine` is never swapped: one this environment does not
+have fails at once, naming its environment. `prep` and `modisco_motifs` never touch a
 model, take no `--engine`, and run in any of the environments.
 
 | | PyTorch | tensorflow | JAX | tensorflow-old |

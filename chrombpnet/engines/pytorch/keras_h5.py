@@ -4,8 +4,7 @@
 engine takes the original ChromBPNet's ``bias.h5`` / ``bias_scaled.h5``
 (-> :class:`BiasModel`), ``chrombpnet_nobias.h5`` (-> :class:`BPNet`) and the
 full ``chrombpnet.h5`` (-> :class:`ChromBPNet`: its nested ``model`` and
-``model_wo_bias`` towers) wherever it takes a ``.pt``: ``--engine pytorch``
-with ``pred_bw``, ``contribs_bw``, ``footprints``, ``qc``, ``predict``,
+``model_wo_bias`` towers) wherever it takes a ``.pt``, with ``pred_bw``, ``contribs_bw``, ``footprints``, ``qc``, ``predict``,
 ``distill`` and the training commands' ``-b``. Files ``chrombpnet export``
 writes in that layout load the same way.
 

@@ -236,23 +236,24 @@ def _add_device(optional):
 def _add_engine(optional):
     """Register ``--engine`` on a command that builds or loads a model.
 
-    The default is ``None``, meaning *absent*: the engine is then taken from
-    the input models' checkpoint suffixes, else ``pytorch``
-    (:func:`chrombpnet.engines.resolve_name`). An absent flag is also removed
+    The default is ``None``, meaning *absent*: the engine is then ``pytorch``,
+    or where PyTorch is not installed the environment's own engine
+    (:func:`chrombpnet.engines.resolve`). An absent flag is also removed
     from the namespace before any stage sees it, so ``<prefix>.args.json``
     records ``engine`` only when it was typed.
     """
     optional.add_argument(
         "--engine", default=None, choices=list(engines.ENGINE_NAMES),
         help="Deep-learning engine. pytorch (the default): this package's "
-             "PyTorch implementation. tensorflow: the Keras 3 code of the jax "
-             "engine on the TensorFlow backend. jax: the Keras 3 / JAX port "
-             "from kundajelab/chrombpnet#284 (ChromBPNet 2.0). tensorflow-old: "
-             "the original Keras 2 implementation on tf-keras, whose .h5 "
-             "checkpoints chrombpnet 1.x reads. When omitted, the input "
-             "models' suffixes decide (.pt PyTorch, .h5 tensorflow-old, "
-             ".keras the installed Keras 3 engine), else pytorch. Each engine "
-             "runs in its own conda environment, envs/chrombpnet-<engine>.yml "
+             "PyTorch implementation, .pt checkpoints; it also reads chrombpnet "
+             "1.x's .h5 models. tensorflow: the Keras 3 code of the jax engine on "
+             "the TensorFlow backend, .keras checkpoints. jax: the Keras 3 / JAX "
+             "port from kundajelab/chrombpnet#284 (ChromBPNet 2.0), .keras "
+             "checkpoints. tensorflow-old: the original Keras 2 implementation on "
+             "tf-keras, whose .h5 checkpoints chrombpnet 1.x reads. When omitted: "
+             "pytorch, whatever the input models' suffixes, or where PyTorch is "
+             "not installed the environment's own engine, with a notice. Each "
+             "engine runs in its own conda environment, envs/chrombpnet-<engine>.yml "
              "(tensorflow-old: chrombpnet-tensorflow).")
 
 

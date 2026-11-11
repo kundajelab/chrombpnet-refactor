@@ -46,8 +46,9 @@ _For older glibc <=2.17 (e.g. CentOS 7): PyTorch: see `envs/chrombpnet-pytorch-g
   (e.g. CentOS 7) use the glibc 2.17 PyTorch or TensorFlow file above, or run
   in a container.
   Blackwell GPUs need a different PyTorch build (see `envs/README.md`).
-- Pick the engine with `--engine` (the checkpoint suffix decides when it is
-  omitted) and the device with `--device cpu`, `cuda` or e.g. `cuda:1`.
+- Pick the engine with `--engine` (PyTorch when it is omitted, or where
+  PyTorch is not installed the environment's own engine) and the device with
+  `--device cpu`, `cuda` or e.g. `cuda:1`.
   [`envs/README.md`](envs/README.md) describes each engine, its GPU
   libraries, and what differs between them.
 - The motif reports use TF-MoDISco and match motifs with MEME's `tomtom`;
@@ -285,7 +286,9 @@ chrombpnet export            a Keras 3 (JAX or TensorFlow) model in the original
 chrombpnet distill           one bias-free model from several (PyTorch engine)
 ```
 
-Run `chrombpnet <command> --help` for the full argument list.
+Run `chrombpnet <command> --help` for the full argument list. Original
+ChromBPNet (TensorFlow) `.h5` models go to the same arguments as any other
+(`-cm`, `-cmb`, `-bm`, `-m`, `-b`) and run on PyTorch.
 
 `pipeline`, `qc`, `bias pipeline` and `bias qc` end with TF-MoDISco motif
 reports, built from contribution scores on a `--seed` sample of the peaks.
@@ -515,7 +518,7 @@ bias branch is frozen and stays in eval mode.
 
 `load_model` also reads the original ChromBPNet's TensorFlow `.h5` models
 (`bias_scaled.h5`, `chrombpnet.h5`, `chrombpnet_nobias.h5`), converting the
-weights on load, as every command does under `--engine pytorch`; see
+weights on load, as every command does; see
 [Engines and environments](envs/README.md).
 
 Historical scripts and paper-analysis assets that the CLI does not reach are

@@ -22,6 +22,17 @@ def _restore_engine():
     engines._CURRENT = previous
 
 
+def _environment(monkeypatch, *frameworks):
+    """Pretend only these frameworks are installed (an environment's own: torch;
+    jax and keras; tensorflow and keras)."""
+    monkeypatch.setattr(engines, "installed", lambda name: engines._FRAMEWORKS[name] in frameworks)
+
+
+@pytest.fixture
+def every_framework(monkeypatch):
+    _environment(monkeypatch, "torch", "jax", "tensorflow")
+
+
 #: tensorflow-old shares the TensorFlow environment, which has tf-keras beside Keras 3.
 ENVIRONMENTS = {"tensorflow-old": "chrombpnet-tensorflow"}
 
@@ -49,9 +60,9 @@ def test_keras3_files_go_to_the_installed_keras3_engine(monkeypatch):
     assert engines.keras3_engine() == "jax"   # whose error names its environment
 
 
-def test_the_default_is_pytorch():
+def test_the_default_is_pytorch(every_framework):
     assert engines.DEFAULT_ENGINE == "pytorch"
-    assert engines.resolve_name(Namespace()) == "pytorch"
+    assert engines.resolve(Namespace()) == ("pytorch", None)
     assert engines.current().name == "pytorch"
 
 
@@ -69,11 +80,13 @@ def test_checkpoint_suffix_names_the_engine(path, expected):
     assert engines.infer_from_path(path) == expected
 
 
-def test_an_omitted_engine_follows_the_input_models():
+def test_an_omitted_engine_is_pytorch_whatever_the_suffix(every_framework):
+    """The original's .h5 models run on PyTorch too (engines/pytorch/keras_h5)."""
     args = Namespace(engine=None, chrombpnet_model="a.h5", chrombpnet_model_nb="b.h5")
-    assert engines.resolve_name(args) == "tensorflow-old"
+    assert engines.resolve_name(args) == "pytorch"
     assert engines.resolve_name(Namespace(engine=None, bias_model_path="b.pt")) == "pytorch"
-    assert engines.resolve_name(Namespace(engine=None, model_h5="m.keras")) == engines.keras3_engine()
+    with pytest.raises(ValueError, match="pytorch engine cannot read --model-h5 'm.keras'"):
+        engines.resolve_name(Namespace(engine=None, model_h5="m.keras"))
 
 
 def test_an_explicit_engine_must_agree_with_the_input_models():
@@ -94,17 +107,20 @@ def test_an_explicit_engine_may_read_another_engines_checkpoints():
         assert engines.resolve_name(Namespace(engine=name, model_h5="m.keras")) == name
 
 
-def test_mixed_input_models_go_to_the_engine_that_reads_them_all():
+def test_mixed_input_models_need_an_engine_that_reads_them_all(every_framework):
     args = Namespace(bias_model="original_bias.h5", chrombpnet_model="chrombpnet.keras")
-    assert engines.resolve_name(args) == engines.keras3_engine()
+    with pytest.raises(ValueError, match="cannot read"):
+        engines.resolve_name(args)
+    args.engine = "jax"
+    assert engines.resolve_name(args) == "jax"
 
 
-def test_input_models_from_two_engines_are_refused():
-    with pytest.raises(ValueError, match="different engines"):
+def test_input_models_no_engine_reads_together_are_refused(every_framework):
+    with pytest.raises(ValueError, match="cannot read --chrombpnet-model 'c.keras'"):
         engines.resolve_name(Namespace(bias_model="b.pt", chrombpnet_model="c.keras"))
 
 
-def test_a_pt_and_an_original_h5_go_to_pytorch():
+def test_a_pt_and_an_original_h5_go_to_pytorch(every_framework):
     """The PyTorch engine reads chrombpnet 1.x's .h5 models too (keras_h5)."""
     assert engines.resolve_name(Namespace(bias_model="b.h5", chrombpnet_model="c.pt")) == "pytorch"
     assert engines.resolve_name(Namespace(engine="pytorch", chrombpnet_model="c.h5")) == "pytorch"
@@ -126,10 +142,13 @@ def test_pytorch_only_flags_are_refused_for_other_engines():
     with pytest.raises(ValueError, match="--predict-fused-kernel"):
         engines.configure_from_args(
             Namespace(engine="tensorflow-old", predict_fused_kernel=True), require=False)
-    # Inferred engines get the same check.
-    with pytest.raises(ValueError, match="--predict-fused-kernel"):
-        engines.configure_from_args(
-            Namespace(model_h5="m.h5", predict_fused_kernel=True), require=False)
+    # A fallback engine gets the same check (here TensorFlow's environment).
+    import unittest.mock
+    with unittest.mock.patch.object(engines, "installed",
+                                    lambda name: engines._FRAMEWORKS[name] == "tensorflow"):
+        with pytest.raises(ValueError, match="--predict-fused-kernel"):
+            engines.configure_from_args(
+                Namespace(model_h5="m.h5", predict_fused_kernel=True), require=False)
 
 
 def test_reproducibility_max_reaches_xla_before_jax_starts(monkeypatch):
@@ -340,3 +359,33 @@ def test_engines_load_shadowed_cuda_libraries_dependencies_first(tmp_path, monke
             monkeypatch.setenv(variable, value)
         engine._prefer_bundled_cuda()
         assert loaded == [], (ld_library_path, value)
+
+
+@pytest.mark.parametrize("frameworks, expected", [
+    (("jax",), "jax"),                 # chrombpnet-jax
+    (("tensorflow",), "tensorflow"),   # chrombpnet-tensorflow: Keras 3 before the original's Keras 2 code
+])
+def test_an_omitted_engine_runs_on_the_environments_own_engine(monkeypatch, capsys, frameworks, expected):
+    _environment(monkeypatch, *frameworks)
+    args = Namespace(engine=None, chrombpnet_model="model.chrombpnet.h5")
+    name, notice = engines.resolve(args)
+    assert name == expected and "pytorch engine is not installed" in notice and expected in notice
+    engine = engines.configure_from_args(args, require=False)
+    assert engine.name == expected and not hasattr(args, "engine")
+    assert f"running on {expected}" in capsys.readouterr().err
+
+
+def test_an_engine_asked_for_by_name_is_never_swapped(monkeypatch):
+    """--engine pytorch in the JAX environment fails in require, naming its environment."""
+    _environment(monkeypatch, "jax")
+    assert engines.resolve(Namespace(engine="pytorch", chrombpnet_model="m.h5")) == ("pytorch", None)
+
+
+def test_no_fallback_engine_reads_a_pt(monkeypatch):
+    """A .pt in the JAX environment stays PyTorch's, whose require names its environment."""
+    _environment(monkeypatch, "jax")
+    assert engines.resolve(Namespace(engine=None, model_h5="m.pt")) == ("pytorch", None)
+
+
+def test_the_fallback_order():
+    assert engines.fallback_order()[0] == "pytorch" and engines.fallback_order()[-1] == "tensorflow-old"

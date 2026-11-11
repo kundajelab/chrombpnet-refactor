@@ -1,5 +1,27 @@
 # Changelog
 
+## `--engine` decides the engine, not the input models' suffixes
+
+- **Behaviour change, when `--engine` is omitted.** The engine was taken from
+  the input models' suffixes (`.h5` tensorflow-old, `.keras` the installed
+  Keras 3 engine), else PyTorch. It is now `--engine` when given and PyTorch
+  otherwise, whatever the suffixes (`engines.resolve`): an original
+  ChromBPNet `.h5` given to `-cm`, `-cmb`, `-bm`, `-m` or `-b` runs on
+  PyTorch, which converts it on load, where it ran on (or, in the PyTorch
+  environment, failed for want of) the original's TensorFlow code. Name
+  `--engine tensorflow-old` to run it there.
+- **Where PyTorch is not installed**, an omitted `--engine` falls back to
+  the environment's own engine -- `jax` in `chrombpnet-jax`, `tensorflow`
+  (Keras 3) in `chrombpnet-tensorflow` -- the first installed one that reads
+  every input model, and prints a notice saying so. An engine named with
+  `--engine` is never swapped for another: one the environment lacks fails
+  as before, naming its environment (swapping it would put one engine's
+  results under another's name).
+- A model the chosen engine cannot read (`.keras` under PyTorch, `.pt` under
+  the Keras engines) is refused before anything runs, naming the engine
+  whose checkpoint it is. `args.json` is unchanged: an omitted `--engine` is
+  still not recorded.
+
 ## The PyTorch engine reads chrombpnet 1.x's `.h5` models
 
 - **New input format; defaults unchanged.** `load_model` (and so every
