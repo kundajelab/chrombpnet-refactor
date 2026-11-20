@@ -328,7 +328,7 @@ changes, `args.json` and checkpoints included.
   nonpeaks. It refuses a checkpoint pretrained on another assay, fold file
   or architecture; `pipeline` then trains on the bias as on any
   profile-only one.
-- `pipeline` / `train --posthoc`: correct the enzyme bias after training
+- `pipeline` / `train --post-training`: correct the enzyme bias after training
   instead of co-training with the bias model. A plain BPNet is trained on
   the observed signal with no bias model, and `-b`'s bias model is then
   applied to its predicted profile. `models/chrombpnet.pt` predicts the
@@ -341,9 +341,9 @@ changes, `args.json` and checkpoints included.
   `r = (box9(q) + c) / (box9(p) + c)` is the ratio of their 9 bp running
   means (`shrink`, the default). That is the per-base ratio `q / p` wherever
   the bias model predicts appreciable probability, and the neighbourhood's
-  ratio where it predicts almost none; `--posthoc plain` divides everywhere
-  (the profile logits subtracted), which can amplify prediction error into
-  spikes there. Only the profile's shape is corrected: predicted counts, and
+  ratio where it predicts almost none; `--post-training plain` divides
+  everywhere (the profile logits subtracted), which can amplify prediction
+  error into spikes there. Only the profile's shape is corrected: predicted counts, and
   count contribution scores, are the uncorrected model's. Profile
   contribution scores go through the correction and both models. `plain` is
   linear. `shrink` is not, and brings a DeepLIFT rule of its own: its
@@ -354,8 +354,8 @@ changes, `args.json` and checkpoints included.
   warning reports when it is not small. Motif discovery from
   `shrink`-corrected scores has not been validated on real data. An
   existing plain BPNet and bias model can be combined from Python:
-  `save_model(PostHocChromBPNet(load_model("bpnet.pt"), load_model("bias.pt")), "chrombpnet_nobias.pt")`
-  (`chrombpnet.engines.pytorch.posthoc`; `rule`, `eps` and `window` are
+  `save_model(PostTrainingChromBPNet(load_model("bpnet.pt"), load_model("bias.pt")), "chrombpnet_nobias.pt")`
+  (`chrombpnet.engines.pytorch.post_training`; `rule`, `eps` and `window` are
   its options).
 - `distill -t <chrombpnet_nobias.pt ...>`: train one bias-free student on
   several models' averaged predictions -- the mean of their profile

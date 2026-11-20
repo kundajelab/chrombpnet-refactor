@@ -1,9 +1,9 @@
 # Changelog
 
-## `--posthoc`: the enzyme bias corrected after training
+## `--post-training`: the enzyme bias corrected after training
 
-- **New, PyTorch engine, experimental:** `pipeline` / `train --posthoc` trains
-  a plain BPNet on the observed signal with no bias model
+- **New, PyTorch engine, experimental:** `pipeline` / `train --post-training`
+  trains a plain BPNet on the observed signal with no bias model
   (`models/chrombpnet.pt`) and applies `-b`'s bias model to its predicted
   profile afterwards (`models/chrombpnet_nobias.pt`), instead of co-training
   the accessibility model with the bias model. For the model's profile `q`
@@ -12,16 +12,17 @@
   `r = (box9(q) + c) / (box9(p) + c)` from their 9 bp running means
   (`shrink`, the default): the per-base ratio where the bias model predicts
   appreciable probability, the neighbourhood's ratio where it predicts
-  almost none. `--posthoc plain` is `q / p`, the profile logits subtracted.
+  almost none. `--post-training plain` is `q / p`, the profile logits
+  subtracted.
   Only the profile is corrected; the counts are the uncorrected model's.
-- **How:** one model class, `PostHocChromBPNet`
-  (`chrombpnet/engines/pytorch/posthoc.py`), holds the two models and the
+- **How:** one model class, `PostTrainingChromBPNet`
+  (`chrombpnet/engines/pytorch/post_training.py`), holds the two models and the
   rule and has the two outputs every model here has. `load_model` reads its
-  checkpoint (`model_type` `chrombpnet_posthoc`), so `qc`, `predict`,
+  checkpoint (`model_type` `chrombpnet_post_training`), so `qc`, `predict`,
   `pred_bw`, `footprints`, `contribs_bw` and `distill -t` take it wherever
   they take a `chrombpnet_nobias` one. Training itself is unchanged:
-  `--posthoc` selects an architecture file
-  (`training/models/chrombpnet_posthoc_model.py`) that builds the plain
+  `--post-training` selects an architecture file
+  (`training/models/chrombpnet_post_training_model.py`) that builds the plain
   BPNet and whose `save_model_without_bias`, which the training loop
   already calls, writes the corrected model. The plain BPNet is an
   `UncorrectedBPNet` with its own checkpoint kind
@@ -37,20 +38,21 @@
   none. The scores then sum to the change in their target up to the
   quadrature's error (1e-6 of it on synthetic profiles spanning 18 nats,
   1e-5 at 37 nats, where 16 nodes leave 8e-3). Motif discovery from shrink-corrected scores
-  has not been validated on real data. A `--posthoc` run's report is titled
-  "Post hoc bias corrected".
-- **No change without the flag:** `--posthoc` is absent from the namespace
+  has not been validated on real data. A `--post-training` run's report is
+  titled "Post-training bias corrected".
+- **No change without the flag:** `--post-training` is absent from the
+  namespace
   unless given, like the other PyTorch-only options, so the `args.json`,
   checkpoints and outputs of a run without it are what they were.
   `tests/cli_surface.json` gains its two entries (`pipeline`, `train`), and
   the rest of the suite passes or fails exactly as on `main` in the same
   environment.
-- **Checked:** `tests/test_posthoc.py` (49 tests on the CPU, 1 CUDA-only: the
-  rule against its formula and in every dtype, a bias hole, the checkpoint
+- **Checked:** `tests/test_post_training.py` (49 tests on the CPU, 1 CUDA-only:
+  the rule against its formula and in every dtype, a bias hole, the checkpoint
   round trip, the hook through `fit_and_evaluate`, the pipeline's choice of
   architecture, distillation's teachers, the command line, and
   summation-to-delta of the profile scores under both rules). On the K562
-  ATAC (ENCSR483RKN) plain BPNet and bias model of the post hoc correction
+  ATAC (ENCSR483RKN) plain BPNet and bias model of the post-training correction
   project, read from their chrombpnet 1.x `.h5` files, `footprints` on 310
   of that project's background regions gives its saved marginal footprints
   to within 5e-6 for the uncorrected model, `plain` and `shrink`, and the
@@ -58,9 +60,9 @@
   for `plain` (0.0056) and corrected for `shrink` (0.0016). On 16 of its
   peaks with 10 references each, tangermeme's convergence check of the
   profile scores passes under both rules. On the regression fixture, on the
-  CPU: `train --posthoc` under both rules, then `footprints`,
+  CPU: `train --post-training` under both rules, then `footprints`,
   `contribs_bw`, `pred_bw`, `predict` and `distill` on its outputs. A GPU
-  run and a `pipeline --posthoc` run on real data are not checked.
+  run and a `pipeline --post-training` run on real data are not checked.
 
 ## The container images go to the GitHub Container Registry
 

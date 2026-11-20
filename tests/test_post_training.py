@@ -1,5 +1,5 @@
-"""``pipeline`` / ``train --posthoc``: a plain BPNet whose profile is
-bias-corrected after training (:mod:`chrombpnet.engines.pytorch.posthoc`)."""
+"""``pipeline`` / ``train --post-training``: a plain BPNet whose profile is
+bias-corrected after training (:mod:`chrombpnet.engines.pytorch.post_training`)."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ import pytest
 torch = pytest.importorskip("torch")
 
 import chrombpnet.CHROMBPNET as cli
-import chrombpnet.training.models.chrombpnet_posthoc_model as posthoc_architecture
+import chrombpnet.training.models.chrombpnet_post_training_model as post_training_architecture
 from chrombpnet import engines, parsers, pipelines, stages
 from chrombpnet.engines.pytorch import distill
 from chrombpnet.engines.pytorch.model import (
@@ -27,10 +27,10 @@ from chrombpnet.engines.pytorch.model import (
     load_model,
     save_model,
 )
-from chrombpnet.engines.pytorch.posthoc import (
+from chrombpnet.engines.pytorch.post_training import (
     SHRINK_EPS,
     SHRINK_WINDOW,
-    PostHocChromBPNet,
+    PostTrainingChromBPNet,
     _running_mean,
     correct_logits,
 )
@@ -189,7 +189,7 @@ def test_the_rule_refuses_profiles_of_different_shapes():
 def test_the_profile_is_corrected_and_the_counts_are_the_uncorrected_models(rule):
     model, bias = _models()
     sequence = _sequences(3)
-    profile, logcounts = PostHocChromBPNet(model, bias, rule=rule)(sequence)
+    profile, logcounts = PostTrainingChromBPNet(model, bias, rule=rule)(sequence)
     uncorrected_profile, uncorrected_logcounts = model(sequence)
     assert torch.equal(logcounts, uncorrected_logcounts)
     assert torch.allclose(
@@ -199,7 +199,7 @@ def test_the_profile_is_corrected_and_the_counts_are_the_uncorrected_models(rule
 
 def test_both_models_are_frozen_but_gradients_reach_the_input_through_both():
     model, bias = _models()
-    corrected = PostHocChromBPNet(model, bias, rule="plain")
+    corrected = PostTrainingChromBPNet(model, bias, rule="plain")
     assert not any(parameter.requires_grad for parameter in corrected.parameters())
     assert not corrected.training
 
@@ -215,7 +215,7 @@ def test_both_models_are_frozen_but_gradients_reach_the_input_through_both():
 
 def test_a_profile_only_bias_model_corrects_as_well(tmp_path):
     model, bias = _models(bias_counts_head=False)
-    corrected = PostHocChromBPNet(model, bias)
+    corrected = PostTrainingChromBPNet(model, bias)
     sequence = _sequences(2)
     profile, logcounts = corrected(sequence)
     assert torch.allclose(profile, correct_logits(model(sequence)[0], bias(sequence)[0]))
@@ -229,49 +229,49 @@ def test_a_profile_only_bias_model_corrects_as_well(tmp_path):
 def test_models_that_cannot_be_combined_are_refused():
     model, bias = _models()
     with pytest.raises(ValueError, match="lengths differ"):
-        PostHocChromBPNet(model, BiasModel(ModelConfig(INPUT + 2, OUTPUT, filters=4,
+        PostTrainingChromBPNet(model, BiasModel(ModelConfig(INPUT + 2, OUTPUT, filters=4,
                                                        n_dilation_layers=1)))
     with pytest.raises(ValueError, match="counts head"):
-        PostHocChromBPNet(_models(bias_counts_head=False)[1], bias)
+        PostTrainingChromBPNet(_models(bias_counts_head=False)[1], bias)
     with pytest.raises(ValueError, match="rule"):
-        PostHocChromBPNet(model, bias, rule="divide")
+        PostTrainingChromBPNet(model, bias, rule="divide")
     with pytest.raises(ValueError, match="window"):
-        PostHocChromBPNet(model, bias, window=2 * OUTPUT + 1)
+        PostTrainingChromBPNet(model, bias, window=2 * OUTPUT + 1)
 
 
 def test_only_a_plain_bpnet_and_a_bias_model_are_saved_together(tmp_path):
     model, bias = _models()
     full = ChromBPNet(model.config, _models(seed=2)[1], model)
     with pytest.raises(TypeError, match="plain BPNet"):
-        save_model(PostHocChromBPNet(full, bias), str(tmp_path / "corrected.pt"))
+        save_model(PostTrainingChromBPNet(full, bias), str(tmp_path / "corrected.pt"))
 
 
 def test_the_rules_settings_are_kept_in_the_checkpoint(tmp_path):
     model, bias = _peaked_models()
-    corrected = PostHocChromBPNet(model, bias, eps=0.2, window=5)
+    corrected = PostTrainingChromBPNet(model, bias, eps=0.2, window=5)
     path = str(tmp_path / "corrected.pt")
     save_model(corrected, path)
-    assert _load_payload(path, "cpu")["posthoc"] == {"rule": "shrink", "eps": 0.2, "window": 5}
+    assert _load_payload(path, "cpu")["post_training"] == {"rule": "shrink", "eps": 0.2, "window": 5}
     sequence = _sequences(3)
     restored = load_model(path)
     assert torch.equal(restored(sequence)[0], corrected(sequence)[0])
-    assert not torch.allclose(restored(sequence)[0], PostHocChromBPNet(model, bias)(sequence)[0])
+    assert not torch.allclose(restored(sequence)[0], PostTrainingChromBPNet(model, bias)(sequence)[0])
 
 
 @pytest.mark.parametrize("rule", ["shrink", "plain"])
 def test_checkpoints_round_trip_and_predict_like_any_no_bias_model(tmp_path, rule):
     model, bias = _models()
-    corrected = PostHocChromBPNet(model, bias, rule=rule)
+    corrected = PostTrainingChromBPNet(model, bias, rule=rule)
     path = str(tmp_path / "chrombpnet_nobias.pt")
     save_model(corrected, path)
 
     payload = _load_payload(path, "cpu")
-    assert payload["model_type"] == "chrombpnet_posthoc"
-    assert payload["posthoc"] == {"rule": rule, "eps": SHRINK_EPS, "window": SHRINK_WINDOW}
+    assert payload["model_type"] == "chrombpnet_post_training"
+    assert payload["post_training"] == {"rule": rule, "eps": SHRINK_EPS, "window": SHRINK_WINDOW}
     assert payload["bias_config"]["filters"] == 4 and payload["config"]["filters"] == 6
 
     restored = load_model(path)
-    assert isinstance(restored, PostHocChromBPNet) and restored.rule == rule
+    assert isinstance(restored, PostTrainingChromBPNet) and restored.rule == rule
     sequence = _sequences(3)
     for expected, got in zip(corrected(sequence), restored(sequence)):
         assert torch.equal(expected, got)
@@ -314,14 +314,14 @@ def test_training_writes_the_uncorrected_model_and_its_corrected_no_bias_model(t
     save_model(bias, bias_path)
     prefix = str(tmp_path / "chrombpnet")
     args = SimpleNamespace(output_prefix=prefix, device="cpu", learning_rate=0.001, epochs=2,
-                           early_stop=2, seed=11, posthoc=rule)
+                           early_stop=2, seed=11, post_training=rule)
     parameters = {"inputlen": INPUT, "outputlen": OUTPUT, "filters": 6, "n_dil_layers": 1,
                   "counts_loss_weight": "2.0", "bias_model_path": bias_path}
 
-    model = posthoc_architecture.build_model(args, parameters)
+    model = post_training_architecture.build_model(args, parameters)
     assert type(model) is UncorrectedBPNet
     generator = _Generator(4)
-    fit_and_evaluate(model, generator, generator, args, posthoc_architecture, parameters)
+    fit_and_evaluate(model, generator, generator, args, post_training_architecture, parameters)
 
     # <prefix>.pt is the trained model itself: a plain BPNet with no bias in
     # it, under a type of its own, so nothing takes it for a bias-free model.
@@ -334,8 +334,8 @@ def test_training_writes_the_uncorrected_model_and_its_corrected_no_bias_model(t
     assert all(parameter.requires_grad for parameter in model.parameters())
 
     corrected = load_model(prefix + "_nobias.pt")
-    assert isinstance(corrected, PostHocChromBPNet) and corrected.rule == rule
-    assert _load_payload(prefix + "_nobias.pt", "cpu")["provenance"]["posthoc_bias_model"] == bias_path
+    assert isinstance(corrected, PostTrainingChromBPNet) and corrected.rule == rule
+    assert _load_payload(prefix + "_nobias.pt", "cpu")["provenance"]["post_training_bias_model"] == bias_path
     sequence = _sequences(3)
     profile, logcounts = corrected(sequence)
     assert torch.equal(logcounts, uncorrected(sequence)[1])
@@ -344,17 +344,17 @@ def test_training_writes_the_uncorrected_model_and_its_corrected_no_bias_model(t
 
 
 def test_the_hook_needs_the_bias_model():
-    args = SimpleNamespace(seed=1, posthoc="shrink")
+    args = SimpleNamespace(seed=1, post_training="shrink")
     with pytest.raises(ValueError, match="bias_model_path"):
-        posthoc_architecture.build_model(args, {"inputlen": INPUT, "outputlen": OUTPUT})
+        post_training_architecture.build_model(args, {"inputlen": INPUT, "outputlen": OUTPUT})
 
 
 def test_the_hook_named_by_an_architecture_file_alone_corrects_with_shrink():
-    # -a given this file: no --posthoc, so the namespace has no rule.
+    # -a given this file: no --post-training, so the namespace has no rule.
     parameters = {"inputlen": INPUT, "outputlen": OUTPUT, "filters": 6, "n_dil_layers": 1,
                   "bias_model_path": "bias.pt"}
-    model = posthoc_architecture.build_model(SimpleNamespace(seed=1), parameters)
-    assert model.posthoc["rule"] == "shrink"
+    model = post_training_architecture.build_model(SimpleNamespace(seed=1), parameters)
+    assert model.post_training["rule"] == "shrink"
 
 
 def test_a_profile_too_short_for_the_rule_is_refused_before_training():
@@ -362,17 +362,17 @@ def test_a_profile_too_short_for_the_rule_is_refused_before_training():
     parameters = {"inputlen": 154, "outputlen": 4, "filters": 6, "n_dil_layers": 1,
                   "bias_model_path": "bias.pt"}
     with pytest.raises(ValueError, match="window"):
-        posthoc_architecture.build_model(SimpleNamespace(seed=1, posthoc="shrink"), parameters)
-    posthoc_architecture.build_model(SimpleNamespace(seed=1, posthoc="plain"), parameters)
+        post_training_architecture.build_model(SimpleNamespace(seed=1, post_training="shrink"), parameters)
+    post_training_architecture.build_model(SimpleNamespace(seed=1, post_training="plain"), parameters)
 
 
 def test_shrink_is_refused_on_mps_before_training():
     parameters = {"inputlen": INPUT, "outputlen": OUTPUT, "filters": 6, "n_dil_layers": 1,
                   "bias_model_path": "bias.pt"}
     with pytest.raises(ValueError, match="MPS"):
-        posthoc_architecture.build_model(
-            SimpleNamespace(seed=1, posthoc="shrink", device="mps"), parameters)
-    posthoc_architecture.build_model(SimpleNamespace(seed=1, posthoc="plain", device="mps"), parameters)
+        post_training_architecture.build_model(
+            SimpleNamespace(seed=1, post_training="shrink", device="mps"), parameters)
+    post_training_architecture.build_model(SimpleNamespace(seed=1, post_training="plain", device="mps"), parameters)
 
 
 def test_distillation_takes_the_corrected_model_and_refuses_the_uncorrected_one(tmp_path):
@@ -382,12 +382,12 @@ def test_distillation_takes_the_corrected_model_and_refuses_the_uncorrected_one(
     with torch.no_grad():
         uncorrected.count_dense.bias.fill_(3.0)   # some predicted reads to distribute
     save_model(uncorrected, str(tmp_path / "chrombpnet.pt"))
-    save_model(PostHocChromBPNet(uncorrected, bias), str(tmp_path / "chrombpnet_nobias.pt"))
+    save_model(PostTrainingChromBPNet(uncorrected, bias), str(tmp_path / "chrombpnet_nobias.pt"))
 
-    with pytest.raises(ValueError, match="uncorrected model of a --posthoc run"):
+    with pytest.raises(ValueError, match="uncorrected model of a --post-training run"):
         distill.load_teachers([str(tmp_path / "chrombpnet.pt")], "cpu")
     teachers = distill.load_teachers([str(tmp_path / "chrombpnet_nobias.pt")], "cpu")
-    assert isinstance(teachers[0], PostHocChromBPNet)
+    assert isinstance(teachers[0], PostTrainingChromBPNet)
     sequence = _sequences(2)
     profile, logcounts = distill.TeacherTargets(teachers)(sequence)
     corrected_profile, corrected_logcounts = teachers[0](sequence)
@@ -403,44 +403,44 @@ def test_distillation_takes_the_corrected_model_and_refuses_the_uncorrected_one(
 
 
 @pytest.mark.parametrize("command", ["train", "pipeline"])
-def test_posthoc_is_shrink_unless_a_rule_is_named(command):
+def test_post_training_is_shrink_unless_a_rule_is_named(command):
     line = TRAIN.replace("train", command, 1).split() + ["-b", "bias.pt"]
-    assert parsers.read_parser(line + ["--posthoc"]).posthoc == "shrink"
-    assert parsers.read_parser(line + ["--posthoc", "plain"]).posthoc == "plain"
+    assert parsers.read_parser(line + ["--post-training"]).post_training == "shrink"
+    assert parsers.read_parser(line + ["--post-training", "plain"]).post_training == "plain"
     with pytest.raises(SystemExit):
-        parsers.read_parser(line + ["--posthoc", "divide"])
+        parsers.read_parser(line + ["--post-training", "divide"])
 
 
-def test_a_run_without_posthoc_records_nothing_about_it():
+def test_a_run_without_post_training_records_nothing_about_it():
     args = parsers.read_parser(TRAIN.split() + ["-b", "bias.pt"])
-    assert args.posthoc is None
+    assert args.post_training is None
     engines.configure_from_args(args, require=False)
-    assert not hasattr(args, "posthoc")
+    assert not hasattr(args, "post_training")
     engines.configure(engines.DEFAULT_ENGINE)
 
 
-def test_posthoc_is_refused_by_the_other_engines():
-    args = parsers.read_parser(TRAIN.split() + ["-b", "bias.keras", "--posthoc", "--engine", "jax"])
-    with pytest.raises(ValueError, match="--posthoc only apply to the PyTorch engine"):
+def test_post_training_is_refused_by_the_other_engines():
+    args = parsers.read_parser(TRAIN.split() + ["-b", "bias.keras", "--post-training", "--engine", "jax"])
+    with pytest.raises(ValueError, match="--post-training only apply to the PyTorch engine"):
         engines.configure_from_args(args, require=False)
     engines.configure(engines.DEFAULT_ENGINE)
 
 
-def test_posthoc_is_refused_with_an_architecture_file():
-    line = TRAIN.split() + ["-b", "bias.pt", "--posthoc"]
-    cli.check_posthoc(parsers.read_parser(line))
-    with pytest.raises(SystemExit, match="--posthoc"):
-        cli.check_posthoc(parsers.read_parser(line + ["-a", "architecture.py"]))
+def test_post_training_is_refused_with_an_architecture_file():
+    line = TRAIN.split() + ["-b", "bias.pt", "--post-training"]
+    cli.check_post_training(parsers.read_parser(line))
+    with pytest.raises(SystemExit, match="--post-training"):
+        cli.check_post_training(parsers.read_parser(line + ["-a", "architecture.py"]))
 
 
-def test_the_pytorch_engine_trains_the_posthoc_architecture():
+def test_the_pytorch_engine_trains_the_post_training_architecture():
     engine = engines.get("pytorch")
-    assert engine.default_architecture("chrombpnet_posthoc") == posthoc_architecture.__file__
-    assert engine.default_architecture("chrombpnet") != posthoc_architecture.__file__
+    assert engine.default_architecture("chrombpnet_post_training") == post_training_architecture.__file__
+    assert engine.default_architecture("chrombpnet") != post_training_architecture.__file__
 
 
-@pytest.mark.parametrize("posthoc", [None, "shrink"])
-def test_the_training_pipeline_picks_the_architecture_by_the_flag(tmp_path, monkeypatch, posthoc):
+@pytest.mark.parametrize("post_training", [None, "shrink"])
+def test_the_training_pipeline_picks_the_architecture_by_the_flag(tmp_path, monkeypatch, post_training):
     import chrombpnet.training.train as train
 
     for directory in ("auxiliary", "logs", "models", "evaluation"):
@@ -459,10 +459,10 @@ def test_the_training_pipeline_picks_the_architecture_by_the_flag(tmp_path, monk
     values = dict(cmd="train", output_dir=str(tmp_path), file_prefix=None,
                   architecture_from_file=None, bias_model_path="bias.pt", peaks="p.bed",
                   nonpeaks="n.bed")
-    if posthoc:
-        values["posthoc"] = posthoc
+    if post_training:
+        values["post_training"] = post_training
     pipelines.chrombpnet_train_pipeline(Options(values))
-    expected = "chrombpnet_posthoc" if posthoc else "chrombpnet"
+    expected = "chrombpnet_post_training" if post_training else "chrombpnet"
     assert trained["architecture_from_file"] == engines.get("pytorch").default_architecture(expected)
 
 
@@ -497,7 +497,7 @@ def _summation_to_delta(corrected, ops, n_shuffles=4):
 @pytest.mark.parametrize("rule", ["shrink", "plain"])
 def test_profile_scores_sum_to_the_change_in_their_target(rule):
     pytest.importorskip("tangermeme")
-    corrected = PostHocChromBPNet(*_peaked_models(), rule=rule)
+    corrected = PostTrainingChromBPNet(*_peaked_models(), rule=rule)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
         residual, change = _summation_to_delta(corrected, corrected.deep_lift_ops())
@@ -513,7 +513,7 @@ def test_profile_scores_sum_to_the_change_in_their_target(rule):
 
 def test_the_rule_is_refused_where_deeplift_could_not_attach_it():
     pytest.importorskip("tangermeme")
-    corrected = PostHocChromBPNet(*_models())
+    corrected = PostTrainingChromBPNet(*_models())
     assert list(corrected.deep_lift_ops()) == [type(corrected.correction)]
     # Tangermeme skips a module that already has a backward hook.
     corrected.correction.register_full_backward_hook(lambda module, grad_input, grad_output: None)
@@ -527,7 +527,7 @@ def test_contribution_scores_run_through_the_corrected_model(rule):
     from chrombpnet.engines.pytorch import attribution
 
     model, bias = _peaked_models()
-    corrected = PostHocChromBPNet(model, bias, rule=rule)
+    corrected = PostTrainingChromBPNet(model, bias, rule=rule)
     sequences = _sequences(2).permute(0, 2, 1).numpy()
     settings = dict(device="cpu", batch_size=8, num_shuffles=4, seed=3)
     with warnings.catch_warnings(record=True) as caught:

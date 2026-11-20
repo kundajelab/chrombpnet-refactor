@@ -83,9 +83,9 @@ JAX_ONLY_OPTIONS = ("optimizer", "muon_lr", "ema", "ema_momentum",
                     "lr_schedule", "precision")
 
 #: Training options only the PyTorch engine has (``--bias-profile-only``,
-#: ``--pretrained-bias``, ``--posthoc``). Also default ``None`` and dropped
-#: when absent.
-PYTORCH_ONLY_OPTIONS = ("bias_profile_only", "pretrained_bias", "posthoc")
+#: ``--pretrained-bias``, ``--post-training``). Also default ``None`` and
+#: dropped when absent.
+PYTORCH_ONLY_OPTIONS = ("bias_profile_only", "pretrained_bias", "post_training")
 
 _INSTANCES = {}
 _CURRENT = DEFAULT_ENGINE

@@ -83,8 +83,8 @@ def attribute(model, seqs, profile_or_counts, *, device, batch_size,
         targets.append(("profile", ProfileWrapper(model, profile_stop_gradient)))
 
     for name, wrapper in targets:
-        # A --posthoc model brings the rule for its correction, which is not
-        # one of the modules Tangermeme has rules for. Only the profile goes
+        # A --post-training model brings the rule for its correction, which is
+        # not one of the modules Tangermeme has rules for. Only the profile goes
         # through the correction, and only shrink needs the rule.
         extra = {}
         if name == "profile" and hasattr(model, "deep_lift_ops"):

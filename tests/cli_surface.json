@@ -3118,7 +3118,7 @@
     "required": true,
     "type": "str"
   },
-  "pipeline posthoc": {
+  "pipeline post_training": {
     "choices": [
       "plain",
       "shrink"
@@ -3126,7 +3126,7 @@
     "default": "None",
     "nargs": "'?'",
     "options": [
-      "--posthoc"
+      "--post-training"
     ],
     "required": false,
     "type": "None"
@@ -4901,7 +4901,7 @@
     "required": true,
     "type": "str"
   },
-  "train posthoc": {
+  "train post_training": {
     "choices": [
       "plain",
       "shrink"
@@ -4909,7 +4909,7 @@
     "default": "None",
     "nargs": "'?'",
     "options": [
-      "--posthoc"
+      "--post-training"
     ],
     "required": false,
     "type": "None"

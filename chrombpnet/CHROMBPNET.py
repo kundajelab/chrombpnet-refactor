@@ -77,12 +77,12 @@ def check_modisco_window(args):
 			f"sequences it is applied to (--inputlen {inputlen}).")
 
 
-def check_posthoc(args):
-	"""Fail before any work if --posthoc is given with -a: it trains its own
+def check_post_training(args):
+	"""Fail before any work if --post-training is given with -a: it trains its own
 	architecture file, so the one named by -a would silently win."""
-	if getattr(args, "posthoc", None) and getattr(args, "architecture_from_file", None):
+	if getattr(args, "post_training", None) and getattr(args, "architecture_from_file", None):
 		raise SystemExit(
-			"chrombpnet: error: --posthoc trains its own built-in architecture "
+			"chrombpnet: error: --post-training trains its own built-in architecture "
 			"and cannot be combined with -a/--architecture-from-file.")
 
 
@@ -107,7 +107,7 @@ def main():
 	check_tomtom(args)
 	check_conventions(args)
 	check_modisco_window(args)
-	check_posthoc(args)
+	check_post_training(args)
 	parsers.drop_absent(args)
 	# The command line is complete: from here on it is read-only, and what a
 	# step adds is passed to that step (Options.step).

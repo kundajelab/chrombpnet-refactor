@@ -15,7 +15,7 @@ import torch
 from torch import Tensor, nn
 
 from chrombpnet import fused_kernels
-from chrombpnet.engines.pytorch.posthoc import PostHocChromBPNet
+from chrombpnet.engines.pytorch.post_training import PostTrainingChromBPNet
 
 
 SOURCE_COMMIT = "09938fdb4397ec0006510e5251e48920a505d4de"
@@ -156,8 +156,8 @@ class BiasModel(BPNet):
 
 
 class UncorrectedBPNet(BPNet):
-    """The plain BPNet a ``--posthoc`` run trains, on the observed signal with
-    no bias model: its predictions carry the enzyme bias. Its own type and
+    """The plain BPNet a ``--post-training`` run trains, on the observed signal
+    with no bias model: its predictions carry the enzyme bias. Its own type and
     checkpoint kind, so that nothing takes it for a bias-free model."""
 
 
@@ -331,8 +331,8 @@ def model_type(model: nn.Module) -> str:
         return "multitask_bias"
     if isinstance(model, ChromBPNet):
         return "chrombpnet"
-    if isinstance(model, PostHocChromBPNet):
-        return "chrombpnet_posthoc"
+    if isinstance(model, PostTrainingChromBPNet):
+        return "chrombpnet_post_training"
     if isinstance(model, UncorrectedBPNet):
         return "chrombpnet_uncorrected"
     if isinstance(model, BiasModel):
@@ -361,13 +361,13 @@ def checkpoint_payload(
             **dict(provenance or {}),
         },
     }
-    if isinstance(model, (ChromBPNet, PostHocChromBPNet)):
+    if isinstance(model, (ChromBPNet, PostTrainingChromBPNet)):
         # Bias and TF branches normally have different filter/dilation counts.
         payload["bias_config"] = asdict(model.bias_model.config)
-    if isinstance(model, PostHocChromBPNet):
+    if isinstance(model, PostTrainingChromBPNet):
         if not (isinstance(model.uncorrected_model, BPNet) and isinstance(model.bias_model, BPNet)):
-            raise TypeError("A post hoc checkpoint holds a plain BPNet and a bias model")
-        payload["posthoc"] = {"rule": model.rule, "eps": model.eps, "window": model.window}
+            raise TypeError("A post-training checkpoint holds a plain BPNet and a bias model")
+        payload["post_training"] = {"rule": model.rule, "eps": model.eps, "window": model.window}
     if isinstance(model, MultitaskBias):
         payload.update(tasks=list(model.tasks), assay=model.assay, fold=model.fold)
     return payload
@@ -416,10 +416,10 @@ def load_model(
         model = ChromBPNet(config, bias)
     elif kind == "chrombpnet_uncorrected":
         model = UncorrectedBPNet(config)
-    elif kind == "chrombpnet_posthoc":
-        # --posthoc: a plain BPNet and the bias model its profile is corrected with.
+    elif kind == "chrombpnet_post_training":
+        # --post-training: a plain BPNet and the bias model that corrects its profile.
         bias = BiasModel(ModelConfig.from_mapping(payload["bias_config"]))
-        model = PostHocChromBPNet(UncorrectedBPNet(config), bias, **payload["posthoc"])
+        model = PostTrainingChromBPNet(UncorrectedBPNet(config), bias, **payload["post_training"])
     elif kind == "multitask_bias":
         model = MultitaskBias(config, payload["tasks"], payload["assay"], payload.get("fold"))
     else:

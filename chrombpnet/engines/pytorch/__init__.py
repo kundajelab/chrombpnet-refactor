@@ -52,8 +52,8 @@ class PyTorchEngine(Engine):
             import chrombpnet.training.models.bpnet_model as architecture
         elif kind == "chrombpnet":
             import chrombpnet.training.models.chrombpnet_with_bias_model as architecture
-        elif kind == "chrombpnet_posthoc":
-            import chrombpnet.training.models.chrombpnet_posthoc_model as architecture
+        elif kind == "chrombpnet_post_training":
+            import chrombpnet.training.models.chrombpnet_post_training_model as architecture
         else:
             raise ValueError(f"Unknown model kind {kind!r}")
         return architecture.__file__

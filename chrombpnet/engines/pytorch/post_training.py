@@ -1,7 +1,8 @@
-"""Post hoc enzyme-bias correction (``pipeline`` / ``train --posthoc``).
+"""Post-training correction of the enzyme bias (``pipeline`` and ``train``
+with ``--post-training``).
 
 ChromBPNet removes the enzyme's sequence bias by co-training: the
-accessibility model is fitted on top of a frozen bias model. Post hoc
+accessibility model is fitted on top of a frozen bias model. Post-training
 correction separates the two. A plain BPNet is trained on the observed
 signal with no bias model, and the frozen bias model is applied to its
 predicted profile afterwards. With ``q`` and ``p`` the model's and the bias
@@ -51,7 +52,7 @@ DEEPLIFT_NODES = 32
 def check_settings(rule: str, eps: float, window: int, length: int) -> None:
     """Refuse a rule, ``eps`` or ``window`` a ``length`` bp profile cannot take."""
     if rule not in RULES:
-        raise ValueError(f"Unknown post hoc rule {rule!r}; expected one of {', '.join(RULES)}")
+        raise ValueError(f"Unknown post-training rule {rule!r}; expected one of {', '.join(RULES)}")
     if rule == "plain":
         return
     if not (isinstance(eps, numbers.Real) and math.isfinite(eps) and eps > 0):
@@ -103,7 +104,7 @@ def correct_logits(logits: Tensor, bias_logits: Tensor, rule: str = "shrink",
 
 class Correction(nn.Module):
     """The rule as a module, which DeepLIFT can be given a rule for
-    (:meth:`PostHocChromBPNet.deep_lift_ops`). Its one input holds the
+    (:meth:`PostTrainingChromBPNet.deep_lift_ops`). Its one input holds the
     model's and the bias model's profile logits: ``(batch, 2, length)``."""
 
     def __init__(self, rule: str, eps: float, window: int) -> None:
@@ -114,7 +115,7 @@ class Correction(nn.Module):
         return correct_logits(logits[:, 0], logits[:, 1], self.rule, self.eps, self.window)
 
 
-class PostHocChromBPNet(nn.Module):
+class PostTrainingChromBPNet(nn.Module):
     """A plain BPNet with its profile bias-corrected after training.
 
     ``uncorrected_model`` was trained on the observed signal with no bias

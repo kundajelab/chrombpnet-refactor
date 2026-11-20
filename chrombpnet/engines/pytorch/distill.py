@@ -33,7 +33,7 @@ import torch
 from chrombpnet.engines.pytorch.model import (
     BPNet,
     ChromBPNet,
-    PostHocChromBPNet,
+    PostTrainingChromBPNet,
     UncorrectedBPNet,
     load_model,
     resolve_device,
@@ -43,9 +43,9 @@ from chrombpnet.engines.pytorch.model import (
 def load_teachers(paths, device):
     """The teachers' bias-free models, frozen and in eval mode.
 
-    ``chrombpnet_nobias.pt`` checkpoints (a ``--posthoc`` run's corrected
+    ``chrombpnet_nobias.pt`` checkpoints (a ``--post-training`` run's corrected
     model among them), or ``chrombpnet.pt`` ones, whose accessibility
-    submodel is used. A ``--posthoc`` run's ``chrombpnet.pt`` is its
+    submodel is used. A ``--post-training`` run's ``chrombpnet.pt`` is its
     uncorrected model and is refused.
     """
     teachers = []
@@ -57,9 +57,9 @@ def load_teachers(paths, device):
             model = model.tf_model
         elif isinstance(model, UncorrectedBPNet):
             raise ValueError(
-                f"{path} is the uncorrected model of a --posthoc run, which still "
+                f"{path} is the uncorrected model of a --post-training run, which still "
                 "predicts the enzyme bias; distill that run's chrombpnet_nobias.pt")
-        elif type(model) not in (BPNet, PostHocChromBPNet):
+        elif type(model) not in (BPNet, PostTrainingChromBPNet):
             raise ValueError(f"{path} is a bias model, not a ChromBPNet teacher")
         if not model.config.counts_head:
             raise ValueError(f"{path} has no counts head to distill")
