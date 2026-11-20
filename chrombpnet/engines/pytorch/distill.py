@@ -30,14 +30,23 @@ import statistics
 
 import torch
 
-from chrombpnet.engines.pytorch.model import BPNet, ChromBPNet, load_model, resolve_device
+from chrombpnet.engines.pytorch.model import (
+    BPNet,
+    ChromBPNet,
+    PostTrainingChromBPNet,
+    UncorrectedBPNet,
+    load_model,
+    resolve_device,
+)
 
 
 def load_teachers(paths, device):
     """The teachers' bias-free models, frozen and in eval mode.
 
-    ``chrombpnet_nobias.pt`` checkpoints, or ``chrombpnet.pt`` ones, whose
-    accessibility submodel is used.
+    ``chrombpnet_nobias.pt`` checkpoints (a ``--post-training`` run's corrected
+    model among them), or ``chrombpnet.pt`` ones, whose accessibility
+    submodel is used. A ``--post-training`` run's ``chrombpnet.pt`` is its
+    uncorrected model and is refused.
     """
     teachers = []
     for path in paths:
@@ -46,9 +55,13 @@ def load_teachers(paths, device):
         model = load_model(path, map_location=device)
         if isinstance(model, ChromBPNet):
             model = model.tf_model
-        elif type(model) is not BPNet:
+        elif isinstance(model, UncorrectedBPNet):
+            raise ValueError(
+                f"{path} is the uncorrected model of a --post-training run, which still "
+                "predicts the enzyme bias; distill that run's chrombpnet_nobias.pt")
+        elif type(model) not in (BPNet, PostTrainingChromBPNet):
             raise ValueError(f"{path} is a bias model, not a ChromBPNet teacher")
-        if model.count_dense is None:
+        if not model.config.counts_head:
             raise ValueError(f"{path} has no counts head to distill")
         for parameter in model.parameters():
             parameter.requires_grad = False

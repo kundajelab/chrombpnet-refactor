@@ -307,7 +307,7 @@ Four options control them, all off by default:
 
 #### Experimental: PyTorch engine only
 
-Three opt-in changes, refused by the other engines. Without them nothing
+Four opt-in changes, refused by the other engines. Without them nothing
 changes, `args.json` and checkpoints included.
 
 - `bias pipeline` / `bias train --bias-profile-only`: a bias model with a
@@ -328,6 +328,35 @@ changes, `args.json` and checkpoints included.
   nonpeaks. It refuses a checkpoint pretrained on another assay, fold file
   or architecture; `pipeline` then trains on the bias as on any
   profile-only one.
+- `pipeline` / `train --post-training`: correct the enzyme bias after training
+  instead of co-training with the bias model. A plain BPNet is trained on
+  the observed signal with no bias model, and `-b`'s bias model is then
+  applied to its predicted profile. `models/chrombpnet.pt` predicts the
+  observed, uncorrected signal; `models/chrombpnet_nobias.pt` holds the post
+  hoc correction, and the pipeline evaluates it, and `qc`, `predict`,
+  `pred_bw`, `footprints`, `contribs_bw` and `distill` read it, as they do a
+  co-trained one. With `q` and `p` the model's and the bias model's
+  predicted profiles, the corrected profile is proportional to
+  `(q + c r) / (p + c)`, where `c = 0.03 / L` for an `L` bp profile and
+  `r = (box9(q) + c) / (box9(p) + c)` is the ratio of their 9 bp running
+  means (`shrink`, the default). That is the per-base ratio `q / p` wherever
+  the bias model predicts appreciable probability, and the neighbourhood's
+  ratio where it predicts almost none; `--post-training plain` divides
+  everywhere (the profile logits subtracted), which can amplify prediction
+  error into spikes there. Only the profile's shape is corrected: predicted counts, and
+  count contribution scores, are the uncorrected model's. Profile
+  contribution scores go through the correction and both models. `plain` is
+  linear. `shrink` is not, and brings a DeepLIFT rule of its own: its
+  Jacobian integrated from the reference's logits to the input's, with 32
+  quadrature nodes (tangermeme's `integrated_gradients_op`). With the
+  default profile weighting the scores then sum to the change in their
+  target up to the quadrature's error, which tangermeme's convergence
+  warning reports when it is not small. Motif discovery from
+  `shrink`-corrected scores has not been validated on real data. An
+  existing plain BPNet and bias model can be combined from Python:
+  `save_model(PostTrainingChromBPNet(load_model("bpnet.pt"), load_model("bias.pt")), "chrombpnet_nobias.pt")`
+  (`chrombpnet.engines.pytorch.post_training`; `rule`, `eps` and `window` are
+  its options).
 - `distill -t <chrombpnet_nobias.pt ...>`: train one bias-free student on
   several models' averaged predictions -- the mean of their profile
   probabilities times `expm1` of their mean log counts, and the mean of

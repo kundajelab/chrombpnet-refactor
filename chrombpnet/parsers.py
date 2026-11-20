@@ -226,6 +226,24 @@ def _add_bias_profile_only(optional):
              "must be the checkpoint's")
 
 
+def _add_post_training(optional):
+    """``--post-training`` on ``pipeline`` / ``train``
+    (:mod:`chrombpnet.engines.pytorch.post_training`). ``None`` when absent, and
+    then dropped from the namespace like the other PyTorch-only options."""
+    optional.add_argument(
+        "--post-training", nargs="?", const="shrink", default=None, choices=["shrink", "plain"],
+        help="PyTorch engine only. Correct the enzyme bias after training "
+             "instead of co-training with the bias model: a plain BPNet is "
+             "trained on the observed signal with no bias model (models/"
+             "chrombpnet.pt, uncorrected), and -b's bias model is applied to "
+             "its predicted profile afterwards, giving models/"
+             "chrombpnet_nobias.pt. shrink (the default) divides the model's "
+             "profile by the bias model's, except where the bias model "
+             "predicts almost nothing, where it takes the ratio of their 9 bp "
+             "neighbourhoods; plain divides everywhere (the profile logits "
+             "subtracted). The counts are not corrected. Not with -a")
+
+
 def _add_device(optional):
     """``--device``, and ``--engine`` with it: every command that places a
     model on a device is a command that needs an engine, and no other is."""
@@ -416,6 +434,7 @@ def _add_chrombpnet_training_arguments(parser, reports=False):
     _add_training_options(optional)
     add_reproducibility_arguments(optional)
     _add_ignore_bias_flag(optional)
+    _add_post_training(optional)
     required.add_argument("-b", "--bias-model-path", type=str, required=True, help="Path for a pretrained bias model checkpoint (.pt PyTorch, .h5 TensorFlow)")
     optional.add_argument("-sr", "--negative-sampling-ratio", type=float, default=0.1, help="Ratio of negatives to positive samples per epoch")
     _add_architecture_options(optional, filters=512, dilations=8, jitter=500)
