@@ -3118,6 +3118,19 @@
     "required": true,
     "type": "str"
   },
+  "pipeline posthoc": {
+    "choices": [
+      "plain",
+      "shrink"
+    ],
+    "default": "None",
+    "nargs": "'?'",
+    "options": [
+      "--posthoc"
+    ],
+    "required": false,
+    "type": "None"
+  },
   "pipeline precision": {
     "choices": [
       "bf16",
@@ -4887,6 +4900,19 @@
     ],
     "required": true,
     "type": "str"
+  },
+  "train posthoc": {
+    "choices": [
+      "plain",
+      "shrink"
+    ],
+    "default": "None",
+    "nargs": "'?'",
+    "options": [
+      "--posthoc"
+    ],
+    "required": false,
+    "type": "None"
   },
   "train precision": {
     "choices": [

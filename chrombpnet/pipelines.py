@@ -76,7 +76,10 @@ def chrombpnet_train_pipeline(options):
     train.main(options.step(
         replacing={"peaks": filtered_peaks,
                    "nonpeaks": layout.aux("filtered.nonpeaks.bed")},
-        architecture_from_file=default_architecture(options, engine, "chrombpnet"),
+        # --posthoc: a plain BPNet, its profile bias-corrected after training.
+        architecture_from_file=default_architecture(
+            options, engine,
+            "chrombpnet_posthoc" if getattr(options, "posthoc", None) else "chrombpnet"),
         output_prefix=layout.models("chrombpnet"),
         params=model_params))
 

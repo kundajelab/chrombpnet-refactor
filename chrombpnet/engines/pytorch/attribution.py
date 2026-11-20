@@ -83,6 +83,14 @@ def attribute(model, seqs, profile_or_counts, *, device, batch_size,
         targets.append(("profile", ProfileWrapper(model, profile_stop_gradient)))
 
     for name, wrapper in targets:
+        # A --posthoc model brings the rule for its correction, which is not
+        # one of the modules Tangermeme has rules for. Only the profile goes
+        # through the correction, and only shrink needs the rule.
+        extra = {}
+        if name == "profile" and hasattr(model, "deep_lift_ops"):
+            ops = model.deep_lift_ops()
+            if ops:
+                extra["additional_nonlinear_ops"] = ops
         wrapper.to(device).eval()
         scores = deep_lift_shap(
             wrapper,
@@ -93,5 +101,6 @@ def attribute(model, seqs, profile_or_counts, *, device, batch_size,
             batch_size=batch_size,
             device=device,
             verbose=True,
+            **extra,
         )
         yield name, scores.detach().cpu().permute(0, 2, 1).numpy()

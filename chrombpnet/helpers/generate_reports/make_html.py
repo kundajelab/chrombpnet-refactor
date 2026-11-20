@@ -254,14 +254,17 @@ def main(args):
 	
 	pd.set_option('colheader_justify', 'center')   # FOR TABLE <th>
 
+	# A --posthoc run corrects the bias after training instead of factorizing it.
+	kind = 'Post hoc bias corrected' if getattr(args, "posthoc", None) else 'Bias factorized'
+
 	if (args.command=="pipeline"):
-		page_title_text='Bias factorized ChromBPNet training and quality check report'
+		page_title_text=kind+' ChromBPNet training and quality check report'
 		main_html = report_shell.page_shell(page_title_text)
 		main_html += train_report(fpx,prefix)
 		main_html += qc_report(fpx, prefix, data_type)
 		
 	if (args.command=="train"):
-		page_title_text='Bias factorized ChromBPNet training report'
+		page_title_text=kind+' ChromBPNet training report'
 		main_html = report_shell.page_shell(page_title_text)
 		main_html += train_report(fpx,prefix)
 
